@@ -1,1 +1,162 @@
 """TOML configuration loading and validation."""
+
+from __future__ import annotations
+
+import logging
+import tomllib
+import warnings
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
+log = logging.getLogger("samwhispers")
+
+_VALID_MODES = ("hold", "toggle")
+_VALID_PROVIDERS = ("openai", "anthropic")
+
+
+@dataclass
+class HotkeyConfig:
+    key: str = "ctrl+shift+space"
+    mode: str = "hold"
+
+
+@dataclass
+class WhisperConfig:
+    server_url: str = "http://localhost:8080"
+    language: str = "en"
+
+
+@dataclass
+class AudioConfig:
+    sample_rate: int = 16000
+    max_duration: float = 300.0
+
+
+@dataclass
+class OpenAIConfig:
+    api_key: str = ""
+    model: str = "gpt-4o-mini"
+    api_base: str = "https://api.openai.com/v1"
+
+
+@dataclass
+class AnthropicConfig:
+    api_key: str = ""
+    model: str = "claude-sonnet-4-20250514"
+    api_base: str = "https://api.anthropic.com"
+
+
+@dataclass
+class CleanupConfig:
+    enabled: bool = False
+    provider: str = "openai"
+    openai: OpenAIConfig = field(default_factory=OpenAIConfig)
+    anthropic: AnthropicConfig = field(default_factory=AnthropicConfig)
+
+
+@dataclass
+class InjectConfig:
+    paste_delay: float = 0.1
+
+
+@dataclass
+class AppConfig:
+    hotkey: HotkeyConfig = field(default_factory=HotkeyConfig)
+    whisper: WhisperConfig = field(default_factory=WhisperConfig)
+    audio: AudioConfig = field(default_factory=AudioConfig)
+    cleanup: CleanupConfig = field(default_factory=CleanupConfig)
+    inject: InjectConfig = field(default_factory=InjectConfig)
+
+
+def find_config() -> Path | None:
+    """Search CWD then ~/.config/samwhispers/ for config.toml."""
+    candidates = [
+        Path("config.toml"),
+        Path.home() / ".config" / "samwhispers" / "config.toml",
+    ]
+    for p in candidates:
+        if p.is_file():
+            return p
+    return None
+
+
+def _merge(defaults: dict[str, Any], overrides: dict[str, Any]) -> dict[str, Any]:
+    """Recursively merge overrides into defaults."""
+    result = dict(defaults)
+    for k, v in overrides.items():
+        if k in result and isinstance(result[k], dict) and isinstance(v, dict):
+            result[k] = _merge(result[k], v)
+        else:
+            result[k] = v
+    return result
+
+
+def _validate(config: AppConfig) -> None:
+    """Validate config values, raise ValueError on invalid."""
+    if config.hotkey.mode not in _VALID_MODES:
+        raise ValueError(
+            f"Invalid hotkey mode {config.hotkey.mode!r}, must be one of {_VALID_MODES}"
+        )
+    if config.cleanup.provider not in _VALID_PROVIDERS:
+        raise ValueError(
+            f"Invalid cleanup provider {config.cleanup.provider!r}, "
+            f"must be one of {_VALID_PROVIDERS}"
+        )
+    if config.cleanup.enabled:
+        key = (
+            config.cleanup.openai.api_key
+            if config.cleanup.provider == "openai"
+            else config.cleanup.anthropic.api_key
+        )
+        if not key:
+            warnings.warn(
+                f"Cleanup enabled but {config.cleanup.provider} API key is empty",
+                UserWarning,
+                stacklevel=3,
+            )
+
+
+def load_config(path: Path | str | None = None) -> AppConfig:
+    """Load TOML config, merge with defaults, validate."""
+    raw: dict[str, Any] = {}
+    if path is not None:
+        p = Path(path)
+        if not p.is_file():
+            raise FileNotFoundError(f"Config file not found: {p}")
+        raw = tomllib.loads(p.read_text())
+        log.info("Loaded config from %s", p)
+    else:
+        found = find_config()
+        if found:
+            raw = tomllib.loads(found.read_text())
+            log.info("Loaded config from %s", found)
+        else:
+            log.info("No config file found, using defaults")
+
+    # Build config from defaults merged with file values
+    defaults = AppConfig()
+    d = _merge(_to_dict(defaults), raw)
+
+    config = AppConfig(
+        hotkey=HotkeyConfig(**d.get("hotkey", {})),
+        whisper=WhisperConfig(**d.get("whisper", {})),
+        audio=AudioConfig(**d.get("audio", {})),
+        cleanup=CleanupConfig(
+            enabled=d.get("cleanup", {}).get("enabled", False),
+            provider=d.get("cleanup", {}).get("provider", "openai"),
+            openai=OpenAIConfig(**d.get("cleanup", {}).get("openai", {})),
+            anthropic=AnthropicConfig(**d.get("cleanup", {}).get("anthropic", {})),
+        ),
+        inject=InjectConfig(**d.get("inject", {})),
+    )
+    _validate(config)
+    return config
+
+
+def _to_dict(obj: Any) -> dict[str, Any]:
+    """Convert nested dataclass to dict."""
+    from dataclasses import asdict
+
+    result: dict[str, Any] = asdict(obj)
+    return result
