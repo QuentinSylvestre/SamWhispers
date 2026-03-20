@@ -16,64 +16,104 @@ Uses [whisper.cpp](https://github.com/ggerganov/whisper.cpp) for local transcrip
 ## Prerequisites
 
 - Python 3.11+
-- [whisper.cpp](https://github.com/ggerganov/whisper.cpp) built with `whisper-server`
+- [whisper.cpp](https://github.com/ggerganov/whisper.cpp) built with `whisper-server` (see below)
 - A Whisper model file (e.g., `ggml-base.en.bin`)
-- Linux: `libportaudio2`, `xclip`, X11 display server
-- Windows: no extra system dependencies
 
-### Linux System Packages
+### Linux (X11)
 
 ```bash
 sudo apt install libportaudio2 xclip
 ```
 
+Wayland is not supported in v1 -- pynput requires X11 for global hotkeys.
+
+### Windows
+
+No extra system dependencies. PortAudio is bundled with the `sounddevice` pip package, and clipboard/hotkeys work natively.
+
+### WSL
+
+WSL cannot run the full daemon (no X11 for hotkeys/clipboard). Use native Windows instead. WSL is fine for development and running the test suite.
+
 ## Setting Up whisper-server
 
-### Build whisper.cpp
+### Linux
 
 ```bash
+# Install build tools if needed
+sudo apt install cmake g++
+
+git clone https://github.com/ggerganov/whisper.cpp.git
+cd whisper.cpp
+cmake -B build
+cmake --build build --config Release -j$(nproc)
+
+# Download a model
+bash models/download-ggml-model.sh base.en
+
+# Start the server
+./build/bin/whisper-server -m models/ggml-base.en.bin --port 8080
+```
+
+### Windows
+
+```powershell
+# Requires Visual Studio 2022 with C++ workload, or MinGW, plus CMake
 git clone https://github.com/ggerganov/whisper.cpp.git
 cd whisper.cpp
 cmake -B build
 cmake --build build --config Release
+
+# Download a model (PowerShell)
+Invoke-WebRequest -Uri "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin" -OutFile "models/ggml-base.en.bin"
+
+# Start the server
+.\build\bin\Release\whisper-server.exe -m models\ggml-base.en.bin --port 8080
 ```
 
-### Download a Model
-
-```bash
-# Base English model (~150 MB, good balance of speed and accuracy)
-./models/download-ggml-model.sh base.en
-```
-
-Other model options: `tiny.en` (fastest), `small.en` (better accuracy), `medium.en` (best accuracy, slower).
-
-### Start the Server
-
-```bash
-./build/bin/whisper-server -m models/ggml-base.en.bin --port 8080
-```
-
-The server is ready when you see it listening on the configured port. Verify with:
+### Verify the Server
 
 ```bash
 curl http://localhost:8080/
 ```
 
-## Install
+You should get an HTML response (200 OK). If port 8080 is already in use, pick another port (e.g., `--port 8090`) and update `whisper.server_url` in your config.
+
+### Model Options
+
+| Model | Size | Speed | Accuracy |
+|---|---|---|---|
+| `tiny.en` | ~75 MB | Fastest | Basic |
+| `base.en` | ~150 MB | Fast | Good (recommended) |
+| `small.en` | ~500 MB | Medium | Better |
+| `medium.en` | ~1.5 GB | Slow | Best |
+
+## Install SamWhispers
+
+### Linux / macOS
 
 ```bash
 git clone <repo-url>
 cd SamWhispers
+make setup    # creates .venv, installs everything
+```
+
+If `make` is not available:
+
+```bash
 python3 -m venv .venv
-source .venv/bin/activate  # Linux/macOS
-# .venv\Scripts\activate   # Windows
+source .venv/bin/activate
 pip install -e ".[dev]"
 ```
 
-Or use the Makefile:
+### Windows
 
-```bash
-make setup
+```powershell
+git clone <repo-url>
+cd SamWhispers
+python -m venv .venv
+.venv\Scripts\activate
+pip install -e ".[dev]"
 ```
 
 ## Configuration
@@ -134,9 +174,9 @@ python -m samwhispers
 With options:
 
 ```bash
-python -m samwhispers -v              # Verbose/debug logging
+python -m samwhispers -v                # Verbose/debug logging
 python -m samwhispers -c myconfig.toml  # Custom config path
-python -m samwhispers --version       # Show version
+python -m samwhispers --version         # Show version
 ```
 
 Once running, open any text editor or input field, hold the hotkey, speak, and release.
@@ -167,6 +207,7 @@ If the cleanup API fails, the original transcription is used as fallback.
 
 - Make sure `whisper-server` is running on the configured URL
 - Test with: `curl http://localhost:8080/`
+- If port 8080 is taken, use a different port and update `config.toml`
 - Check firewall settings if using a non-localhost URL
 
 ### Text not pasting / clipboard errors
@@ -174,6 +215,7 @@ If the cleanup API fails, the original transcription is used as fallback.
 - Linux: install `xclip` (`sudo apt install xclip`)
 - Make sure you have a running X11 display server
 - Increase `inject.paste_delay` if text appears partially
+- Windows: should work out of the box
 
 ### Hotkey not working
 
@@ -184,12 +226,19 @@ If the cleanup API fails, the original transcription is used as fallback.
   ```
   Then log out and back in
 - Check that the hotkey combination isn't already captured by another application
+- Windows: run as administrator if hotkeys are not detected
+
+### WSL
+
+The full daemon does not work on WSL because there is no X11 display server for hotkeys and clipboard. Use native Windows for running the daemon. WSL works fine for development (`make check`, running tests, building whisper-server).
 
 ### Wayland
 
 Wayland is not supported. SamWhispers requires X11 for global hotkeys via pynput. On GNOME, you can switch to X11 at the login screen.
 
 ## Development
+
+### Linux / macOS
 
 ```bash
 make setup      # Create venv and install dependencies
@@ -201,9 +250,34 @@ make format     # Auto-format code
 make clean      # Remove venv and caches
 ```
 
+### Windows (no make)
+
+```powershell
+python -m venv .venv
+.venv\Scripts\activate
+pip install -e ".[dev]"
+
+# Run checks manually
+python -m ruff check src/ tests/
+python -m ruff format --check src/ tests/
+python -m mypy src/
+python -m pytest tests/ -v
+```
+
+### Build dependencies on Linux
+
+Building `pynput`'s `evdev` dependency from source requires:
+
+```bash
+sudo apt install gcc python3-dev linux-libc-dev
+```
+
+These are not needed on Windows.
+
 ## Known Limitations
 
 - Wayland is not supported (X11 only on Linux)
+- WSL cannot run the full daemon (no X11)
 - No per-application hotkey customization
 - No streaming transcription (full recording is sent after release)
 - Maximum recording duration is configurable but defaults to 5 minutes
