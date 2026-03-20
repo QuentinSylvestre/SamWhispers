@@ -540,6 +540,7 @@ python -c "import samwhispers"
 | 8 | Main App Orchestration | Done | 11 tests |
 | 9 | README and Documentation | Done | |
 | 10 | Integration Testing and Polish | Done | 5 integration tests, structured logging added |
+| 11 | WSL Native Support | Done | WSL detection, Windows interop (clip.exe, PowerShell GetAsyncKeyState/SendKeys), 9 tests |
 
 ## 11) Dependency Graph
 
@@ -582,6 +583,7 @@ Phases 3-7 depend only on Phase 2 (config types). They are independent of each o
 - `src/samwhispers/hotkeys.py`
 - `src/samwhispers/inject.py`
 - `src/samwhispers/transcribe.py`
+- `src/samwhispers/wsl.py`
 - `tests/__init__.py`
 - `tests/conftest.py`
 - `tests/test_config.py`
@@ -589,7 +591,10 @@ Phases 3-7 depend only on Phase 2 (config types). They are independent of each o
 - `tests/test_transcribe.py`
 - `tests/test_cleanup.py`
 - `tests/test_inject.py`
+- `tests/test_hotkeys.py`
 - `tests/test_app.py`
+- `tests/test_integration.py`
+- `tests/test_wsl.py`
 - `tests/fixtures/sample.wav`
 
 ## 13) Backwards Compatibility
@@ -645,3 +650,4 @@ Reviewed by: Implementability Reviewer, Reliability Engineer. 32 findings total 
 | mypy type:ignore | Per-import on pynput/pyperclip | Only on first import per file | mypy only flags first occurrence of untyped import per module |
 | Inject test skip | `DISPLAY` env var check | Actual clipboard functionality check | DISPLAY set in WSL but no X server/xclip available |
 | System deps | Not specified | make, gcc, python3-dev, linux-libc-dev | Required for evdev (pynput dependency) build on WSL |
+| WSL support | Documented as v2 / not supported | Native WSL support via Windows interop | No /dev/input on WSL, so used PowerShell GetAsyncKeyState for hotkeys, clip.exe for clipboard, SendKeys for paste |
