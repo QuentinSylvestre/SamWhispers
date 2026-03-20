@@ -103,7 +103,13 @@ class SamWhispers:
                 log.warning("Busy (%s), ignoring hotkey", self._state.value)
                 return
             self._state = State.RECORDING
-        self.recorder.start()
+        try:
+            self.recorder.start()
+        except Exception:
+            log.exception("Failed to start recording (no audio device?)")
+            with self._lock:
+                self._state = State.IDLE
+            return
         log.info("Recording...")
 
     def _on_record_stop(self) -> None:

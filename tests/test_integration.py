@@ -121,3 +121,61 @@ def test_sample_wav_fixture_valid(sample_wav: bytes) -> None:
         assert wf.getsampwidth() == 2
         assert wf.getframerate() == 16000
         assert wf.getnframes() == 16000
+
+
+def test_e2e_hotkey_record_transcribe_inject(sample_wav: bytes) -> None:
+    """E2E: simulate hotkey press/release -> record -> transcribe -> inject, no real mic."""
+    import threading
+
+    app = _make_app()
+    app.recorder.stop.return_value = sample_wav
+
+    # Simulate hotkey press -> starts recording
+    app._on_record_start()
+    assert app._state == State.RECORDING
+    app.recorder.start.assert_called_once()
+
+    # Simulate hotkey release -> stops recording, enqueues WAV
+    app._on_record_stop()
+    assert app._state == State.PROCESSING
+    assert not app._work_queue.empty()
+
+    # Run the worker loop once to process the queued WAV
+    done = threading.Event()
+
+    with respx.mock:
+        respx.post("http://localhost:8080/inference").mock(
+            return_value=httpx.Response(200, json={"text": "hello from e2e"})
+        )
+
+        def run_worker() -> None:
+            try:
+                wav = app._work_queue.get(timeout=2)
+                app._process_recording(wav)
+            finally:
+                with app._lock:
+                    app._state = State.IDLE
+                done.set()
+
+        t = threading.Thread(target=run_worker)
+        t.start()
+        done.wait(timeout=5)
+        t.join(timeout=1)
+
+    # Verify text was injected and state returned to IDLE
+    app.injector.inject.assert_called_once_with("hello from e2e")
+    app.hotkey_listener.suppress.assert_called_once()
+    app.hotkey_listener.resume.assert_called_once()
+    assert app._state == State.IDLE
+
+
+def test_e2e_audio_failure_resets_to_idle() -> None:
+    """E2E: audio device failure on hotkey press resets state to IDLE."""
+    app = _make_app()
+    app.recorder.start.side_effect = OSError("PortAudio library not found")
+
+    app._on_record_start()
+
+    assert app._state == State.IDLE
+    app.recorder.start.assert_called_once()
+    app.injector.inject.assert_not_called()

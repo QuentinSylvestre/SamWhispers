@@ -10,8 +10,9 @@ import pytest
 from samwhispers.config import AppConfig, load_config
 
 
-def test_defaults() -> None:
+def test_defaults(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Loading with no file returns valid defaults."""
+    monkeypatch.chdir(tmp_path)
     config = load_config()
     assert config.hotkey.key == "ctrl+shift+space"
     assert config.hotkey.mode == "hold"
