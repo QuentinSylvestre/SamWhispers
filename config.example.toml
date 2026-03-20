@@ -1,0 +1,32 @@
+# SamWhispers configuration
+# Copy to config.toml and adjust as needed.
+# Search order: ./config.toml, ~/.config/samwhispers/config.toml
+
+[hotkey]
+key = "ctrl+shift+space"
+mode = "hold"  # "hold" or "toggle"
+
+[whisper]
+server_url = "http://localhost:8080"
+language = "en"
+
+[audio]
+sample_rate = 16000
+max_duration = 300.0  # seconds
+
+[cleanup]
+enabled = false
+provider = "openai"  # "openai" or "anthropic"
+
+[cleanup.openai]
+api_key = ""
+model = "gpt-4o-mini"
+api_base = "https://api.openai.com/v1"
+
+[cleanup.anthropic]
+api_key = ""
+model = "claude-sonnet-4-20250514"
+api_base = "https://api.anthropic.com"
+
+[inject]
+paste_delay = 0.1  # seconds between clipboard write and Ctrl+V
