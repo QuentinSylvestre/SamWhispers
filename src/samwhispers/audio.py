@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 import logging
 import threading
+import time
 import wave
 from typing import Any
 
@@ -58,13 +59,25 @@ class AudioRecorder:
             self._frames = []
             self._error = False
 
-        self._stream = sd.InputStream(
-            samplerate=self._sample_rate,
-            channels=1,
-            dtype="float32",
-            callback=self._callback,
-        )
-        self._stream.start()
+        # Retry once — WSLg PulseAudio can timeout on first attempt
+        for attempt in range(2):
+            try:
+                self._stream = sd.InputStream(
+                    samplerate=self._sample_rate,
+                    channels=1,
+                    dtype="float32",
+                    callback=self._callback,
+                )
+                self._stream.start()
+                break
+            except Exception:
+                if attempt == 0:
+                    log.warning("Audio stream failed, retrying in 0.5s...")
+                    time.sleep(0.5)
+                else:
+                    with self._lock:
+                        self._recording = False
+                    raise
 
         self._timer = threading.Timer(self._max_duration, self._auto_stop)
         self._timer.daemon = True

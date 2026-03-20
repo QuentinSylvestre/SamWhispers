@@ -276,10 +276,13 @@ class WSLHotkeyListener:
     def _read_loop(self) -> None:
         """Read PRESS/RELEASE events from PowerShell subprocess."""
         active = False
-        while self._running and self._process and self._process.stdout:
-            line = self._process.stdout.readline().strip()
+        while self._running:
+            proc = self._process
+            if not proc or not proc.stdout:
+                break
+            line = proc.stdout.readline().strip()
             if not line:
-                if self._process.poll() is not None:
+                if proc.poll() is not None:
                     break
                 continue
 

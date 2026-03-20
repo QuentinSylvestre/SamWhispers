@@ -177,6 +177,15 @@ class SamWhispers:
         """Validate mic, clipboard, whisper-server before entering main loop."""
         log.info("Running startup checks...")
 
+        # Check audio device
+        try:
+            import sounddevice as sd  # type: ignore[import-untyped]
+
+            sd.check_input_settings(samplerate=self.config.audio.sample_rate, channels=1)
+            log.info("Audio device: OK")
+        except Exception as e:
+            log.warning("Audio device check failed: %s. Recording may not work.", e)
+
         # Check whisper-server
         if self.whisper.health_check():
             log.info("Whisper server: OK")
