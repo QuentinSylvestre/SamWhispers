@@ -6,3 +6,5 @@ __pycache__/
 *.pyc
 config.toml
 tools/
+AGENTS.md
+.kiro/
