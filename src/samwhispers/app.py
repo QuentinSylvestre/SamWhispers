@@ -8,12 +8,11 @@ import queue
 import signal
 import threading
 from types import FrameType
+from typing import Any
 
 from samwhispers.audio import AudioRecorder, min_wav_size
 from samwhispers.cleanup import CleanupProvider
 from samwhispers.config import AppConfig
-from samwhispers.hotkeys import HotkeyListener
-from samwhispers.inject import TextInjector
 from samwhispers.transcribe import WhisperClient
 
 log = logging.getLogger("samwhispers")
@@ -44,13 +43,36 @@ class SamWhispers:
             language=config.whisper.language,
         )
         self.cleanup = CleanupProvider(config.cleanup)
-        self.injector = TextInjector(paste_delay=config.inject.paste_delay)
-        self.hotkey_listener = HotkeyListener(
-            hotkey_str=config.hotkey.key,
-            mode=config.hotkey.mode,
-            on_start=self._on_record_start,
-            on_stop=self._on_record_stop,
-        )
+
+        # Select WSL or native backends -- typed as Any to allow either implementation
+        self.injector: Any
+        self.hotkey_listener: Any
+
+        from samwhispers.wsl import is_wsl
+
+        if is_wsl():
+            log.info("WSL detected, using Windows interop for hotkeys and clipboard")
+            from samwhispers.hotkeys import WSLHotkeyListener
+            from samwhispers.inject import WSLTextInjector
+
+            self.injector = WSLTextInjector(paste_delay=config.inject.paste_delay)
+            self.hotkey_listener = WSLHotkeyListener(
+                hotkey_str=config.hotkey.key,
+                mode=config.hotkey.mode,
+                on_start=self._on_record_start,
+                on_stop=self._on_record_stop,
+            )
+        else:
+            from samwhispers.hotkeys import HotkeyListener
+            from samwhispers.inject import TextInjector
+
+            self.injector = TextInjector(paste_delay=config.inject.paste_delay)
+            self.hotkey_listener = HotkeyListener(
+                hotkey_str=config.hotkey.key,
+                mode=config.hotkey.mode,
+                on_start=self._on_record_start,
+                on_stop=self._on_record_stop,
+            )
 
     def run(self) -> None:
         """Start daemon: checks, worker thread, hotkey listener, block until shutdown."""

@@ -3,29 +3,28 @@
 from __future__ import annotations
 
 import threading
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from samwhispers.app import SamWhispers, State
 from samwhispers.config import AppConfig
 
 
 def _make_app() -> SamWhispers:
-    """Create app with all components mocked."""
+    """Create app with all components mocked, bypassing WSL detection."""
     config = AppConfig()
     with (
         patch("samwhispers.app.AudioRecorder") as mock_rec,
         patch("samwhispers.app.WhisperClient") as mock_wc,
         patch("samwhispers.app.CleanupProvider") as mock_cp,
-        patch("samwhispers.app.TextInjector") as mock_inj,
-        patch("samwhispers.app.HotkeyListener") as mock_hk,
+        patch("samwhispers.wsl.is_wsl", return_value=False),
     ):
         app = SamWhispers(config)
-        # Store mocks for assertions
         app.recorder = mock_rec.return_value
         app.whisper = mock_wc.return_value
         app.cleanup = mock_cp.return_value
-        app.injector = mock_inj.return_value
-        app.hotkey_listener = mock_hk.return_value
+    # Replace injector and hotkey_listener with mocks after init
+    app.injector = MagicMock()
+    app.hotkey_listener = MagicMock()
     return app
 
 
@@ -76,7 +75,6 @@ def test_process_recording_full_pipeline() -> None:
     app.whisper.transcribe.return_value = "hello world"
     app.cleanup.cleanup.return_value = "Hello, world."
 
-    # Use a large enough WAV to pass min size check
     wav_bytes = b"\x00" * 20000
     app._process_recording(wav_bytes)
 
@@ -110,18 +108,14 @@ def test_process_loop_handles_exception() -> None:
     app._state = State.PROCESSING
     app._work_queue.put(b"\x00" * 20000)
 
-    # Run one iteration of the loop then signal shutdown
+    app._shutdown_event.clear()
+
     def run_loop() -> None:
         app._process_loop()
-
-    app._shutdown_event.set()  # Will exit after processing one item
-    # But we need it to process first, so clear and set after a delay
-    app._shutdown_event.clear()
 
     t = threading.Thread(target=run_loop, daemon=True)
     t.start()
 
-    # Give it time to process
     import time
 
     time.sleep(0.3)

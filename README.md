@@ -33,7 +33,7 @@ No extra system dependencies. PortAudio is bundled with the `sounddevice` pip pa
 
 ### WSL
 
-WSL cannot run the full daemon (no X11 for hotkeys/clipboard). Use native Windows instead. WSL is fine for development and running the test suite.
+WSL2 is fully supported via Windows interop (`clip.exe`, `powershell.exe`). No X11 needed. Windows interop must be enabled (default).
 
 ## Setting Up whisper-server
 
@@ -230,7 +230,26 @@ If the cleanup API fails, the original transcription is used as fallback.
 
 ### WSL
 
-The full daemon does not work on WSL because there is no X11 display server for hotkeys and clipboard. Use native Windows for running the daemon. WSL works fine for development (`make check`, running tests, building whisper-server).
+SamWhispers has native WSL support. It automatically detects WSL and uses Windows interop:
+
+- **Clipboard**: `clip.exe` (write) and `powershell.exe Get-Clipboard` (read)
+- **Paste simulation**: PowerShell `SendKeys('^v')`
+- **Hotkey detection**: PowerShell `GetAsyncKeyState` polling (15ms interval)
+
+Requirements:
+- Windows interop must be enabled (default in WSL2)
+- `clip.exe` and `powershell.exe` must be accessible (usually via `/mnt/c/Windows/System32/`)
+
+If hotkeys or clipboard don't work, verify interop:
+```bash
+echo "test" | /mnt/c/Windows/System32/clip.exe
+/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe -c "Get-Clipboard"
+```
+
+Known WSL limitations:
+- Hotkey detection uses polling (~15ms latency) instead of native hooks
+- The active window for paste must be a Windows application (not a WSL terminal)
+- `SendKeys` may not work with all applications
 
 ### Wayland
 
@@ -277,7 +296,7 @@ These are not needed on Windows.
 ## Known Limitations
 
 - Wayland is not supported (X11 only on Linux)
-- WSL cannot run the full daemon (no X11)
+- WSL hotkey detection uses polling (~15ms latency) instead of native hooks
 - No per-application hotkey customization
 - No streaming transcription (full recording is sent after release)
 - Maximum recording duration is configurable but defaults to 5 minutes

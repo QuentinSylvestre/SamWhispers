@@ -155,3 +155,165 @@ class HotkeyListener:
 
         if self._mode == "hold" and normalized in self._hotkey_keys:
             self._on_stop()
+
+
+# Windows Virtual Key codes for WSL hotkey listener
+_VK_MAP: dict[str, int] = {
+    "ctrl": 0xA2,  # VK_LCONTROL
+    "ctrl_l": 0xA2,
+    "ctrl_r": 0xA3,
+    "shift": 0xA0,  # VK_LSHIFT
+    "shift_l": 0xA0,
+    "shift_r": 0xA1,
+    "alt": 0xA4,  # VK_LMENU
+    "alt_l": 0xA4,
+    "alt_r": 0xA5,
+    "space": 0x20,
+    "tab": 0x09,
+    "enter": 0x0D,
+    "esc": 0x1B,
+    "escape": 0x1B,
+    "backspace": 0x08,
+    "delete": 0x2E,
+    "home": 0x24,
+    "end": 0x23,
+    "f1": 0x70,
+    "f2": 0x71,
+    "f3": 0x72,
+    "f4": 0x73,
+    "f5": 0x74,
+    "f6": 0x75,
+    "f7": 0x76,
+    "f8": 0x77,
+    "f9": 0x78,
+    "f10": 0x79,
+    "f11": 0x7A,
+    "f12": 0x7B,
+}
+
+
+def parse_hotkey_vk(hotkey_str: str) -> list[int]:
+    """Parse a hotkey string into Windows Virtual Key codes."""
+    codes: list[int] = []
+    for part in hotkey_str.lower().split("+"):
+        part = part.strip()
+        if part in _VK_MAP:
+            codes.append(_VK_MAP[part])
+        elif len(part) == 1:
+            codes.append(ord(part.upper()))
+        else:
+            raise ValueError(f"Unknown key for WSL: {part!r}")
+    return codes
+
+
+class WSLHotkeyListener:
+    """Detect push-to-talk hotkey on WSL via PowerShell GetAsyncKeyState polling."""
+
+    def __init__(
+        self,
+        hotkey_str: str,
+        mode: str,
+        on_start: Callable[[], None],
+        on_stop: Callable[[], None],
+    ) -> None:
+        self._vk_codes = parse_hotkey_vk(hotkey_str)
+        self._mode = mode
+        self._on_start = on_start
+        self._on_stop = on_stop
+        self._suppressed = False
+        self._lock = threading.Lock()
+        self._process: Any = None
+        self._thread: threading.Thread | None = None
+        self._running = False
+
+    def start(self) -> None:
+        """Start the PowerShell hotkey polling subprocess."""
+        import subprocess
+
+        from samwhispers.wsl import find_windows_exe
+
+        ps = find_windows_exe("powershell.exe")
+        if not ps:
+            raise RuntimeError("powershell.exe not found for WSL hotkey listener")
+
+        # Build PowerShell script that polls GetAsyncKeyState
+        vk_array = ",".join(f"0x{c:02X}" for c in self._vk_codes)
+        script = (
+            'Add-Type -TypeDefinition @"\n'
+            "using System;\n"
+            "using System.Runtime.InteropServices;\n"
+            "public class KS {\n"
+            '    [DllImport("user32.dll")]\n'
+            "    public static extern short GetAsyncKeyState(int vKey);\n"
+            "}\n"
+            '"@\n'
+            f"$keys = @({vk_array})\n"
+            "$down = $false\n"
+            "while ($true) {\n"
+            "    $all = $true\n"
+            "    foreach ($k in $keys) {\n"
+            "        if (([KS]::GetAsyncKeyState($k) -band 0x8000) -eq 0) {\n"
+            "            $all = $false; break\n"
+            "        }\n"
+            "    }\n"
+            '    if ($all -and -not $down) { $down = $true; Write-Output "PRESS"; [Console]::Out.Flush() }\n'
+            '    elseif (-not $all -and $down) { $down = $false; Write-Output "RELEASE"; [Console]::Out.Flush() }\n'
+            "    Start-Sleep -Milliseconds 15\n"
+            "}\n"
+        )
+
+        self._running = True
+        self._process = subprocess.Popen(
+            [ps, "-NoProfile", "-c", script],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+        )
+        self._thread = threading.Thread(target=self._read_loop, daemon=True)
+        self._thread.start()
+        log.info("WSL hotkey listener started (mode=%s, polling via GetAsyncKeyState)", self._mode)
+
+    def _read_loop(self) -> None:
+        """Read PRESS/RELEASE events from PowerShell subprocess."""
+        active = False
+        while self._running and self._process and self._process.stdout:
+            line = self._process.stdout.readline().strip()
+            if not line:
+                if self._process.poll() is not None:
+                    break
+                continue
+
+            with self._lock:
+                if self._suppressed:
+                    continue
+
+            if self._mode == "hold":
+                if line == "PRESS":
+                    self._on_start()
+                elif line == "RELEASE":
+                    self._on_stop()
+            else:  # toggle
+                if line == "PRESS":
+                    if active:
+                        active = False
+                        self._on_stop()
+                    else:
+                        active = True
+                        self._on_start()
+
+    def stop(self) -> None:
+        """Stop the listener."""
+        self._running = False
+        if self._process:
+            self._process.terminate()
+            self._process.wait(timeout=5)
+            self._process = None
+        log.debug("WSL hotkey listener stopped")
+
+    def suppress(self) -> None:
+        with self._lock:
+            self._suppressed = True
+
+    def resume(self) -> None:
+        with self._lock:
+            self._suppressed = False
