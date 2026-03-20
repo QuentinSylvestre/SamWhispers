@@ -530,16 +530,16 @@ python -c "import samwhispers"
 
 | # | Phase | Status | Notes |
 |---|---|---|---|
-| 1 | Project Scaffolding | Pending | |
-| 2 | Configuration Module | Pending | |
-| 3 | Audio Capture Module | Pending | |
-| 4 | Whisper Server Client | Pending | |
-| 5 | AI Cleanup Module | Pending | |
-| 6 | Text Injection Module | Pending | |
-| 7 | Global Hotkey Listener | Pending | |
-| 8 | Main App Orchestration | Pending | |
-| 9 | README and Documentation | Pending | |
-| 10 | Integration Testing and Polish | Pending | |
+| 1 | Project Scaffolding | Done | Needed make, gcc, python3-dev, linux-libc-dev for evdev |
+| 2 | Configuration Module | Done | 9 tests |
+| 3 | Audio Capture Module | Done | 5 tests |
+| 4 | Whisper Server Client | Done | 7 tests. httpx.Timeout requires all 4 params in v0.28 |
+| 5 | AI Cleanup Module | Done | 5 tests |
+| 6 | Text Injection Module | Done | 3 tests (2 skipped on headless) |
+| 7 | Global Hotkey Listener | Done | 6 tests. mypy type:ignore only on first pynput import |
+| 8 | Main App Orchestration | Done | 11 tests |
+| 9 | README and Documentation | Done | |
+| 10 | Integration Testing and Polish | Done | 5 integration tests, structured logging added |
 
 ## 11) Dependency Graph
 
@@ -639,4 +639,9 @@ Reviewed by: Implementability Reviewer, Reliability Engineer. 32 findings total 
 
 ## 15) Implementation Divergences from Plan
 
-*Reserved -- filled during implementation*
+| Area | Planned | Actual | Reason |
+|---|---|---|---|
+| httpx.Timeout | 3 params (connect, read, write) | 4 params (+ pool) | httpx v0.28 requires all 4 when not providing a default |
+| mypy type:ignore | Per-import on pynput/pyperclip | Only on first import per file | mypy only flags first occurrence of untyped import per module |
+| Inject test skip | `DISPLAY` env var check | Actual clipboard functionality check | DISPLAY set in WSL but no X server/xclip available |
+| System deps | Not specified | make, gcc, python3-dev, linux-libc-dev | Required for evdev (pynput dependency) build on WSL |

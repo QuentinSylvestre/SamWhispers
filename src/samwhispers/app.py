@@ -108,24 +108,42 @@ class SamWhispers:
                     self._state = State.IDLE
 
     def _process_recording(self, wav_bytes: bytes) -> None:
+        import time
+
         min_size = min_wav_size(self.config.audio.sample_rate)
         if len(wav_bytes) < min_size:
-            log.warning("Recording too short (%d bytes), skipping", len(wav_bytes))
+            log.warning(
+                "Recording too short (%d bytes, min=%d), skipping", len(wav_bytes), min_size
+            )
             return
 
-        log.info("Transcribing...")
+        # Estimate recording duration from WAV size: (size - 44 header) / (sample_rate * 2 bytes)
+        duration = (len(wav_bytes) - 44) / (self.config.audio.sample_rate * 2)
+        log.info("Transcribing (%.1fs, %d bytes)...", duration, len(wav_bytes))
+
+        t0 = time.monotonic()
         text = self.whisper.transcribe(wav_bytes)
+        transcribe_ms = (time.monotonic() - t0) * 1000
+        log.info("Transcription took %.0fms", transcribe_ms)
+
         if not text.strip():
             log.warning("Empty transcription, skipping")
             return
 
+        t0 = time.monotonic()
         text = self.cleanup.cleanup(text)
+        cleanup_ms = (time.monotonic() - t0) * 1000
+        if self.config.cleanup.enabled:
+            log.info("Cleanup took %.0fms", cleanup_ms)
+
         log.info("Result: %s", text)
 
         self.hotkey_listener.suppress()
         self.injector.inject(text)
         self.hotkey_listener.resume()
-        log.info("Done")
+        log.info(
+            "Done (total pipeline: transcribe=%.0fms, cleanup=%.0fms)", transcribe_ms, cleanup_ms
+        )
 
     def _startup_checks(self) -> None:
         """Validate mic, clipboard, whisper-server before entering main loop."""
