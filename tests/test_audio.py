@@ -55,3 +55,23 @@ def test_is_recording_default_false() -> None:
     """New recorder is not recording."""
     recorder = AudioRecorder()
     assert recorder.is_recording() is False
+
+
+def test_auto_stop_invokes_callback_with_wav_bytes() -> None:
+    """_auto_stop passes WAV bytes to on_auto_stop callback."""
+    received: list[bytes] = []
+    recorder = AudioRecorder(on_auto_stop=lambda b: received.append(b))
+    # Manually populate frames so stop() returns real WAV data
+    recorder._recording = True
+    recorder._frames = [np.zeros(8000, dtype=np.float32)]  # 0.5s of silence
+    recorder._auto_stop()
+    assert len(received) == 1
+    assert len(received[0]) > 44  # WAV header + PCM data
+
+
+def test_auto_stop_no_callback_no_error() -> None:
+    """_auto_stop without callback does not raise."""
+    recorder = AudioRecorder()
+    recorder._recording = True
+    recorder._frames = [np.zeros(8000, dtype=np.float32)]
+    recorder._auto_stop()  # Should not raise
