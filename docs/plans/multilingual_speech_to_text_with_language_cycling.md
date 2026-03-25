@@ -1,7 +1,7 @@
 # Multi-lingual Speech-to-Text with Language Cycling
 
 > **Date**: 2026-07-15
-> **Status**: Draft
+> **Status**: Complete
 > **Scope**: Auto-detect + per-hotkey language cycling across Linux, WSL, and Windows
 > **Estimated effort**: 2-3 days
 
@@ -533,7 +533,10 @@ ruff format --check src/ tests/
 
 ## 10) Implementation Divergences from Plan
 
-<Reserved -- filled during implementation>
+| Area | Planned | Actual | Reason |
+|---|---|---|---|
+| Backward compat placement | After `_merge()`, before `AppConfig()` | Before `_merge()`, on raw TOML dict | `_merge()` injects default `languages: ["auto"]` which masks the old `language` key; must convert before merge |
+| Phase ordering | Phase 1 config-only, app.py untouched | Minimal `app.py` fix in Phase 1 | `app.py` references `config.whisper.language` which no longer exists; needed `languages[0]` to keep tests passing |
 
 ## 11) Review Log
 
@@ -550,3 +553,14 @@ ruff format --check src/ tests/
 | 7 | `WhisperClient._language` written from hotkey thread, read from worker thread (CPython string assignment is atomic via GIL, acceptable) | Low | Noted -- documented as acceptable behavior |
 | 12 | Startup log mentions language_key even for single-language configs | Low | Resolved -- conditional log message |
 | 13 | "Language: auto" not user-friendly | Low | Resolved -- display "Auto-detect" for auto |
+
+### 2026-07-15 -- Post-Implementation Review
+
+Overall implementation health: Green.
+Personas: Implementability Reviewer, Reliability Engineer.
+Self-reviewed (sub-agent unavailable) -- personas: Implementability Reviewer, Reliability Engineer.
+1 finding (0 High, 0 Medium, 1 Low).
+
+| # | Persona | Finding | Severity | Confidence | Resolution |
+|---|---|---|---|---|---|
+| F1 | Implementability | Git history has accidental commit changing default hotkey, fixed in next commit | Low | 95% | Noted -- cosmetic git history issue, final state is correct |
