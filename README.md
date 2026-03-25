@@ -6,7 +6,7 @@ Uses [whisper.cpp](https://github.com/ggerganov/whisper.cpp) for local transcrip
 
 ## How It Works
 
-1. Hold a global hotkey (default: `Ctrl+Shift+Space`)
+1. Hold a global hotkey (default: `Ctrl+Shift+Alt`)
 2. Speak into your microphone
 3. Release the hotkey
 4. Audio is transcribed locally via whisper-server
@@ -81,12 +81,16 @@ You should get an HTML response (200 OK). If port 8080 is already in use, pick a
 
 ### Model Options
 
-| Model | Size | Speed | Accuracy |
-|---|---|---|---|
-| `tiny.en` | ~75 MB | Fastest | Basic |
-| `base.en` | ~150 MB | Fast | Good (recommended) |
-| `small.en` | ~500 MB | Medium | Better |
-| `medium.en` | ~1.5 GB | Slow | Best |
+| Model | Size | Speed | Accuracy | Languages |
+|---|---|---|---|---|
+| `tiny.en` | ~75 MB | Fastest | Basic | English only |
+| `base.en` | ~150 MB | Fast | Good | English only |
+| `tiny` | ~75 MB | Fastest | Basic | Multilingual |
+| `base` | ~150 MB | Fast | Good (recommended for English) | Multilingual |
+| `small` | ~500 MB | Medium | Better | Multilingual |
+| `medium` | ~1.5 GB | Slow | Best | Multilingual (recommended for multi-language) |
+
+The `.en` models are English-only and faster. The multilingual models (without `.en`) support auto-detection and 99 languages. For multi-language use or auto-detection, use `medium` or larger for reliable results.
 
 ## Install SamWhispers
 
@@ -134,12 +138,14 @@ If no config file is found, defaults are used.
 
 ```toml
 [hotkey]
-key = "ctrl+shift+space"   # Hotkey combination
+key = "ctrl+shift+alt"   # Hotkey combination
 mode = "hold"               # "hold" (release to stop) or "toggle" (press to start/stop)
+language_key = "ctrl+shift+l"  # Cycles through configured languages
 
 [whisper]
 server_url = "http://localhost:8080"
-language = "en"
+languages = ["auto"]        # Language cycle order; "auto" for auto-detection
+# Examples: ["auto", "en", "fr"], ["en"], ["auto"]
 
 [audio]
 sample_rate = 16000         # Must be 16000 for whisper.cpp
@@ -195,6 +201,34 @@ Typical cost: less than $0.01 per cleanup call with `gpt-4o-mini` or `claude-son
 
 If the cleanup API fails, the original transcription is used as fallback.
 
+## Multi-language Support
+
+SamWhispers supports 99 languages via whisper.cpp. By default, it uses auto-detection (`languages = ["auto"]`).
+
+### Setup
+
+1. Use a multilingual model (e.g., `ggml-medium.bin`, not `ggml-medium.en.bin`)
+2. Configure your languages in `config.toml`:
+
+```toml
+[whisper]
+languages = ["auto", "en", "fr"]  # Cycle order
+
+[hotkey]
+language_key = "ctrl+shift+l"     # Hotkey to cycle languages
+```
+
+3. Press the language key to cycle: Auto-detect -> English -> French -> Auto-detect -> ...
+
+A desktop notification shows the active language on each switch.
+
+### Tips
+
+- Auto-detect works best with `medium` or larger models
+- When speaking purely in one language, force it for better accuracy on smaller models
+- Mixed-language sentences (code-switching) work best in auto-detect mode
+- The `.en` model variants are English-only and will ignore the language setting
+
 ## Troubleshooting
 
 ### No audio / microphone not detected
@@ -227,6 +261,13 @@ If the cleanup API fails, the original transcription is used as fallback.
   Then log out and back in
 - Check that the hotkey combination isn't already captured by another application
 - Windows: run as administrator if hotkeys are not detected
+
+### Wrong language detected
+
+- Use a larger model (`medium` or `large`) for reliable auto-detection
+- Make sure you're using a multilingual model (e.g., `ggml-medium.bin`, not `ggml-medium.en.bin`)
+- For short phrases, force the language instead of using auto-detect
+- Press the language cycle hotkey (default: `Ctrl+Shift+L`) to switch to a specific language
 
 ### WSL
 
@@ -302,6 +343,8 @@ These are not needed on Windows.
 - Maximum recording duration is configurable but defaults to 5 minutes
 - Clipboard is overwritten during text injection
 - The simulated Ctrl+V may not work in all applications (e.g., some terminal emulators use Ctrl+Shift+V)
+- Auto-detect language quality depends on model size; `base` may struggle with short clips or code-switching
+- Desktop notifications require `notify-send` on Linux (install via `sudo apt install libnotify-bin`)
 
 ## License
 

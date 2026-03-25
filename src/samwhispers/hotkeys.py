@@ -45,7 +45,7 @@ _SPECIAL_KEYS: dict[str, str] = {
 
 
 def parse_hotkey(hotkey_str: str) -> set[Any]:
-    """Parse a hotkey string like 'ctrl+shift+space' into pynput key objects."""
+    """Parse a hotkey string like 'ctrl+shift+alt' into pynput key objects."""
     from pynput.keyboard import Key, KeyCode  # type: ignore[import-untyped]
 
     keys: set[Key | KeyCode] = set()

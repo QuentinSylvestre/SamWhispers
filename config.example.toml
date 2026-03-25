@@ -3,7 +3,7 @@
 # Search order: ./config.toml, ~/.config/samwhispers/config.toml
 
 [hotkey]
-key = "ctrl+shift+space"
+key = "ctrl+shift+alt"
 mode = "hold"  # "hold" or "toggle"
 language_key = "ctrl+shift+l"  # Cycles through whisper.languages list
 
