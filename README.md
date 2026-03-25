@@ -6,7 +6,7 @@ Uses [whisper.cpp](https://github.com/ggerganov/whisper.cpp) for local transcrip
 
 ## How It Works
 
-1. Hold a global hotkey (default: `Ctrl+Shift+Alt`)
+1. Hold a global hotkey (default: `Ctrl+Shift+Space`)
 2. Speak into your microphone
 3. Release the hotkey
 4. Audio is transcribed locally via whisper-server
@@ -138,7 +138,7 @@ If no config file is found, defaults are used.
 
 ```toml
 [hotkey]
-key = "ctrl+shift+alt"   # Hotkey combination
+key = "ctrl+shift+space"   # Hotkey combination
 mode = "hold"               # "hold" (release to stop) or "toggle" (press to start/stop)
 language_key = "ctrl+shift+l"  # Cycles through configured languages
 

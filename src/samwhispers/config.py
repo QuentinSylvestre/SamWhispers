@@ -122,7 +122,7 @@ WHISPER_LANGUAGES = {
 
 @dataclass
 class HotkeyConfig:
-    key: str = "ctrl+shift+alt"
+    key: str = "ctrl+shift+space"
     mode: str = "hold"
     language_key: str = "ctrl+shift+l"
 
