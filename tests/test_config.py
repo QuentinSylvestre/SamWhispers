@@ -16,7 +16,9 @@ def test_defaults(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     config = load_config()
     assert config.hotkey.key == "ctrl+shift+space"
     assert config.hotkey.mode == "hold"
+    assert config.hotkey.language_key == "ctrl+shift+l"
     assert config.whisper.server_url == "http://localhost:8080"
+    assert config.whisper.languages == ["auto"]
     assert config.audio.sample_rate == 16000
     assert config.cleanup.enabled is False
     assert config.inject.paste_delay == 0.1
@@ -93,7 +95,7 @@ def test_cleanup_with_key_no_warning(tmp_path: Path) -> None:
 
 
 def test_full_config(tmp_path: Path) -> None:
-    """Full config matching config.example.toml loads correctly."""
+    """Full config with old language field loads via backward compat."""
     cfg = tmp_path / "config.toml"
     cfg.write_text(
         '[hotkey]\nkey = "ctrl+shift+space"\nmode = "hold"\n'
@@ -108,3 +110,52 @@ def test_full_config(tmp_path: Path) -> None:
     )
     config = load_config(cfg)
     assert isinstance(config, AppConfig)
+    assert config.whisper.languages == ["en"]
+
+
+def test_languages_list(tmp_path: Path) -> None:
+    """Languages list is loaded correctly."""
+    cfg = tmp_path / "config.toml"
+    cfg.write_text('[whisper]\nlanguages = ["auto", "en", "fr"]\n')
+    config = load_config(cfg)
+    assert config.whisper.languages == ["auto", "en", "fr"]
+
+
+def test_invalid_language_rejected(tmp_path: Path) -> None:
+    """Invalid language code raises ValueError."""
+    cfg = tmp_path / "config.toml"
+    cfg.write_text('[whisper]\nlanguages = ["en", "zzzz"]\n')
+    with pytest.raises(ValueError, match="Invalid language"):
+        load_config(cfg)
+
+
+def test_empty_languages_rejected(tmp_path: Path) -> None:
+    """Empty languages list raises ValueError."""
+    cfg = tmp_path / "config.toml"
+    cfg.write_text("[whisper]\nlanguages = []\n")
+    with pytest.raises(ValueError, match="must contain at least one entry"):
+        load_config(cfg)
+
+
+def test_backward_compat_language_to_languages(tmp_path: Path) -> None:
+    """Old language string is converted to languages list."""
+    cfg = tmp_path / "config.toml"
+    cfg.write_text('[whisper]\nlanguage = "fr"\n')
+    config = load_config(cfg)
+    assert config.whisper.languages == ["fr"]
+
+
+def test_languages_takes_precedence_over_language(tmp_path: Path) -> None:
+    """When both language and languages are present, languages wins."""
+    cfg = tmp_path / "config.toml"
+    cfg.write_text('[whisper]\nlanguage = "en"\nlanguages = ["fr", "de"]\n')
+    config = load_config(cfg)
+    assert config.whisper.languages == ["fr", "de"]
+
+
+def test_language_key_config(tmp_path: Path) -> None:
+    """Language key hotkey is configurable."""
+    cfg = tmp_path / "config.toml"
+    cfg.write_text('[hotkey]\nlanguage_key = "alt+l"\n')
+    config = load_config(cfg)
+    assert config.hotkey.language_key == "alt+l"

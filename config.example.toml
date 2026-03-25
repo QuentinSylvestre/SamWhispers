@@ -5,10 +5,14 @@
 [hotkey]
 key = "ctrl+shift+space"
 mode = "hold"  # "hold" or "toggle"
+language_key = "ctrl+shift+l"  # Cycles through whisper.languages list
 
 [whisper]
 server_url = "http://localhost:8080"
-language = "en"
+languages = ["auto"]  # Language cycle order. Use "auto" for auto-detection.
+# For multi-language, use a multilingual model (e.g., ggml-base.bin, not ggml-base.en.bin).
+# Recommended: ggml-medium.bin or larger for reliable auto-detection.
+# Examples: ["auto", "en", "fr"], ["en"], ["auto"]
 
 [audio]
 sample_rate = 16000

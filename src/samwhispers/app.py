@@ -40,7 +40,7 @@ class SamWhispers:
         )
         self.whisper = WhisperClient(
             server_url=config.whisper.server_url,
-            language=config.whisper.language,
+            language=config.whisper.languages[0],
         )
         self.cleanup = CleanupProvider(config.cleanup)
 

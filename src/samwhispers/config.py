@@ -14,17 +14,123 @@ log = logging.getLogger("samwhispers")
 _VALID_MODES = ("hold", "toggle")
 _VALID_PROVIDERS = ("openai", "anthropic")
 
+# ISO 639-1 codes supported by whisper.cpp, plus "auto" for auto-detection
+WHISPER_LANGUAGES = {
+    "auto",
+    "en",
+    "zh",
+    "de",
+    "es",
+    "ru",
+    "ko",
+    "fr",
+    "ja",
+    "pt",
+    "tr",
+    "pl",
+    "ca",
+    "nl",
+    "ar",
+    "sv",
+    "it",
+    "id",
+    "hi",
+    "fi",
+    "vi",
+    "he",
+    "uk",
+    "el",
+    "ms",
+    "cs",
+    "ro",
+    "da",
+    "hu",
+    "ta",
+    "no",
+    "th",
+    "ur",
+    "hr",
+    "bg",
+    "lt",
+    "la",
+    "mi",
+    "ml",
+    "cy",
+    "sk",
+    "te",
+    "fa",
+    "lv",
+    "bn",
+    "sr",
+    "az",
+    "sl",
+    "kn",
+    "et",
+    "mk",
+    "br",
+    "eu",
+    "is",
+    "hy",
+    "ne",
+    "mn",
+    "bs",
+    "kk",
+    "sq",
+    "sw",
+    "gl",
+    "mr",
+    "pa",
+    "si",
+    "km",
+    "sn",
+    "yo",
+    "so",
+    "af",
+    "oc",
+    "ka",
+    "be",
+    "tg",
+    "sd",
+    "gu",
+    "am",
+    "yi",
+    "lo",
+    "uz",
+    "fo",
+    "ht",
+    "ps",
+    "tk",
+    "nn",
+    "mt",
+    "sa",
+    "lb",
+    "my",
+    "bo",
+    "tl",
+    "mg",
+    "as",
+    "tt",
+    "haw",
+    "ln",
+    "ha",
+    "ba",
+    "jw",
+    "su",
+    "yue",
+}
+
 
 @dataclass
 class HotkeyConfig:
     key: str = "ctrl+shift+space"
     mode: str = "hold"
+    language_key: str = "ctrl+shift+l"
 
 
 @dataclass
 class WhisperConfig:
     server_url: str = "http://localhost:8080"
-    language: str = "en"
+    languages: list[str] = field(default_factory=lambda: ["auto"])
 
 
 @dataclass
@@ -98,6 +204,13 @@ def _validate(config: AppConfig) -> None:
         raise ValueError(
             f"Invalid hotkey mode {config.hotkey.mode!r}, must be one of {_VALID_MODES}"
         )
+    if not config.whisper.languages:
+        raise ValueError("whisper.languages must contain at least one entry")
+    for lang in config.whisper.languages:
+        if lang not in WHISPER_LANGUAGES:
+            raise ValueError(
+                f"Invalid language {lang!r}, must be 'auto' or a whisper.cpp language code"
+            )
     if config.cleanup.provider not in _VALID_PROVIDERS:
         raise ValueError(
             f"Invalid cleanup provider {config.cleanup.provider!r}, "
@@ -136,6 +249,14 @@ def load_config(path: Path | str | None = None) -> AppConfig:
 
     # Build config from defaults merged with file values
     defaults = AppConfig()
+
+    # Backward compat: whisper.language (str) -> whisper.languages (list)
+    whisper_raw = raw.get("whisper", {})
+    if "language" in whisper_raw and "languages" not in whisper_raw:
+        whisper_raw["languages"] = [whisper_raw.pop("language")]
+    elif "language" in whisper_raw and "languages" in whisper_raw:
+        whisper_raw.pop("language")  # languages takes precedence
+
     d = _merge(_to_dict(defaults), raw)
 
     config = AppConfig(
