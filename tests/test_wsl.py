@@ -95,3 +95,21 @@ def test_parse_hotkey_vk_language_key() -> None:
     """Parse ctrl+shift+l into VK codes for language cycling."""
     codes = parse_hotkey_vk("ctrl+shift+l")
     assert codes == [0xA2, 0xA0, ord("L")]
+
+
+def test_wsl_hotkey_listener_stop_kills_on_timeout() -> None:
+    """stop() escalates to kill() when terminate() + wait() times out."""
+    import subprocess
+
+    from samwhispers.hotkeys import WSLHotkeyListener
+
+    mock_proc = MagicMock()
+    mock_proc.wait.side_effect = [subprocess.TimeoutExpired("cmd", 5), None]
+
+    listener = WSLHotkeyListener("ctrl+space", "hold", MagicMock(), MagicMock())
+    listener._process = mock_proc
+    listener.stop()
+
+    mock_proc.terminate.assert_called_once()
+    mock_proc.kill.assert_called_once()
+    assert listener._process is None

@@ -198,8 +198,10 @@ class SamWhispers:
         log.info("Result: %s", text)
 
         self.hotkey_listener.suppress()
-        self.injector.inject(text)
-        self.hotkey_listener.resume()
+        try:
+            self.injector.inject(text)
+        finally:
+            self.hotkey_listener.resume()
         log.info(
             "Done (total pipeline: transcribe=%.0fms, cleanup=%.0fms)", transcribe_ms, cleanup_ms
         )

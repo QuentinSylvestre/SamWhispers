@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import subprocess
 import threading
 from collections.abc import Callable
 from typing import Any
@@ -350,7 +351,11 @@ class WSLHotkeyListener:
         self._running = False
         if self._process:
             self._process.terminate()
-            self._process.wait(timeout=5)
+            try:
+                self._process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                self._process.kill()
+                self._process.wait(timeout=10)
             self._process = None
         log.debug("WSL hotkey listener stopped")
 

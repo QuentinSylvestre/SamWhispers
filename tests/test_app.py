@@ -70,6 +70,23 @@ def test_record_stop_ignored_when_not_recording() -> None:
     app.recorder.stop.assert_not_called()
 
 
+def test_inject_failure_resumes_hotkey_listener() -> None:
+    """Hotkey listener is resumed even when inject() raises."""
+    import pytest
+
+    app = _make_app()
+    app.whisper.transcribe.return_value = "hello"
+    app.cleanup.cleanup.return_value = "hello"
+    app.injector.inject.side_effect = RuntimeError("clipboard crash")
+
+    wav_bytes = b"\x00" * 20000
+    with pytest.raises(RuntimeError, match="clipboard crash"):
+        app._process_recording(wav_bytes)
+
+    app.hotkey_listener.suppress.assert_called_once()
+    app.hotkey_listener.resume.assert_called_once()
+
+
 def test_process_recording_full_pipeline() -> None:
     """Full pipeline: transcribe -> cleanup -> inject."""
     app = _make_app()

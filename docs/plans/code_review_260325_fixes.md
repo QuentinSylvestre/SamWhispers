@@ -1,7 +1,7 @@
 # Code Review 2026-03-25 -- Fix Plan
 
 > **Date**: 2026-03-25
-> **Status**: Draft
+> **Status**: In progress (Phase 1 complete)
 > **Scope**: Address all actionable findings from the 2026-03-25 code review (P0 through P3), excluding P2 #6 (whisper-server subprocess management) which has its own plan.
 > **Estimated effort**: 1-2 days
 
@@ -124,8 +124,10 @@ def test_inject_failure_resumes_hotkey_listener():
 ```
 
 **Exit criteria**:
-- [ ] `pytest tests/test_wsl.py tests/test_integration.py -v` passes
+- [x] `pytest tests/test_wsl.py tests/test_integration.py -v` passes
 - [ ] Manual: inject failure (e.g., kill clipboard backend) does not kill hotkey listener
+
+> **Completed 2026-03-25.** Implemented as planned. No divergences.
 
 ---
 
@@ -405,3 +407,13 @@ Personas: Implementability reviewer, Security auditor, Reliability engineer.
 | 6 | Phase 1b: test skeleton had incomplete constructor args | Low | Resolved -- fixed constructor args |
 | 7 | Phase 1b: bare `wait()` after `kill()` could hang | Low | Resolved -- added `timeout=10` |
 | 8 | Line numbers off by 1-5 throughout | Info | Noted -- minor drift from review to plan, not blocking |
+
+### 2026-03-25 -- Implementation Review (after Phase 1, persona: Reliability engineer)
+
+Implementation health: Green.
+7 findings (0 High, 0 Medium, 2 Low, 5 Info).
+
+| # | Persona | Finding | Severity | Confidence | Resolution |
+|---|---|---|---|---|---|
+| 1 | Reliability | Second `wait()` after `kill()` could still raise `TimeoutExpired` on unkillable process | Low | High | Noted -- OS-level anomaly, acceptable risk |
+| 2 | Reliability | No logging on kill escalation path | Low | Medium | Noted -- minor observability improvement, not blocking |
