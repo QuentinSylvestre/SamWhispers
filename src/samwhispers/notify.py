@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import shutil
 import subprocess
 import sys
@@ -53,20 +54,19 @@ def _notify_windows(title: str, message: str) -> None:
     if not ps:
         log.warning("powershell.exe not found, cannot show notification")
         return
-    # Escape single quotes for PowerShell
-    t = title.replace("'", "''")
-    m = message.replace("'", "''")
+    # Pass data via environment variables to avoid PowerShell injection
     script = (
         "Add-Type -AssemblyName System.Windows.Forms;"
         "$n = New-Object System.Windows.Forms.NotifyIcon;"
         "$n.Icon = [System.Drawing.SystemIcons]::Information;"
         "$n.Visible = $true;"
-        f"$n.ShowBalloonTip(3000, '{t}', '{m}', 'Info');"
+        "$n.ShowBalloonTip(3000, $env:SW_TITLE, $env:SW_MSG, 'Info');"
         "Start-Sleep -Milliseconds 3100;"
         "$n.Dispose()"
     )
     subprocess.Popen(
         [ps, "-NoProfile", "-WindowStyle", "Hidden", "-c", script],
+        env={**os.environ, "SW_TITLE": title, "SW_MSG": message},
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )

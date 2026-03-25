@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import functools
 import logging
+import os
 import shutil
 
 log = logging.getLogger("samwhispers")
@@ -25,9 +26,9 @@ def find_windows_exe(name: str) -> str | None:
     path = shutil.which(name)
     if path:
         return path
-    # Common fallback locations
+    # Common fallback locations (use isfile, not which -- .exe files in WSL often lack executable bit)
     for prefix in ["/mnt/c/Windows/System32", "/mnt/c/Windows/System32/WindowsPowerShell/v1.0"]:
         candidate = f"{prefix}/{name}"
-        if shutil.which(candidate):
+        if os.path.isfile(candidate):
             return candidate
     return None

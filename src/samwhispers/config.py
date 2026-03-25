@@ -261,12 +261,12 @@ def load_config(path: Path | str | None = None) -> AppConfig:
         p = Path(path)
         if not p.is_file():
             raise FileNotFoundError(f"Config file not found: {p}")
-        raw = tomllib.loads(p.read_text())
+        raw = tomllib.loads(p.read_text(encoding="utf-8"))
         log.info("Loaded config from %s", p)
     else:
         found = find_config()
         if found:
-            raw = tomllib.loads(found.read_text())
+            raw = tomllib.loads(found.read_text(encoding="utf-8"))
             log.info("Loaded config from %s", found)
         else:
             log.info("No config file found, using defaults")

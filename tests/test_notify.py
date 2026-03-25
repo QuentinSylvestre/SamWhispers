@@ -69,3 +69,23 @@ def test_check_notify_available_wsl() -> None:
     """On WSL, always returns True."""
     with patch("samwhispers.wsl.is_wsl", return_value=True):
         assert check_notify_available() is True
+
+
+def test_notify_windows_passes_env_vars() -> None:
+    """_notify_windows passes title/message via env vars, not f-string interpolation."""
+    from samwhispers.notify import _notify_windows
+
+    with (
+        patch("samwhispers.wsl.is_wsl", return_value=True),
+        patch("samwhispers.wsl.find_windows_exe", return_value="/mnt/c/ps.exe"),
+        patch("samwhispers.notify.subprocess") as mock_sub,
+    ):
+        _notify_windows("Test Title", "Test Msg")
+        mock_sub.Popen.assert_called_once()
+        kwargs = mock_sub.Popen.call_args[1]
+        assert kwargs["env"]["SW_TITLE"] == "Test Title"
+        assert kwargs["env"]["SW_MSG"] == "Test Msg"
+        # Script should NOT contain the title/message literally
+        script = mock_sub.Popen.call_args[0][0][-1]
+        assert "Test Title" not in script
+        assert "$env:SW_TITLE" in script

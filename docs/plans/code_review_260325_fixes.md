@@ -1,7 +1,7 @@
 # Code Review 2026-03-25 -- Fix Plan
 
 > **Date**: 2026-03-25
-> **Status**: In progress (Phase 1 complete)
+> **Status**: In progress (Phase 2 complete)
 > **Scope**: Address all actionable findings from the 2026-03-25 code review (P0 through P3), excluding P2 #6 (whisper-server subprocess management) which has its own plan.
 > **Estimated effort**: 1-2 days
 
@@ -217,8 +217,10 @@ Add `import os` at the top of `wsl.py`.
 **Tests**: Update `test_notify.py::test_notify_windows_calls_powershell` to assert `env` kwarg contains `SW_TITLE`/`SW_MSG`. Update `test_wsl.py` if any test mocks `shutil.which` for the fallback path.
 
 **Exit criteria**:
-- [ ] `pytest tests/test_notify.py tests/test_config.py tests/test_wsl.py -v` passes
+- [x] `pytest tests/test_notify.py tests/test_config.py tests/test_wsl.py -v` passes
 - [ ] Notification still works on WSL (manual check)
+
+> **Completed 2026-03-25.** Implemented as planned. No divergences.
 
 ---
 
@@ -417,3 +419,13 @@ Implementation health: Green.
 |---|---|---|---|---|---|
 | 1 | Reliability | Second `wait()` after `kill()` could still raise `TimeoutExpired` on unkillable process | Low | High | Noted -- OS-level anomaly, acceptable risk |
 | 2 | Reliability | No logging on kill escalation path | Low | Medium | Noted -- minor observability improvement, not blocking |
+
+### 2026-03-25 -- Implementation Review (after Phase 2, persona: Security auditor)
+
+Implementation health: Green.
+10 findings (0 High, 0 Medium, 2 Low, 8 Info).
+
+| # | Persona | Finding | Severity | Confidence | Resolution |
+|---|---|---|---|---|---|
+| 1 | Security | Full parent env forwarded via `{**os.environ, ...}` -- same as previous implicit behavior | Low | Medium | Acceptable -- no regression |
+| 2 | Security | No test with malicious payload strings | Low | High | Noted -- env var approach is structurally safe regardless |
