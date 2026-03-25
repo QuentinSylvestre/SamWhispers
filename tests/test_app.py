@@ -142,3 +142,86 @@ def test_concurrent_hotkey_rejected() -> None:
     app._on_record_start()
     assert app._state == State.PROCESSING
     app.recorder.start.assert_not_called()
+
+
+def test_cycle_language_changes_whisper_language() -> None:
+    """Language cycling updates the whisper client language."""
+    config = AppConfig()
+    config.whisper.languages = ["auto", "en", "fr"]
+    with (
+        patch("samwhispers.app.AudioRecorder"),
+        patch("samwhispers.app.WhisperClient"),
+        patch("samwhispers.app.CleanupProvider"),
+        patch("samwhispers.wsl.is_wsl", return_value=False),
+    ):
+        app = SamWhispers(config)
+        app.injector = MagicMock()
+        app.hotkey_listener = MagicMock()
+
+    with patch("samwhispers.notify.notify"):
+        app._cycle_language()
+        assert app.whisper.language == "en"
+        assert app._lang_index == 1
+
+        app._cycle_language()
+        assert app.whisper.language == "fr"
+        assert app._lang_index == 2
+
+
+def test_cycle_language_wraps_around() -> None:
+    """Language cycling wraps back to the first language."""
+    config = AppConfig()
+    config.whisper.languages = ["auto", "en"]
+    with (
+        patch("samwhispers.app.AudioRecorder"),
+        patch("samwhispers.app.WhisperClient"),
+        patch("samwhispers.app.CleanupProvider"),
+        patch("samwhispers.wsl.is_wsl", return_value=False),
+    ):
+        app = SamWhispers(config)
+        app.injector = MagicMock()
+        app.hotkey_listener = MagicMock()
+
+    with patch("samwhispers.notify.notify"):
+        app._cycle_language()  # auto -> en
+        app._cycle_language()  # en -> auto (wrap)
+        assert app._lang_index == 0
+        assert app.whisper.language == "auto"
+
+
+def test_cycle_language_ignored_when_busy() -> None:
+    """Language cycling is ignored when not IDLE."""
+    config = AppConfig()
+    config.whisper.languages = ["auto", "en"]
+    with (
+        patch("samwhispers.app.AudioRecorder"),
+        patch("samwhispers.app.WhisperClient"),
+        patch("samwhispers.app.CleanupProvider"),
+        patch("samwhispers.wsl.is_wsl", return_value=False),
+    ):
+        app = SamWhispers(config)
+        app.injector = MagicMock()
+        app.hotkey_listener = MagicMock()
+
+    app._state = State.RECORDING
+    with patch("samwhispers.notify.notify") as mock_notify:
+        app._cycle_language()
+        mock_notify.assert_not_called()
+        assert app._lang_index == 0  # unchanged
+
+
+def test_single_language_no_cycle_wired() -> None:
+    """Single-language config does not wire language cycle callback."""
+    config = AppConfig()
+    config.whisper.languages = ["en"]
+    with (
+        patch("samwhispers.app.AudioRecorder"),
+        patch("samwhispers.app.WhisperClient"),
+        patch("samwhispers.app.CleanupProvider"),
+        patch("samwhispers.wsl.is_wsl", return_value=False),
+        patch("samwhispers.hotkeys.HotkeyListener") as mock_hl,
+    ):
+        SamWhispers(config)
+        call_kwargs = mock_hl.call_args[1]
+        assert call_kwargs["language_key_str"] is None
+        assert call_kwargs["on_language_cycle"] is None

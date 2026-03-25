@@ -34,15 +34,22 @@ class SamWhispers:
         self._work_queue: queue.Queue[bytes] = queue.Queue()
         self._shutdown_event = threading.Event()
 
+        self._languages = config.whisper.languages
+        self._lang_index = 0
+
         self.recorder = AudioRecorder(
             sample_rate=config.audio.sample_rate,
             max_duration=config.audio.max_duration,
         )
         self.whisper = WhisperClient(
             server_url=config.whisper.server_url,
-            language=config.whisper.languages[0],
+            language=self._languages[0],
         )
         self.cleanup = CleanupProvider(config.cleanup)
+
+        # Language cycle params (only when multiple languages configured)
+        lang_key = config.hotkey.language_key if len(self._languages) > 1 else None
+        lang_cb = self._cycle_language if len(self._languages) > 1 else None
 
         # Select WSL or native backends -- typed as Any to allow either implementation
         self.injector: Any
@@ -61,6 +68,8 @@ class SamWhispers:
                 mode=config.hotkey.mode,
                 on_start=self._on_record_start,
                 on_stop=self._on_record_stop,
+                language_key_str=lang_key,
+                on_language_cycle=lang_cb,
             )
         else:
             from samwhispers.hotkeys import HotkeyListener
@@ -72,6 +81,8 @@ class SamWhispers:
                 mode=config.hotkey.mode,
                 on_start=self._on_record_start,
                 on_stop=self._on_record_stop,
+                language_key_str=lang_key,
+                on_language_cycle=lang_cb,
             )
 
     def run(self) -> None:
@@ -96,6 +107,21 @@ class SamWhispers:
     def _handle_signal(self, signum: int, frame: FrameType | None) -> None:
         log.info("Received signal %d, shutting down", signum)
         self._shutdown_event.set()
+
+    def _cycle_language(self) -> None:
+        """Cycle to the next language in the configured list."""
+        with self._lock:
+            if self._state != State.IDLE:
+                log.debug("Busy (%s), ignoring language cycle", self._state.value)
+                return
+        self._lang_index = (self._lang_index + 1) % len(self._languages)
+        lang = self._languages[self._lang_index]
+        self.whisper.language = lang
+        label = "Auto-detect" if lang == "auto" else lang
+        log.info("Language switched to: %s", label)
+        from samwhispers.notify import notify
+
+        notify("SamWhispers", f"Language: {label}")
 
     def _on_record_start(self) -> None:
         with self._lock:
@@ -204,6 +230,33 @@ class SamWhispers:
                 "Clipboard not available. Text injection will fail. "
                 "Install xclip (Linux) or check your display server."
             )
+
+        # Check notifications
+        from samwhispers.notify import check_notify_available
+
+        if check_notify_available():
+            log.info("Notifications: OK")
+        else:
+            log.warning(
+                "Desktop notifications not available. "
+                "Install notify-send (Linux) for language switch notifications."
+            )
+
+        # Log language configuration
+        lang = self._languages[0]
+        label = "Auto-detect" if lang == "auto" else lang
+        if len(self._languages) > 1:
+            log.info(
+                "Language: %s (cycle with '%s' through %s)",
+                label,
+                self.config.hotkey.language_key,
+                self._languages,
+            )
+            from samwhispers.notify import notify
+
+            notify("SamWhispers", f"Language: {label}")
+        else:
+            log.info("Language: %s", label)
 
         log.info("Startup checks complete")
 
