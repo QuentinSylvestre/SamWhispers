@@ -13,12 +13,12 @@ Eliminate the manual step of starting whisper-server separately. SamWhispers spa
 
 ## 2) Current State
 
-- `config.py:46-47` -- `WhisperConfig` has `server_url: str = "http://localhost:8080"` and `languages: list[str]`. No fields for binary path, model path, or managed mode.
-- `transcribe.py:14-22` -- `WhisperClient` is a pure HTTP client. `__init__` takes `server_url` and `language`. `health_check()` at line 60 does `GET /` and returns bool.
-- `app.py:38-44` -- `WhisperClient` is instantiated in `SamWhispers.__init__` with `config.whisper.server_url`.
-- `app.py:155-168` -- `_startup_checks()` calls `self.whisper.health_check()` once. If unreachable, logs a warning and continues.
-- `app.py:196-203` -- `shutdown()` calls `self.whisper.close()` (closes the httpx client). No process management.
-- `app.py:82-84` -- Signal handling: SIGTERM/SIGINT set `_shutdown_event`, which triggers `shutdown()`.
+- `config.py:101-102` -- `WhisperConfig` has `server_url: str = "http://localhost:8080"` and `languages: list[str]`. No fields for binary path, model path, or managed mode.
+- `transcribe.py:16-20` -- `WhisperClient` is a pure HTTP client. `__init__` takes `server_url` and `language` (default `"auto"`). `health_check()` at line 68 does `GET /` and returns bool.
+- `app.py:42-47` -- `WhisperClient` is instantiated in `SamWhispers.__init__` with `config.whisper.server_url` and `language=self._languages[0]`.
+- `app.py:175-181` -- `_startup_checks()` calls `self.whisper.health_check()` once. If unreachable, logs a warning and continues.
+- `app.py:207-213` -- `shutdown()` calls `self.whisper.close()` (closes the httpx client). No process management.
+- `app.py:93-95` -- Signal handling: SIGTERM/SIGINT set `_shutdown_event`, which triggers `shutdown()`.
 - `tools/whisper.cpp/` -- whisper.cpp is already cloned and gitignored (`.gitignore:7`). Currently has a Windows build at `build/bin/Release/whisper-server.exe`. Models at `tools/whisper.cpp/models/ggml-*.bin`.
 - `wsl.py:8-14` -- `is_wsl()` detects WSL by reading `/proc/version`.
 
@@ -55,7 +55,7 @@ None. No new cloud resources, API calls, or dependencies.
 
 **Goal**: Add new fields to `WhisperConfig` for managed server mode.
 
-`src/samwhispers/config.py` -- modify `WhisperConfig` dataclass (line 46):
+`src/samwhispers/config.py` -- modify `WhisperConfig` dataclass (line 101):
 
 ```python
 @dataclass
@@ -67,7 +67,7 @@ class WhisperConfig:
     model_path: str = "tools/whisper.cpp/models/ggml-base.en.bin"
 ```
 
-`src/samwhispers/config.py` -- add validation in `_validate()` (after line 120). When `managed = true`, verify `server_bin` and `model_path` resolve to existing files:
+`src/samwhispers/config.py` -- add validation in `_validate()` (after the existing language validation block). When `managed = true`, verify `server_bin` and `model_path` resolve to existing files:
 
 ```python
 if config.whisper.managed:
@@ -117,7 +117,6 @@ from __future__ import annotations
 import atexit
 import logging
 import subprocess
-import sys
 import threading
 import time
 from pathlib import Path
@@ -165,19 +164,21 @@ class WhisperServerManager:
     def _spawn(self) -> None:
         cmd = self._build_cmd()
         log.info("Starting whisper-server: %s", " ".join(cmd))
+        # Use DEVNULL for both stdout and stderr to avoid pipe buffer blocking.
+        # whisper-server logs are not needed -- errors are detected via health check and poll().
         self._proc = subprocess.Popen(
-            cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE
+            cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
         )
 
     def _wait_ready(self) -> None:
-        client = WhisperClient(server_url=self._config.server_url, language="en")
+        client = WhisperClient(server_url=self._config.server_url)
         deadline = time.monotonic() + _READY_TIMEOUT
         try:
             while time.monotonic() < deadline:
                 if self._proc and self._proc.poll() is not None:
-                    stderr = self._proc.stderr.read().decode(errors="replace") if self._proc.stderr else ""
                     raise RuntimeError(
-                        f"whisper-server exited with code {self._proc.returncode}: {stderr}"
+                        f"whisper-server exited immediately with code {self._proc.returncode}. "
+                        "Check that the binary and model path are correct."
                     )
                 if client.health_check():
                     log.info("whisper-server is ready on port %s", self._port)
@@ -231,7 +232,7 @@ class WhisperServerManager:
 
 **Goal**: Integrate `WhisperServerManager` into the app lifecycle.
 
-`src/samwhispers/app.py` -- in `__init__` (after line 44), conditionally create the server manager:
+`src/samwhispers/app.py` -- in `__init__` (after the `WhisperClient` instantiation), conditionally create the server manager:
 
 ```python
 from samwhispers.server import WhisperServerManager
@@ -242,7 +243,7 @@ if config.whisper.managed:
     self._server_manager = WhisperServerManager(config.whisper)
 ```
 
-`src/samwhispers/app.py` -- in `_startup_checks()` (replace the whisper-server check block at lines 163-168):
+`src/samwhispers/app.py` -- in `_startup_checks()` (replace the whisper-server health check block):
 
 ```python
 # Start or check whisper-server
@@ -263,12 +264,19 @@ else:
     )
 ```
 
-`src/samwhispers/app.py` -- in `shutdown()` (before `self.whisper.close()` at line 201):
+`src/samwhispers/app.py` -- in `shutdown()` (before `self.whisper.close()`):
 
 ```python
 if self._server_manager:
     self._server_manager.stop()
 ```
+
+`tests/test_config.py` -- add tests for the new config fields:
+- Test that default `WhisperConfig` has `managed=True`, correct `server_bin` and `model_path` defaults
+- Test that validation raises `ValueError` when `managed=True` and binary/model files don't exist
+- Test that validation passes when `managed=False` regardless of file existence
+
+`tests/test_app.py` -- update the `_make_app` helper to account for the new `WhisperConfig` fields. Mock or set `managed=False` in test fixtures to avoid subprocess spawning during unit tests.
 
 **Exit criteria**:
 - [ ] Managed mode: server starts before hotkey listener, app exits on startup failure
@@ -346,3 +354,19 @@ python -m pytest tests/ -v
 ## 9) Implementation Divergences from Plan
 
 _Reserved -- filled during implementation._
+
+## Review Log
+
+### 2026-07-17 -- Self-reviewed (sub-agent unavailable) -- personas: Implementability reviewer, Reliability engineer, Security auditor
+
+7 findings (0 High, 4 Medium, 3 Low). 6 auto-resolved.
+
+| # | Finding | Severity | Status |
+|---|---|---|---|
+| 1 | Line number references in Current State and Phase 3 were stale (multilingual feature merged since exploration) | Medium | Resolved -- updated all file:line references to match actual source |
+| 2 | `server.py` imported `sys` but never used it | Low | Resolved -- removed unused import |
+| 3 | `stderr=subprocess.PIPE` in `_spawn()` risks pipe buffer blocking if whisper-server writes heavily to stderr and nobody reads it | Medium | Resolved -- changed to `stderr=subprocess.DEVNULL`; errors detected via health check and poll() instead |
+| 4 | `_wait_ready` created `WhisperClient(language="en")` but actual constructor default is `"auto"` | Low | Resolved -- removed explicit language arg |
+| 5 | No test changes mentioned in any phase | Medium | Resolved -- added test update guidance to Phase 3 |
+| 6 | `atexit` handler and `shutdown()` both call `stop()` -- double invocation | Low | Noted -- `stop()` is already idempotent (checks `poll()` before terminating, sets `_stop_event` which is harmless to set twice). No fix needed. |
+| 7 | Subprocess spawning uses list args (no `shell=True`) -- safe from shell injection. `_build_cmd` constructs args from config strings passed directly as list elements. Network binding defaults to `127.0.0.1` parsed from `server_url`. | Medium | Noted -- security posture is adequate. No fix needed. |
