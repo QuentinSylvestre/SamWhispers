@@ -455,3 +455,20 @@ Implementation health: Green.
 |---|---|---|---|---|---|
 | 1 | Implementability | 4a guard is structurally unreachable after _ensure_keyboard() | Low | High | Acceptable as defensive/type-narrowing check |
 | 2 | Implementability | No test for close() lock fix (threading race hard to test) | Low | High | Acceptable -- fix is correct by inspection |
+
+### 2026-03-25 -- Post-Implementation Review
+
+Overall implementation health: Green.
+Personas: Implementability reviewer, Security auditor, Reliability engineer.
+13 unique findings (0 High, 0 Medium, 8 Low, 5 Info). 2 auto-resolved.
+
+| # | Persona | Finding | Severity | Confidence | Resolution |
+|---|---|---|---|---|---|
+| 1 | Implementability | Redundant local `import subprocess` in hotkeys.py start() | Low | High | Resolved -- removed redundant import |
+| 2 | Reliability | No logging on kill escalation path in stop() | Low | Medium | Resolved -- added log.warning before kill() |
+| 3 | Reliability | RuntimeError for shutdown caught as generic error in _process_loop | Low | High | Noted -- consider dedicated exception in follow-up |
+| 4 | Reliability | Second wait() after kill() has no TimeoutExpired handler | Low | High | Accepted -- OS-level anomaly |
+| 5 | Security | Full parent env forwarded to notification subprocess | Low | Medium | Accepted -- no regression from pre-fix behavior |
+| 6 | Security | os.path.isfile weaker than shutil.which for exe check | Low | High | Accepted -- correct for WSL where .exe lacks +x bit |
+| 7 | Implementability | No test for managed server startup failure path | Low | High | Noted -- pre-existing code, low risk |
+| 8 | Security | RuntimeError for shutdown is generic exception type | Low | High | Noted -- same as #3, follow-up item |

@@ -244,8 +244,6 @@ class WSLHotkeyListener:
 
     def start(self) -> None:
         """Start the PowerShell hotkey polling subprocess."""
-        import subprocess
-
         from samwhispers.wsl import find_windows_exe
 
         ps = find_windows_exe("powershell.exe")
@@ -354,6 +352,7 @@ class WSLHotkeyListener:
             try:
                 self._process.wait(timeout=5)
             except subprocess.TimeoutExpired:
+                log.warning("WSL hotkey process did not terminate within 5s, sending SIGKILL")
                 self._process.kill()
                 self._process.wait(timeout=10)
             self._process = None
