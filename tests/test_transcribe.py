@@ -74,3 +74,25 @@ def test_health_check_down(client: WhisperClient) -> None:
     """Health check returns False on connection error."""
     respx.get("http://localhost:8080/").mock(side_effect=httpx.ConnectError("refused"))
     assert client.health_check() is False
+
+
+@respx.mock
+def test_language_switch_between_requests() -> None:
+    """Language property change is reflected in the next request."""
+    client = WhisperClient("http://localhost:8080", language="en")
+    assert client.language == "en"
+
+    route = respx.post("http://localhost:8080/inference").mock(
+        return_value=httpx.Response(200, json={"text": "ok"})
+    )
+
+    client.transcribe(b"wav1")
+    assert route.calls[0].request.content  # request was made
+
+    client.language = "fr"
+    assert client.language == "fr"
+
+    client.transcribe(b"wav2")
+    # Verify the second request used "fr" in the form data
+    body = route.calls[1].request.content.decode()
+    assert "fr" in body

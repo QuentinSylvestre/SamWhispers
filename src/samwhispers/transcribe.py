@@ -15,12 +15,20 @@ _RETRYABLE = (httpx.ConnectError, httpx.ConnectTimeout)
 class WhisperClient:
     """POST audio to whisper-server's /inference endpoint."""
 
-    def __init__(self, server_url: str, language: str = "en") -> None:
+    def __init__(self, server_url: str, language: str = "auto") -> None:
         self._language = language
         self._client = httpx.Client(
             base_url=server_url.rstrip("/"),
             timeout=httpx.Timeout(connect=5.0, read=120.0, write=10.0, pool=5.0),
         )
+
+    @property
+    def language(self) -> str:
+        return self._language
+
+    @language.setter
+    def language(self, value: str) -> None:
+        self._language = value
 
     def transcribe(self, wav_bytes: bytes) -> str:
         """Send WAV audio to /inference and return transcription text."""
