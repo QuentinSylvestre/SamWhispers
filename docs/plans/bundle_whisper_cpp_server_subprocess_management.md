@@ -285,14 +285,14 @@ class WhisperServerManager:
 ```
 
 **Exit criteria**:
-- [ ] `WhisperServerManager.start()` spawns the process and blocks until health check passes
-- [ ] `_monitor_loop` detects crash and auto-restarts (max 5 attempts with backoff)
-- [ ] `stop()` terminates gracefully on Unix (SIGTERM + 5s grace + SIGKILL fallback), immediately on Windows (`TerminateProcess`)
-- [ ] `stop()` is concurrent-safe via swap-to-local pattern (lock protects `self._proc`)
-- [ ] `atexit` handler registered as safety net
-- [ ] `TimeoutError` raised with helpful message if server doesn't become ready
-- [ ] `_resolve_server_bin()` finds Windows `Release/*.exe` variant when plain path missing
-- [ ] Non-loopback host emits a warning about unauthenticated API exposure
+- [x] `WhisperServerManager.start()` spawns the process and blocks until health check passes
+- [x] `_monitor_loop` detects crash and auto-restarts (max 5 attempts with backoff)
+- [x] `stop()` terminates gracefully on Unix (SIGTERM + 5s grace + SIGKILL fallback), immediately on Windows (`TerminateProcess`)
+- [x] `stop()` is concurrent-safe via swap-to-local pattern (lock protects `self._proc`)
+- [x] `atexit` handler registered as safety net
+- [x] `TimeoutError` raised with helpful message if server doesn't become ready
+- [x] `_resolve_server_bin()` finds Windows `Release/*.exe` variant when plain path missing
+- [x] Non-loopback host emits a warning about unauthenticated API exposure
 
 ### Phase 3: Wire into SamWhispers app
 
