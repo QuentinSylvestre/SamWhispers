@@ -1,7 +1,7 @@
 # Bundle whisper.cpp Server via Subprocess Management
 
 > **Date**: 2026-07-17
-> **Status**: Draft
+> **Status**: In Progress
 > **Scope**: Auto-launch whisper-server as a managed child process, with crash recovery and graceful shutdown
 > **Estimated effort**: 1-2 days
 
@@ -106,11 +106,11 @@ model_path = "tools/whisper.cpp/models/ggml-base.en.bin"    # path to whisper mo
 ```
 
 **Exit criteria**:
-- [ ] `WhisperConfig` has `managed`, `server_bin`, `model_path` fields with defaults
-- [ ] Validation rejects missing binary/model when `managed = true`
-- [ ] Validation is skipped when `managed = false`
-- [ ] `config.example.toml` documents the new fields
-- [ ] Existing config files without the new fields still load (defaults apply)
+- [x] `WhisperConfig` has `managed`, `server_bin`, `model_path` fields with defaults
+- [x] Validation rejects missing binary/model when `managed = true`
+- [x] Validation is skipped when `managed = false`
+- [x] `config.example.toml` documents the new fields
+- [x] Existing config files without the new fields still load (defaults apply)
 
 ### Phase 2: Server manager module
 

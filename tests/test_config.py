@@ -13,6 +13,8 @@ from samwhispers.config import AppConfig, load_config
 def test_defaults(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Loading with no file returns valid defaults."""
     monkeypatch.chdir(tmp_path)
+    # Write minimal config to disable managed mode (avoids binary/model validation)
+    (tmp_path / "config.toml").write_text("[whisper]\nmanaged = false\n")
     config = load_config()
     assert config.hotkey.key == "ctrl+shift+space"
     assert config.hotkey.mode == "hold"
@@ -29,7 +31,7 @@ def test_load_valid_toml(tmp_path: Path) -> None:
     cfg = tmp_path / "config.toml"
     cfg.write_text(
         '[hotkey]\nkey = "alt+r"\nmode = "toggle"\n'
-        '[whisper]\nserver_url = "http://localhost:9090"\n'
+        '[whisper]\nserver_url = "http://localhost:9090"\nmanaged = false\n'
     )
     config = load_config(cfg)
     assert config.hotkey.key == "alt+r"
@@ -42,7 +44,7 @@ def test_load_valid_toml(tmp_path: Path) -> None:
 def test_partial_config(tmp_path: Path) -> None:
     """Partial config merges with defaults."""
     cfg = tmp_path / "config.toml"
-    cfg.write_text("[audio]\nmax_duration = 60.0\n")
+    cfg.write_text("[audio]\nmax_duration = 60.0\n[whisper]\nmanaged = false\n")
     config = load_config(cfg)
     assert config.audio.max_duration == 60.0
     assert config.audio.sample_rate == 16000  # default preserved
@@ -65,7 +67,7 @@ def test_invalid_mode(tmp_path: Path) -> None:
 def test_invalid_provider(tmp_path: Path) -> None:
     """Invalid cleanup provider raises ValueError."""
     cfg = tmp_path / "config.toml"
-    cfg.write_text('[cleanup]\nprovider = "google"\n')
+    cfg.write_text('[cleanup]\nprovider = "google"\n[whisper]\nmanaged = false\n')
     with pytest.raises(ValueError, match="Invalid cleanup provider"):
         load_config(cfg)
 
@@ -73,7 +75,7 @@ def test_invalid_provider(tmp_path: Path) -> None:
 def test_cleanup_without_key_warns(tmp_path: Path) -> None:
     """Cleanup enabled with empty API key emits warning."""
     cfg = tmp_path / "config.toml"
-    cfg.write_text('[cleanup]\nenabled = true\nprovider = "openai"\n')
+    cfg.write_text('[cleanup]\nenabled = true\nprovider = "openai"\n[whisper]\nmanaged = false\n')
     with warnings.catch_warnings(record=True) as w:
         warnings.simplefilter("always")
         config = load_config(cfg)
@@ -86,7 +88,9 @@ def test_cleanup_with_key_no_warning(tmp_path: Path) -> None:
     """Cleanup enabled with API key does not warn."""
     cfg = tmp_path / "config.toml"
     cfg.write_text(
-        '[cleanup]\nenabled = true\nprovider = "openai"\n[cleanup.openai]\napi_key = "sk-test"\n'
+        '[cleanup]\nenabled = true\nprovider = "openai"\n'
+        '[cleanup.openai]\napi_key = "sk-test"\n'
+        '[whisper]\nmanaged = false\n'
     )
     with warnings.catch_warnings(record=True) as w:
         warnings.simplefilter("always")
@@ -99,7 +103,7 @@ def test_full_config(tmp_path: Path) -> None:
     cfg = tmp_path / "config.toml"
     cfg.write_text(
         '[hotkey]\nkey = "ctrl+shift+space"\nmode = "hold"\n'
-        '[whisper]\nserver_url = "http://localhost:8080"\nlanguage = "en"\n'
+        '[whisper]\nserver_url = "http://localhost:8080"\nlanguage = "en"\nmanaged = false\n'
         "[audio]\nsample_rate = 16000\nmax_duration = 300.0\n"
         '[cleanup]\nenabled = false\nprovider = "openai"\n'
         '[cleanup.openai]\napi_key = ""\nmodel = "gpt-4o-mini"\n'
@@ -116,7 +120,7 @@ def test_full_config(tmp_path: Path) -> None:
 def test_languages_list(tmp_path: Path) -> None:
     """Languages list is loaded correctly."""
     cfg = tmp_path / "config.toml"
-    cfg.write_text('[whisper]\nlanguages = ["auto", "en", "fr"]\n')
+    cfg.write_text('[whisper]\nlanguages = ["auto", "en", "fr"]\nmanaged = false\n')
     config = load_config(cfg)
     assert config.whisper.languages == ["auto", "en", "fr"]
 
@@ -140,7 +144,7 @@ def test_empty_languages_rejected(tmp_path: Path) -> None:
 def test_backward_compat_language_to_languages(tmp_path: Path) -> None:
     """Old language string is converted to languages list."""
     cfg = tmp_path / "config.toml"
-    cfg.write_text('[whisper]\nlanguage = "fr"\n')
+    cfg.write_text('[whisper]\nlanguage = "fr"\nmanaged = false\n')
     config = load_config(cfg)
     assert config.whisper.languages == ["fr"]
 
@@ -148,7 +152,7 @@ def test_backward_compat_language_to_languages(tmp_path: Path) -> None:
 def test_languages_takes_precedence_over_language(tmp_path: Path) -> None:
     """When both language and languages are present, languages wins."""
     cfg = tmp_path / "config.toml"
-    cfg.write_text('[whisper]\nlanguage = "en"\nlanguages = ["fr", "de"]\n')
+    cfg.write_text('[whisper]\nlanguage = "en"\nlanguages = ["fr", "de"]\nmanaged = false\n')
     config = load_config(cfg)
     assert config.whisper.languages == ["fr", "de"]
 
@@ -156,6 +160,69 @@ def test_languages_takes_precedence_over_language(tmp_path: Path) -> None:
 def test_language_key_config(tmp_path: Path) -> None:
     """Language key hotkey is configurable."""
     cfg = tmp_path / "config.toml"
-    cfg.write_text('[hotkey]\nlanguage_key = "alt+l"\n')
+    cfg.write_text('[hotkey]\nlanguage_key = "alt+l"\n[whisper]\nmanaged = false\n')
     config = load_config(cfg)
     assert config.hotkey.language_key == "alt+l"
+
+
+def test_whisper_config_defaults() -> None:
+    """WhisperConfig dataclass has correct defaults for managed mode fields."""
+    from samwhispers.config import WhisperConfig
+
+    wc = WhisperConfig()
+    assert wc.managed is True
+    assert wc.server_bin == "tools/whisper.cpp/build/bin/whisper-server"
+    assert wc.model_path == "tools/whisper.cpp/models/ggml-base.en.bin"
+
+
+def test_managed_missing_binary_raises(tmp_path: Path) -> None:
+    """managed=true with missing binary raises ValueError."""
+    cfg = tmp_path / "config.toml"
+    cfg.write_text("[whisper]\nmanaged = true\n")
+    with pytest.raises(ValueError, match="whisper.server_bin not found"):
+        load_config(cfg)
+
+
+def test_managed_missing_model_raises(tmp_path: Path) -> None:
+    """managed=true with missing model raises ValueError."""
+    cfg = tmp_path / "config.toml"
+    # Create a fake binary so we pass the binary check
+    bin_path = tmp_path / "whisper-server"
+    bin_path.write_bytes(b"fake")
+    bin_path.chmod(0o755)
+    model_path = tmp_path / "nonexistent.bin"
+    cfg.write_text(
+        f'[whisper]\nmanaged = true\nserver_bin = "{bin_path}"\n'
+        f'model_path = "{model_path}"\n'
+    )
+    with pytest.raises(ValueError, match="whisper.model_path not found"):
+        load_config(cfg)
+
+
+def test_managed_false_skips_validation(tmp_path: Path) -> None:
+    """managed=false skips binary/model validation regardless of file existence."""
+    cfg = tmp_path / "config.toml"
+    cfg.write_text(
+        "[whisper]\nmanaged = false\n"
+        'server_bin = "/nonexistent/whisper-server"\n'
+        'model_path = "/nonexistent/model.bin"\n'
+    )
+    config = load_config(cfg)
+    assert config.whisper.managed is False
+
+
+def test_managed_nonexecutable_binary_raises(tmp_path: Path) -> None:
+    """managed=true with non-executable binary raises ValueError on non-Windows."""
+    import sys
+
+    if sys.platform == "win32":
+        pytest.skip("os.access X_OK always True on Windows")
+    cfg = tmp_path / "config.toml"
+    bin_path = tmp_path / "whisper-server"
+    bin_path.write_bytes(b"fake")
+    bin_path.chmod(0o644)  # not executable
+    cfg.write_text(
+        f'[whisper]\nmanaged = true\nserver_bin = "{bin_path}"\n'
+    )
+    with pytest.raises(ValueError, match="not executable"):
+        load_config(cfg)

@@ -131,6 +131,9 @@ class HotkeyConfig:
 class WhisperConfig:
     server_url: str = "http://localhost:8080"
     languages: list[str] = field(default_factory=lambda: ["auto"])
+    managed: bool = True
+    server_bin: str = "tools/whisper.cpp/build/bin/whisper-server"
+    model_path: str = "tools/whisper.cpp/models/ggml-base.en.bin"
 
 
 @dataclass
@@ -210,6 +213,26 @@ def _validate(config: AppConfig) -> None:
         if lang not in WHISPER_LANGUAGES:
             raise ValueError(
                 f"Invalid language {lang!r}, must be 'auto' or a whisper.cpp language code"
+            )
+    if config.whisper.managed:
+        import os
+
+        bin_path = Path(config.whisper.server_bin)
+        if not bin_path.is_file():
+            raise ValueError(
+                f"whisper.server_bin not found: {bin_path.resolve()}. "
+                "Build whisper.cpp first (see README) or set whisper.managed = false."
+            )
+        if not os.access(bin_path, os.X_OK):
+            raise ValueError(
+                f"whisper.server_bin is not executable: {bin_path.resolve()}. "
+                "Run: chmod +x " + str(bin_path.resolve())
+            )
+        model_path = Path(config.whisper.model_path)
+        if not model_path.is_file():
+            raise ValueError(
+                f"whisper.model_path not found: {model_path.resolve()}. "
+                "Download a model first (see README) or set whisper.managed = false."
             )
     if config.cleanup.provider not in _VALID_PROVIDERS:
         raise ValueError(
