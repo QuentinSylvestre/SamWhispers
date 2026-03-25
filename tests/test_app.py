@@ -254,3 +254,29 @@ def test_shutdown_stops_server_manager_before_whisper_close() -> None:
     app.whisper.close.side_effect = lambda: call_order.append("whisper_close")
     app.shutdown()
     assert call_order == ["server_stop", "whisper_close"]
+
+
+def test_whisper_client_receives_shutdown_event() -> None:
+    """WhisperClient is constructed with the app's shutdown event."""
+    config = AppConfig()
+    config.whisper.managed = False
+    with (
+        patch("samwhispers.app.AudioRecorder"),
+        patch("samwhispers.app.WhisperClient") as mock_wc,
+        patch("samwhispers.app.CleanupProvider"),
+        patch("samwhispers.wsl.is_wsl", return_value=False),
+    ):
+        app = SamWhispers(config)
+        kwargs = mock_wc.call_args[1]
+        assert kwargs["shutdown_event"] is app._shutdown_event
+
+
+def test_startup_checks_fatal_when_whisper_unreachable() -> None:
+    """Non-managed whisper server unreachable raises SystemExit."""
+    import pytest
+
+    app = _make_app()
+    app.whisper.health_check.return_value = False
+    app.recorder.start = MagicMock()  # prevent real audio init
+    with pytest.raises(SystemExit):
+        app._startup_checks()

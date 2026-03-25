@@ -1,7 +1,7 @@
 # Code Review 2026-03-25 -- Fix Plan
 
 > **Date**: 2026-03-25
-> **Status**: In progress (Phase 2 complete)
+> **Status**: In progress (Phase 3 complete)
 > **Scope**: Address all actionable findings from the 2026-03-25 code review (P0 through P3), excluding P2 #6 (whisper-server subprocess management) which has its own plan.
 > **Estimated effort**: 1-2 days
 
@@ -295,8 +295,10 @@ self.whisper = WhisperClient(
 **Tests**: Update `test_app.py::_make_app` to verify the event is passed. Add a test in `test_transcribe.py` that the retry exits early when the event is set.
 
 **Exit criteria**:
-- [ ] `pytest tests/test_app.py tests/test_transcribe.py -v` passes
+- [x] `pytest tests/test_app.py tests/test_transcribe.py -v` passes
 - [ ] App exits cleanly within ~1s even if a retry sleep is in progress
+
+> **Completed 2026-03-25.** Implemented as planned. Added `_interruptible_sleep` helper method to avoid code duplication. Added tests for shutdown_event wiring and fatal startup check per review feedback.
 
 ---
 
@@ -387,7 +389,8 @@ mypy src/samwhispers/
 
 ## 9) Implementation Divergences from Plan
 
-_Reserved -- filled during implementation._
+- Phase 3b: Extracted `_interruptible_sleep()` helper method instead of inlining the event.wait/time.sleep logic at both call sites. Reduces duplication.
+- Phase 3: Added two extra tests (`test_whisper_client_receives_shutdown_event`, `test_startup_checks_fatal_when_whisper_unreachable`) per review feedback.
 
 ---
 
@@ -429,3 +432,14 @@ Implementation health: Green.
 |---|---|---|---|---|---|
 | 1 | Security | Full parent env forwarded via `{**os.environ, ...}` -- same as previous implicit behavior | Low | Medium | Acceptable -- no regression |
 | 2 | Security | No test with malicious payload strings | Low | High | Noted -- env var approach is structurally safe regardless |
+
+### 2026-03-25 -- Implementation Review (after Phase 3, persona: Maintainability reviewer)
+
+Implementation health: Green (upgraded from Yellow after auto-fix).
+8 findings (0 High, 2 Medium auto-resolved, 2 Low, 4 Info).
+
+| # | Persona | Finding | Severity | Confidence | Resolution |
+|---|---|---|---|---|---|
+| 1 | Maintainability | Missing test for shutdown_event wiring in app.py | Medium | High | Resolved -- added `test_whisper_client_receives_shutdown_event` |
+| 2 | Maintainability | Missing test for fatal startup check (SystemExit) | Medium | High | Resolved -- added `test_startup_checks_fatal_when_whisper_unreachable` |
+| 3 | Maintainability | RuntimeError for shutdown is caught as generic error in _process_loop | Low | High | Noted -- acceptable, consider dedicated exception in follow-up |

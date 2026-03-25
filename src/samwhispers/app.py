@@ -45,6 +45,7 @@ class SamWhispers:
         self.whisper = WhisperClient(
             server_url=config.whisper.server_url,
             language=self._languages[0],
+            shutdown_event=self._shutdown_event,
         )
         self.cleanup = CleanupProvider(config.cleanup)
 
@@ -230,11 +231,12 @@ class SamWhispers:
         elif self.whisper.health_check():
             log.info("Whisper server: OK")
         else:
-            log.warning(
+            log.error(
                 "Whisper server at %s is not reachable. "
-                "Transcription will fail until it's started.",
+                "Start the server and try again.",
                 self.config.whisper.server_url,
             )
+            raise SystemExit(1)
 
         # Check clipboard
         if self.injector.check_clipboard_available():

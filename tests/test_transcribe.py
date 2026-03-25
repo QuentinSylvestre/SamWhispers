@@ -96,3 +96,20 @@ def test_language_switch_between_requests() -> None:
     # Verify the second request used "fr" in the form data
     body = route.calls[1].request.content.decode()
     assert "fr" in body
+
+
+@respx.mock
+def test_retry_exits_early_on_shutdown_event() -> None:
+    """Retry sleep is interrupted when shutdown event is set."""
+    import threading
+
+    event = threading.Event()
+    event.set()  # pre-set so the first retry sleep exits immediately
+
+    client = WhisperClient("http://localhost:8080", language="en", shutdown_event=event)
+
+    respx.post("http://localhost:8080/inference").mock(
+        return_value=httpx.Response(503, text="Service Unavailable")
+    )
+    with pytest.raises(RuntimeError, match="Shutdown requested"):
+        client.transcribe(b"fake-wav")

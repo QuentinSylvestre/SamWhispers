@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 import time
 
 import httpx
@@ -15,8 +16,10 @@ _RETRYABLE = (httpx.ConnectError, httpx.ConnectTimeout)
 class WhisperClient:
     """POST audio to whisper-server's /inference endpoint."""
 
-    def __init__(self, server_url: str, language: str = "auto") -> None:
+    def __init__(self, server_url: str, language: str = "auto",
+                 shutdown_event: threading.Event | None = None) -> None:
         self._language = language
+        self._shutdown_event = shutdown_event
         self._client = httpx.Client(
             base_url=server_url.rstrip("/"),
             timeout=httpx.Timeout(connect=5.0, read=120.0, write=10.0, pool=5.0),
@@ -57,7 +60,7 @@ class WhisperClient:
                         log.warning(
                             "Whisper server %d, retrying in %.0fs", resp.status_code, backoff
                         )
-                        time.sleep(backoff)
+                        self._interruptible_sleep(backoff)
                         continue
                     raise last_exc
                 resp.raise_for_status()
@@ -67,9 +70,17 @@ class WhisperClient:
                 last_exc = exc
                 if attempt < retries:
                     log.warning("Whisper server unreachable, retrying in %.0fs", backoff)
-                    time.sleep(backoff)
+                    self._interruptible_sleep(backoff)
                     continue
         raise last_exc if last_exc else RuntimeError("Transcription failed")
+
+    def _interruptible_sleep(self, seconds: float) -> None:
+        """Sleep that can be interrupted by the shutdown event."""
+        if self._shutdown_event is not None:
+            if self._shutdown_event.wait(seconds):
+                raise RuntimeError("Shutdown requested during retry")
+        else:
+            time.sleep(seconds)
 
     def health_check(self) -> bool:
         """GET / returns 200 when whisper-server is ready."""
