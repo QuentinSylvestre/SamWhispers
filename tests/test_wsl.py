@@ -89,3 +89,9 @@ def test_wsl_hotkey_listener_suppress_resume() -> None:
     assert listener._suppressed is True
     listener.resume()
     assert listener._suppressed is False
+
+
+def test_parse_hotkey_vk_language_key() -> None:
+    """Parse ctrl+shift+l into VK codes for language cycling."""
+    codes = parse_hotkey_vk("ctrl+shift+l")
+    assert codes == [0xA2, 0xA0, ord("L")]

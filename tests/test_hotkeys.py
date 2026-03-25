@@ -60,3 +60,14 @@ def test_parse_case_insensitive() -> None:
     assert Key.ctrl_l in keys
     assert Key.shift_l in keys
     assert Key.space in keys
+
+
+def test_parse_language_key() -> None:
+    """Parse language cycle hotkey ctrl+shift+l."""
+    from pynput.keyboard import Key, KeyCode  # type: ignore[import-untyped]
+
+    keys = parse_hotkey("ctrl+shift+l")
+    assert Key.ctrl_l in keys
+    assert Key.shift_l in keys
+    assert KeyCode.from_char("l") in keys
+    assert len(keys) == 3

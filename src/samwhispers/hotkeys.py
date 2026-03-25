@@ -85,6 +85,8 @@ class HotkeyListener:
         mode: str,
         on_start: Callable[[], None],
         on_stop: Callable[[], None],
+        language_key_str: str | None = None,
+        on_language_cycle: Callable[[], None] | None = None,
     ) -> None:
         self._hotkey_keys = parse_hotkey(hotkey_str)
         self._mode = mode
@@ -95,6 +97,10 @@ class HotkeyListener:
         self._suppressed = False
         self._lock = threading.Lock()
         self._listener: Any = None
+        self._lang_keys: set[Any] | None = None
+        self._on_language_cycle = on_language_cycle
+        if language_key_str and on_language_cycle:
+            self._lang_keys = parse_hotkey(language_key_str)
 
     def start(self) -> None:
         """Start the hotkey listener (non-blocking daemon thread)."""
@@ -132,19 +138,22 @@ class HotkeyListener:
                 return  # Filter key repeat
             self._pressed.add(normalized)
 
-            if not self._hotkey_keys.issubset(self._pressed):
-                return
+            lang_match = self._lang_keys is not None and self._lang_keys.issubset(self._pressed)
+            hotkey_match = self._hotkey_keys.issubset(self._pressed)
 
-        if self._mode == "hold":
-            self._on_start()
-        else:  # toggle
-            with self._lock:
-                if self._active:
-                    self._active = False
-                    self._on_stop()
-                else:
-                    self._active = True
-                    self._on_start()
+        if lang_match and self._on_language_cycle:
+            self._on_language_cycle()
+        elif hotkey_match:
+            if self._mode == "hold":
+                self._on_start()
+            else:  # toggle
+                with self._lock:
+                    if self._active:
+                        self._active = False
+                        self._on_stop()
+                    else:
+                        self._active = True
+                        self._on_start()
 
     def _on_release(self, key: Any) -> None:
         with self._lock:
@@ -215,6 +224,8 @@ class WSLHotkeyListener:
         mode: str,
         on_start: Callable[[], None],
         on_stop: Callable[[], None],
+        language_key_str: str | None = None,
+        on_language_cycle: Callable[[], None] | None = None,
     ) -> None:
         self._vk_codes = parse_hotkey_vk(hotkey_str)
         self._mode = mode
@@ -225,6 +236,10 @@ class WSLHotkeyListener:
         self._process: Any = None
         self._thread: threading.Thread | None = None
         self._running = False
+        self._lang_vk_codes: list[int] | None = None
+        self._on_language_cycle = on_language_cycle
+        if language_key_str and on_language_cycle:
+            self._lang_vk_codes = parse_hotkey_vk(language_key_str)
 
     def start(self) -> None:
         """Start the PowerShell hotkey polling subprocess."""
@@ -238,6 +253,25 @@ class WSLHotkeyListener:
 
         # Build PowerShell script that polls GetAsyncKeyState
         vk_array = ",".join(f"0x{c:02X}" for c in self._vk_codes)
+
+        # Language hotkey polling (optional)
+        lang_section = ""
+        if self._lang_vk_codes:
+            lang_vk_array = ",".join(f"0x{c:02X}" for c in self._lang_vk_codes)
+            lang_section = f"$langKeys = @({lang_vk_array})\n$langDown = $false\n"
+            lang_loop = (
+                "    $allLang = $true\n"
+                "    foreach ($k in $langKeys) {\n"
+                "        if (([KS]::GetAsyncKeyState($k) -band 0x8000) -eq 0) {\n"
+                "            $allLang = $false; break\n"
+                "        }\n"
+                "    }\n"
+                '    if ($allLang -and -not $langDown) { $langDown = $true; Write-Output "LANG"; [Console]::Out.Flush() }\n'
+                "    elseif (-not $allLang -and $langDown) { $langDown = $false }\n"
+            )
+        else:
+            lang_loop = ""
+
         script = (
             'Add-Type -TypeDefinition @"\n'
             "using System;\n"
@@ -249,6 +283,7 @@ class WSLHotkeyListener:
             '"@\n'
             f"$keys = @({vk_array})\n"
             "$down = $false\n"
+            f"{lang_section}"
             "while ($true) {\n"
             "    $all = $true\n"
             "    foreach ($k in $keys) {\n"
@@ -258,6 +293,7 @@ class WSLHotkeyListener:
             "    }\n"
             '    if ($all -and -not $down) { $down = $true; Write-Output "PRESS"; [Console]::Out.Flush() }\n'
             '    elseif (-not $all -and $down) { $down = $false; Write-Output "RELEASE"; [Console]::Out.Flush() }\n'
+            f"{lang_loop}"
             "    Start-Sleep -Milliseconds 15\n"
             "}\n"
         )
@@ -274,7 +310,7 @@ class WSLHotkeyListener:
         log.info("WSL hotkey listener started (mode=%s, polling via GetAsyncKeyState)", self._mode)
 
     def _read_loop(self) -> None:
-        """Read PRESS/RELEASE events from PowerShell subprocess."""
+        """Read PRESS/RELEASE/LANG events from PowerShell subprocess."""
         active = False
         while self._running:
             proc = self._process
@@ -289,6 +325,11 @@ class WSLHotkeyListener:
             with self._lock:
                 if self._suppressed:
                     continue
+
+            if line == "LANG":
+                if self._on_language_cycle:
+                    self._on_language_cycle()
+                continue
 
             if self._mode == "hold":
                 if line == "PRESS":
