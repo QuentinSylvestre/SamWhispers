@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import tomllib
 import warnings
 from dataclasses import dataclass, field
@@ -215,9 +216,9 @@ def _validate(config: AppConfig) -> None:
                 f"Invalid language {lang!r}, must be 'auto' or a whisper.cpp language code"
             )
     if config.whisper.managed:
-        import os
+        from samwhispers.server import _resolve_server_bin
 
-        bin_path = Path(config.whisper.server_bin)
+        bin_path = Path(_resolve_server_bin(config.whisper.server_bin))
         if not bin_path.is_file():
             raise ValueError(
                 f"whisper.server_bin not found: {bin_path.resolve()}. "

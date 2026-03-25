@@ -91,14 +91,16 @@ def test_monitor_loop_exits_after_max_restarts() -> None:
     mock_proc = MagicMock()
     mock_proc.poll.return_value = 1
     mock_proc.returncode = 1
+    mock_proc.wait.return_value = None
     mgr._proc = mock_proc
 
     # Make _spawn and _wait_ready always fail so restarts exhaust
     with (
-        patch.object(mgr, "_spawn"),
+        patch.object(mgr, "_spawn") as mock_spawn,
         patch.object(mgr, "_wait_ready", side_effect=RuntimeError("fail")),
     ):
         mgr._monitor_loop()
 
-    # Should have exited (not hung)
-    assert mgr._stop_event.is_set() or True  # loop exited naturally
+    # Loop exited naturally (not via _stop_event) after first failed restart
+    assert not mgr._stop_event.is_set()
+    mock_spawn.assert_called_once()

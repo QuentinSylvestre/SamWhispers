@@ -119,9 +119,11 @@ class WhisperServerManager:
             if proc and proc.poll() is not None:
                 if self._stop_event.is_set():
                     return
+                # Reap the crashed process to avoid zombies
+                proc.wait()
                 restart_count += 1
                 if restart_count > _MAX_RESTARTS:
-                    log.error(
+                    log.critical(
                         "whisper-server has crashed %d times; giving up. "
                         "Transcription will be unavailable.",
                         restart_count - 1,
@@ -134,10 +136,13 @@ class WhisperServerManager:
                     restart_count,
                     _MAX_RESTARTS,
                 )
-                time.sleep(min(_RESTART_BACKOFF * restart_count, 10.0))
+                if self._stop_event.wait(timeout=min(_RESTART_BACKOFF * restart_count, 10.0)):
+                    return
                 try:
                     self._spawn()
                     self._wait_ready()
+                    restart_count = 0
+                    log.info("whisper-server recovered successfully")
                 except Exception:
                     log.exception("Failed to restart whisper-server")
                     return
@@ -146,6 +151,8 @@ class WhisperServerManager:
     def stop(self) -> None:
         """Terminate the managed server process."""
         self._stop_event.set()
+        if self._monitor_thread and self._monitor_thread.is_alive():
+            self._monitor_thread.join(timeout=3.0)
         with self._lock:
             proc, self._proc = self._proc, None
         if proc and proc.poll() is None:

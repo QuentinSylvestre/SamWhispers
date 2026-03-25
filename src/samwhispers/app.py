@@ -222,7 +222,7 @@ class SamWhispers:
             try:
                 self._server_manager.start()
                 log.info("Whisper server (managed): OK")
-            except (RuntimeError, TimeoutError) as e:
+            except (RuntimeError, TimeoutError, OSError) as e:
                 log.error("Failed to start managed whisper-server: %s", e)
                 raise SystemExit(1) from e
         elif self.whisper.health_check():

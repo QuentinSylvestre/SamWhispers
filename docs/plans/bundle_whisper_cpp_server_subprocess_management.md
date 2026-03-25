@@ -502,3 +502,25 @@ Self-reviewed (sub-agent unavailable) -- personas: Implementability reviewer, Re
 |---|---|---|---|---|---|
 
 No findings. All exit criteria met across all phases. Full test suite passes (89 passed, 3 skipped).
+
+### 2026-03-25 -- Post-Implementation Review
+
+Overall implementation health: Green (after auto-fix cycle).
+Personas: Implementability reviewer, Reliability engineer, Security auditor, Maintainability reviewer.
+Invoked on fully-executed plan; performed standalone holistic review.
+12 findings (2 High, 5 Medium, 5 Low). 9 auto-fixed, 3 deferred.
+
+| # | Persona | Finding | Severity | Confidence | Resolution |
+|---|---|---|---|---|---|
+| 1 | Implementability | `_validate()` checks raw `server_bin` path but `_resolve_server_bin()` handles Windows fallback -- validation rejects valid Windows configs | High | High | Fixed -- `_validate()` now calls `_resolve_server_bin()` before checking `is_file()` |
+| 2 | Reliability, Implementability | Race in `_monitor_loop`: backoff uses `time.sleep()` (not interruptible), no `_stop_event` check before `_spawn()` -- can orphan process on shutdown | High | High | Fixed -- backoff uses `_stop_event.wait(timeout=...)`, returns early if set |
+| 3 | Reliability, Implementability | `restart_count` never resets after successful recovery -- long-running sessions exhaust limit from transient failures | Medium | High | Fixed -- counter resets to 0 after successful `_wait_ready()` in monitor loop |
+| 4 | Reliability, Maintainability | Monitor exits silently on exception -- only `log.exception`, no elevated level indicating transcription permanently unavailable | Medium | High | Fixed -- `log.critical` on max restarts exhaustion |
+| 5 | Implementability, Reliability, Maintainability | `test_monitor_loop_exits_after_max_restarts` has tautological assertion (`or True`) | Medium | High | Fixed -- asserts `_stop_event` is NOT set and `_spawn` was called once |
+| 6 | Reliability | Crashed process Popen handle not reaped before respawn (zombie) | Medium | Medium | Fixed -- `proc.wait()` called on crashed process before restart |
+| 7 | Reliability | `_startup_checks` doesn't catch `OSError` from `_spawn` (binary deleted between validation and spawn) | Medium | Medium | Fixed -- `OSError` added to exception tuple in `_startup_checks` |
+| 8 | Implementability, Reliability, Maintainability | `_monitor_thread` stored but never joined in `stop()` | Low | High | Fixed -- `stop()` now joins monitor thread with 3s timeout before terminating process |
+| 9 | Implementability, Maintainability | `import os` inside `_validate()` instead of module level | Low | High | Fixed -- moved to module-level imports in `config.py` |
+| 10 | Implementability, Maintainability | No test for `start()` happy path | Low | High | Deferred -- low risk, existing integration coverage adequate |
+| 11 | Security | `server_url` scheme/port not validated in `_validate()` | Low | Medium | Deferred -- malformed URLs produce runtime errors; defense-in-depth improvement for later |
+| 12 | Implementability, Maintainability | `localhost` vs `127.0.0.1` ambiguity in `--host` flag | Low | Medium | Deferred -- edge case; document if it causes issues |
