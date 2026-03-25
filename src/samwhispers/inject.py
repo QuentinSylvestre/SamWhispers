@@ -37,7 +37,8 @@ class TextInjector:
 
         time.sleep(self._paste_delay)
 
-        assert isinstance(self._keyboard, Controller)
+        if self._keyboard is None:
+            raise RuntimeError("Keyboard controller not initialized")
         self._keyboard.press(Key.ctrl)
         self._keyboard.press("v")
         self._keyboard.release("v")

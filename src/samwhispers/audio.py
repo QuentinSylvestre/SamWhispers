@@ -125,7 +125,9 @@ class AudioRecorder:
 
     def close(self) -> None:
         """Release resources."""
-        if self._recording:
+        with self._lock:
+            recording = self._recording
+        if recording:
             self.stop()
         if self._timer:
             self._timer.cancel()

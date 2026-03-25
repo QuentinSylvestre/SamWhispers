@@ -1,7 +1,7 @@
 # Code Review 2026-03-25 -- Fix Plan
 
 > **Date**: 2026-03-25
-> **Status**: In progress (Phase 3 complete)
+> **Status**: Implementation complete
 > **Scope**: Address all actionable findings from the 2026-03-25 code review (P0 through P3), excluding P2 #6 (whisper-server subprocess management) which has its own plan.
 > **Estimated effort**: 1-2 days
 
@@ -351,8 +351,10 @@ duration = (len(wav_bytes) - 44) / (self.config.audio.sample_rate * 2)
 ```
 
 **Exit criteria**:
-- [ ] `pytest -v` full suite passes
-- [ ] No regressions
+- [x] `pytest -v` full suite passes
+- [x] No regressions
+
+> **Completed 2026-03-25.** Implemented as planned. Phase 4c (WAV comment) already present -- no change needed.
 
 ---
 
@@ -443,3 +445,13 @@ Implementation health: Green (upgraded from Yellow after auto-fix).
 | 1 | Maintainability | Missing test for shutdown_event wiring in app.py | Medium | High | Resolved -- added `test_whisper_client_receives_shutdown_event` |
 | 2 | Maintainability | Missing test for fatal startup check (SystemExit) | Medium | High | Resolved -- added `test_startup_checks_fatal_when_whisper_unreachable` |
 | 3 | Maintainability | RuntimeError for shutdown is caught as generic error in _process_loop | Low | High | Noted -- acceptable, consider dedicated exception in follow-up |
+
+### 2026-03-25 -- Implementation Review (after Phase 4, persona: Implementability reviewer)
+
+Implementation health: Green.
+7 findings (0 High, 0 Medium, 2 Low, 5 Info).
+
+| # | Persona | Finding | Severity | Confidence | Resolution |
+|---|---|---|---|---|---|
+| 1 | Implementability | 4a guard is structurally unreachable after _ensure_keyboard() | Low | High | Acceptable as defensive/type-narrowing check |
+| 2 | Implementability | No test for close() lock fix (threading race hard to test) | Low | High | Acceptable -- fix is correct by inspection |
