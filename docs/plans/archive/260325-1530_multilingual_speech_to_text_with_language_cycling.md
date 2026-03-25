@@ -1,7 +1,8 @@
 # Multi-lingual Speech-to-Text with Language Cycling
 
 > **Date**: 2026-07-15
-> **Status**: Complete
+> **Status**: Complete (archived 2026-03-25)
+> **Last Updated**: 2026-03-25 15:30
 > **Scope**: Auto-detect + per-hotkey language cycling across Linux, WSL, and Windows
 > **Estimated effort**: 2-3 days
 
