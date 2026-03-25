@@ -13,6 +13,7 @@ from typing import Any
 from samwhispers.audio import AudioRecorder, min_wav_size
 from samwhispers.cleanup import CleanupProvider
 from samwhispers.config import AppConfig
+from samwhispers.server import WhisperServerManager
 from samwhispers.transcribe import WhisperClient
 
 log = logging.getLogger("samwhispers")
@@ -46,6 +47,10 @@ class SamWhispers:
             language=self._languages[0],
         )
         self.cleanup = CleanupProvider(config.cleanup)
+
+        self._server_manager: WhisperServerManager | None = None
+        if config.whisper.managed:
+            self._server_manager = WhisperServerManager(config.whisper)
 
         # Language cycle params (only when multiple languages configured)
         lang_key = config.hotkey.language_key if len(self._languages) > 1 else None
@@ -212,8 +217,15 @@ class SamWhispers:
         except Exception as e:
             log.warning("Audio device check failed: %s. Recording may not work.", e)
 
-        # Check whisper-server
-        if self.whisper.health_check():
+        # Start or check whisper-server
+        if self._server_manager:
+            try:
+                self._server_manager.start()
+                log.info("Whisper server (managed): OK")
+            except (RuntimeError, TimeoutError) as e:
+                log.error("Failed to start managed whisper-server: %s", e)
+                raise SystemExit(1) from e
+        elif self.whisper.health_check():
             log.info("Whisper server: OK")
         else:
             log.warning(
@@ -266,6 +278,8 @@ class SamWhispers:
         self._shutdown_event.set()
         self.hotkey_listener.stop()
         self.recorder.close()
+        if self._server_manager:
+            self._server_manager.stop()
         self.whisper.close()
         self.cleanup.close()
         log.info("Shutdown complete")

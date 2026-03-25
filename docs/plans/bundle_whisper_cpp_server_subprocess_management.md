@@ -357,10 +357,10 @@ if self._server_manager:
 - Test `_monitor_loop` exits after `_MAX_RESTARTS` failures
 
 **Exit criteria**:
-- [ ] Managed mode: server starts before hotkey listener, app exits on startup failure
-- [ ] Unmanaged mode: existing warning-only behavior preserved
-- [ ] Shutdown stops the managed server before closing the HTTP client
-- [ ] App works identically to before when `managed = false`
+- [x] Managed mode: server starts before hotkey listener, app exits on startup failure
+- [x] Unmanaged mode: existing warning-only behavior preserved
+- [x] Shutdown stops the managed server before closing the HTTP client
+- [x] App works identically to before when `managed = false`
 
 ### Phase 4: Documentation updates
 

@@ -12,6 +12,7 @@ from samwhispers.config import AppConfig
 def _make_app() -> SamWhispers:
     """Create app with all components mocked, bypassing WSL detection."""
     config = AppConfig()
+    config.whisper.managed = False
     with (
         patch("samwhispers.app.AudioRecorder") as mock_rec,
         patch("samwhispers.app.WhisperClient") as mock_wc,
@@ -225,3 +226,14 @@ def test_single_language_no_cycle_wired() -> None:
         call_kwargs = mock_hl.call_args[1]
         assert call_kwargs["language_key_str"] is None
         assert call_kwargs["on_language_cycle"] is None
+
+
+def test_shutdown_stops_server_manager_before_whisper_close() -> None:
+    """Shutdown calls server_manager.stop() before whisper.close()."""
+    app = _make_app()
+    app._server_manager = MagicMock()
+    call_order: list[str] = []
+    app._server_manager.stop.side_effect = lambda: call_order.append("server_stop")
+    app.whisper.close.side_effect = lambda: call_order.append("whisper_close")
+    app.shutdown()
+    assert call_order == ["server_stop", "whisper_close"]
