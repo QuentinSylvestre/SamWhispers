@@ -37,39 +37,64 @@ WSL2 is fully supported via Windows interop (`clip.exe`, `powershell.exe`). No X
 
 ## Setting Up whisper-server
 
+SamWhispers automatically starts and manages whisper-server for you. You just need to build it and download a model.
+
 ### Linux
 
 ```bash
 # Install build tools if needed
 sudo apt install cmake g++
 
-git clone https://github.com/ggerganov/whisper.cpp.git
-cd whisper.cpp
+# Clone into the tools/ directory (already gitignored)
+git clone https://github.com/ggerganov/whisper.cpp.git tools/whisper.cpp
+cd tools/whisper.cpp
 cmake -B build
 cmake --build build --config Release -j$(nproc)
 
 # Download a model
 bash models/download-ggml-model.sh base.en
-
-# Start the server
-./build/bin/whisper-server -m models/ggml-base.en.bin --port 8080
+cd ../..
 ```
 
 ### Windows
 
 ```powershell
 # Requires Visual Studio 2022 with C++ workload, or MinGW, plus CMake
-git clone https://github.com/ggerganov/whisper.cpp.git
-cd whisper.cpp
+git clone https://github.com/ggerganov/whisper.cpp.git tools/whisper.cpp
+cd tools/whisper.cpp
 cmake -B build
 cmake --build build --config Release
 
 # Download a model (PowerShell)
 Invoke-WebRequest -Uri "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin" -OutFile "models/ggml-base.en.bin"
-
-# Start the server
-.\build\bin\Release\whisper-server.exe -m models\ggml-base.en.bin --port 8080
+cd ../..
 ```
+
+### WSL
+
+When running SamWhispers under WSL, you must build whisper.cpp inside WSL (producing a Linux binary). Do not use a Windows `.exe` build -- it will not work as a managed subprocess from WSL.
+
+```bash
+# Build inside WSL (same as Linux instructions above)
+git clone https://github.com/ggerganov/whisper.cpp.git tools/whisper.cpp
+cd tools/whisper.cpp
+cmake -B build
+cmake --build build --config Release -j$(nproc)
+bash models/download-ggml-model.sh base.en
+cd ../..
+```
+
+### Using an External Server (Unmanaged Mode)
+
+If you prefer to run whisper-server yourself (custom flags, remote server, etc.), disable managed mode:
+
+```toml
+[whisper]
+managed = false
+server_url = "http://localhost:8080"
+```
+
+In unmanaged mode, SamWhispers connects to the server at `server_url` but does not start or stop it. You are responsible for running whisper-server separately.
 
 ### Verify the Server
 
@@ -145,6 +170,9 @@ language_key = "ctrl+shift+l"  # Cycles through configured languages
 [whisper]
 server_url = "http://localhost:8080"
 languages = ["auto"]        # Language cycle order; "auto" for auto-detection
+managed = true              # false to run your own whisper-server
+server_bin = "tools/whisper.cpp/build/bin/whisper-server"
+model_path = "tools/whisper.cpp/models/ggml-base.en.bin"
 # Examples: ["auto", "en", "fr"], ["en"], ["auto"]
 
 [audio]
@@ -239,10 +267,14 @@ A desktop notification shows the active language on each switch.
 
 ### Whisper server not reachable
 
-- Make sure `whisper-server` is running on the configured URL
+- In managed mode (default), SamWhispers starts whisper-server automatically. If it fails, check:
+  - The binary exists at the configured `whisper.server_bin` path
+  - The model exists at the configured `whisper.model_path` path
+  - The binary is executable (`chmod +x` on Linux)
+  - The port is not already in use
+- In unmanaged mode (`whisper.managed = false`), make sure `whisper-server` is running on the configured URL
 - Test with: `curl http://localhost:8080/`
 - If port 8080 is taken, use a different port and update `config.toml`
-- Check firewall settings if using a non-localhost URL
 
 ### Text not pasting / clipboard errors
 

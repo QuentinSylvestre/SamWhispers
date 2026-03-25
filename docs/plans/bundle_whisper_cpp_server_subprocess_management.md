@@ -380,10 +380,10 @@ Add a note in the WSL section that whisper.cpp must be built inside WSL (Linux b
 `config.example.toml` -- already updated in Phase 1.
 
 **Exit criteria**:
-- [ ] README documents the build-in-`tools/` workflow
-- [ ] README documents `managed = false` opt-out
-- [ ] WSL section clarifies Linux-native build requirement
-- [ ] Old "start whisper-server manually" instructions replaced with new flow
+- [x] README documents the build-in-`tools/` workflow
+- [x] README documents `managed = false` opt-out
+- [x] WSL section clarifies Linux-native build requirement
+- [x] Old "start whisper-server manually" instructions replaced with new flow
 
 ## 6) Risk Assessment
 
