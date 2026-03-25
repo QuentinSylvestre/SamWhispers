@@ -13,14 +13,14 @@ Eliminate the manual step of starting whisper-server separately. SamWhispers spa
 
 ## 2) Current State
 
-- `config.py:101-102` -- `WhisperConfig` has `server_url: str = "http://localhost:8080"` and `languages: list[str]`. No fields for binary path, model path, or managed mode.
-- `transcribe.py:16-20` -- `WhisperClient` is a pure HTTP client. `__init__` takes `server_url` and `language` (default `"auto"`). `health_check()` at line 68 does `GET /` and returns bool.
-- `app.py:42-47` -- `WhisperClient` is instantiated in `SamWhispers.__init__` with `config.whisper.server_url` and `language=self._languages[0]`.
-- `app.py:175-181` -- `_startup_checks()` calls `self.whisper.health_check()` once. If unreachable, logs a warning and continues.
-- `app.py:207-213` -- `shutdown()` calls `self.whisper.close()` (closes the httpx client). No process management.
-- `app.py:93-95` -- Signal handling: SIGTERM/SIGINT set `_shutdown_event`, which triggers `shutdown()`.
-- `tools/whisper.cpp/` -- whisper.cpp is already cloned and gitignored (`.gitignore:7`). Currently has a Windows build at `build/bin/Release/whisper-server.exe`. Models at `tools/whisper.cpp/models/ggml-*.bin`.
-- `wsl.py:8-14` -- `is_wsl()` detects WSL by reading `/proc/version`.
+- `config.py:131-133` -- `WhisperConfig` has `server_url: str = "http://localhost:8080"` and `languages: list[str]`. No fields for binary path, model path, or managed mode.
+- `transcribe.py:15-18` -- `WhisperClient` is a pure HTTP client. `__init__` takes `server_url` and `language` (default `"auto"`). `health_check()` at line 74 does `GET /` and returns bool.
+- `app.py:44-47` -- `WhisperClient` is instantiated in `SamWhispers.__init__` with `config.whisper.server_url` and `language=self._languages[0]`.
+- `app.py:202-223` -- `_startup_checks()` calls `self.whisper.health_check()` once. If unreachable, logs a warning and continues.
+- `app.py:263-271` -- `shutdown()` calls `self.whisper.close()` (closes the httpx client). No process management.
+- `app.py:95-96` -- Signal handling: SIGTERM/SIGINT set `_shutdown_event`, which triggers `shutdown()`.
+- `tools/whisper.cpp/` -- whisper.cpp is already cloned and gitignored (`.gitignore:8`). Currently has a Windows build at `build/bin/Release/whisper-server.exe`. Models at `tools/whisper.cpp/models/ggml-*.bin`.
+- `wsl.py:13-19` -- `is_wsl()` detects WSL by reading `/proc/version`.
 
 ## 3) Design Decisions
 
@@ -28,11 +28,11 @@ Eliminate the manual step of starting whisper-server separately. SamWhispers spa
 |---|---|---|
 | Approach | Subprocess via `subprocess.Popen` | Least invasive; preserves existing HTTP client architecture |
 | Default behavior | Managed mode on (`whisper.managed = true`) | Reduces setup friction; opt-out for advanced users |
-| Binary path default | `tools/whisper.cpp/build/bin/whisper-server` (relative to CWD) | Matches existing `tools/` convention; Windows auto-appends `Release/` and `.exe` |
+| Binary path default | `tools/whisper.cpp/build/bin/whisper-server` (relative to CWD) | Matches existing `tools/` convention; `WhisperServerManager` resolves platform-specific path variants (see Phase 2) |
 | Model path default | `tools/whisper.cpp/models/ggml-base.en.bin` (relative to CWD) | Matches README recommendation |
 | Port passing | Parse port from `server_url`, pass as `--port` to subprocess | Single source of truth for port config |
 | Crash recovery | Background thread monitors `process.poll()`, auto-restarts + logs error | Keeps the app functional without user intervention |
-| Shutdown | SIGTERM, wait up to 5s, then SIGKILL | Graceful with hard fallback |
+| Shutdown | Unix: SIGTERM, wait up to 5s, then SIGKILL. Windows: `TerminateProcess` (immediate kill; no graceful signal available) | Graceful where supported, hard kill otherwise |
 | Startup readiness | Poll `health_check()` every 500ms, timeout 30s | whisper-server needs time to load the model |
 | Extra server args | Not exposed | Users needing custom flags set `managed = false` and run their own server |
 
@@ -55,7 +55,7 @@ None. No new cloud resources, API calls, or dependencies.
 
 **Goal**: Add new fields to `WhisperConfig` for managed server mode.
 
-`src/samwhispers/config.py` -- modify `WhisperConfig` dataclass (line 101):
+`src/samwhispers/config.py` -- modify `WhisperConfig` dataclass (line 131):
 
 ```python
 @dataclass
@@ -71,11 +71,18 @@ class WhisperConfig:
 
 ```python
 if config.whisper.managed:
+    import os
+
     bin_path = Path(config.whisper.server_bin)
     if not bin_path.is_file():
         raise ValueError(
             f"whisper.server_bin not found: {bin_path.resolve()}. "
             "Build whisper.cpp first (see README) or set whisper.managed = false."
+        )
+    if not os.access(bin_path, os.X_OK):
+        raise ValueError(
+            f"whisper.server_bin is not executable: {bin_path.resolve()}. "
+            "Run: chmod +x " + str(bin_path.resolve())
         )
     model_path = Path(config.whisper.model_path)
     if not model_path.is_file():
@@ -84,6 +91,8 @@ if config.whisper.managed:
             "Download a model first (see README) or set whisper.managed = false."
         )
 ```
+
+> **Note**: `os.access(..., os.X_OK)` always returns `True` on Windows, so the executable check is harmless cross-platform and only adds value on Linux/macOS.
 
 `config.example.toml` -- add new fields to the `[whisper]` section:
 
@@ -117,6 +126,7 @@ from __future__ import annotations
 import atexit
 import logging
 import subprocess
+import sys
 import threading
 import time
 from pathlib import Path
@@ -130,6 +140,26 @@ log = logging.getLogger("samwhispers")
 _READY_POLL_INTERVAL = 0.5
 _READY_TIMEOUT = 30.0
 _SHUTDOWN_GRACE = 5.0
+_MAX_RESTARTS = 5
+_RESTART_BACKOFF = 2.0
+
+
+def _resolve_server_bin(raw_path: str) -> str:
+    """Resolve the whisper-server binary path, handling platform variants.
+
+    On Windows, if the given path doesn't exist, try appending Release/ to the
+    parent directory and .exe to the filename -- matching the default CMake
+    output layout on Windows (build/bin/Release/whisper-server.exe).
+    """
+    p = Path(raw_path)
+    if p.is_file():
+        return str(p.resolve())
+    if sys.platform == "win32":
+        # Try: <parent>/Release/<name>.exe
+        win_candidate = p.parent / "Release" / (p.name + ".exe")
+        if win_candidate.is_file():
+            return str(win_candidate.resolve())
+    return str(p.resolve())  # return as-is; validation will catch missing files
 
 
 class WhisperServerManager:
@@ -138,6 +168,7 @@ class WhisperServerManager:
     def __init__(self, config: WhisperConfig) -> None:
         self._config = config
         self._proc: subprocess.Popen[bytes] | None = None
+        self._lock = threading.Lock()  # guards self._proc access
         self._monitor_thread: threading.Thread | None = None
         self._stop_event = threading.Event()
 
@@ -145,7 +176,15 @@ class WhisperServerManager:
         self._host = parsed.hostname or "127.0.0.1"
         self._port = str(parsed.port or 8080)
 
-        self._bin = str(Path(config.server_bin).resolve())
+        if self._host not in ("127.0.0.1", "localhost", "::1"):
+            log.warning(
+                "whisper.server_url binds managed server to non-loopback host %r. "
+                "The whisper-server API has no authentication -- "
+                "ensure this is intentional.",
+                self._host,
+            )
+
+        self._bin = _resolve_server_bin(config.server_bin)
         self._model = str(Path(config.model_path).resolve())
 
         atexit.register(self.stop)
@@ -166,19 +205,24 @@ class WhisperServerManager:
         log.info("Starting whisper-server: %s", " ".join(cmd))
         # Use DEVNULL for both stdout and stderr to avoid pipe buffer blocking.
         # whisper-server logs are not needed -- errors are detected via health check and poll().
-        self._proc = subprocess.Popen(
-            cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-        )
+        with self._lock:
+            self._proc = subprocess.Popen(
+                cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+            )
 
     def _wait_ready(self) -> None:
         client = WhisperClient(server_url=self._config.server_url)
         deadline = time.monotonic() + _READY_TIMEOUT
         try:
             while time.monotonic() < deadline:
-                if self._proc and self._proc.poll() is not None:
+                with self._lock:
+                    proc = self._proc
+                if proc and proc.poll() is not None:
                     raise RuntimeError(
-                        f"whisper-server exited immediately with code {self._proc.returncode}. "
-                        "Check that the binary and model path are correct."
+                        f"whisper-server exited immediately with code {proc.returncode}. "
+                        f"Possible causes: binary/model path incorrect, port {self._port} "
+                        "already in use, or unsupported hardware. "
+                        "Run the binary manually to see full output."
                     )
                 if client.health_check():
                     log.info("whisper-server is ready on port %s", self._port)
@@ -192,12 +236,30 @@ class WhisperServerManager:
         )
 
     def _monitor_loop(self) -> None:
+        restart_count = 0
         while not self._stop_event.is_set():
-            if self._proc and self._proc.poll() is not None:
+            with self._lock:
+                proc = self._proc
+            if proc and proc.poll() is not None:
+                # Re-check stop event after detecting crash to avoid restart during shutdown
+                if self._stop_event.is_set():
+                    return
+                restart_count += 1
+                if restart_count > _MAX_RESTARTS:
+                    log.error(
+                        "whisper-server has crashed %d times; giving up. "
+                        "Transcription will be unavailable.",
+                        restart_count - 1,
+                    )
+                    return
                 log.error(
-                    "whisper-server crashed (exit code %d), restarting...",
-                    self._proc.returncode,
+                    "whisper-server crashed (exit code %d), restarting "
+                    "(attempt %d/%d)...",
+                    proc.returncode,
+                    restart_count,
+                    _MAX_RESTARTS,
                 )
+                time.sleep(min(_RESTART_BACKOFF * restart_count, 10.0))
                 try:
                     self._spawn()
                     self._wait_ready()
@@ -209,24 +271,28 @@ class WhisperServerManager:
     def stop(self) -> None:
         """Terminate the managed server process."""
         self._stop_event.set()
-        if self._proc and self._proc.poll() is None:
-            log.info("Stopping whisper-server (pid %d)...", self._proc.pid)
-            self._proc.terminate()
+        with self._lock:
+            proc, self._proc = self._proc, None
+        if proc and proc.poll() is None:
+            log.info("Stopping whisper-server (pid %d)...", proc.pid)
+            proc.terminate()
             try:
-                self._proc.wait(timeout=_SHUTDOWN_GRACE)
+                proc.wait(timeout=_SHUTDOWN_GRACE)
             except subprocess.TimeoutExpired:
                 log.warning("whisper-server did not exit gracefully, killing")
-                self._proc.kill()
-                self._proc.wait()
-        self._proc = None
+                proc.kill()
+                proc.wait()
 ```
 
 **Exit criteria**:
 - [ ] `WhisperServerManager.start()` spawns the process and blocks until health check passes
-- [ ] `_monitor_loop` detects crash and auto-restarts
-- [ ] `stop()` sends SIGTERM, waits 5s, falls back to SIGKILL
+- [ ] `_monitor_loop` detects crash and auto-restarts (max 5 attempts with backoff)
+- [ ] `stop()` terminates gracefully on Unix (SIGTERM + 5s grace + SIGKILL fallback), immediately on Windows (`TerminateProcess`)
+- [ ] `stop()` is concurrent-safe via swap-to-local pattern (lock protects `self._proc`)
 - [ ] `atexit` handler registered as safety net
 - [ ] `TimeoutError` raised with helpful message if server doesn't become ready
+- [ ] `_resolve_server_bin()` finds Windows `Release/*.exe` variant when plain path missing
+- [ ] Non-loopback host emits a warning about unauthenticated API exposure
 
 ### Phase 3: Wire into SamWhispers app
 
@@ -271,12 +337,24 @@ if self._server_manager:
     self._server_manager.stop()
 ```
 
-`tests/test_config.py` -- add tests for the new config fields:
-- Test that default `WhisperConfig` has `managed=True`, correct `server_bin` and `model_path` defaults
-- Test that validation raises `ValueError` when `managed=True` and binary/model files don't exist
-- Test that validation passes when `managed=False` regardless of file existence
+`tests/test_config.py` -- update existing tests and add new ones:
+- **`test_defaults`** (existing): must set `managed = false` in a TOML file or patch `Path.is_file` to avoid the new `_validate()` check failing on non-existent binary/model paths. The simplest fix is to write a minimal `[whisper]\nmanaged = false\n` TOML in `tmp_path` and load it explicitly.
+- Add: test that default `WhisperConfig` has `managed=True`, correct `server_bin` and `model_path` defaults (direct dataclass instantiation, no `load_config()`)
+- Add: test that `load_config()` raises `ValueError` when `managed=True` and binary file doesn't exist
+- Add: test that `load_config()` raises `ValueError` when `managed=True` and model file doesn't exist
+- Add: test that `load_config()` passes when `managed=False` regardless of file existence
+- Add: test that executable check (`os.access`) raises `ValueError` for non-executable binary on non-Windows
 
-`tests/test_app.py` -- update the `_make_app` helper to account for the new `WhisperConfig` fields. Mock or set `managed=False` in test fixtures to avoid subprocess spawning during unit tests.
+`tests/test_app.py` -- update `_make_app` helper:
+- Set `config.whisper.managed = False` before constructing `SamWhispers(config)` to prevent `WhisperServerManager` creation and avoid path validation issues. Alternatively, patch `WhisperServerManager` in the `with patch(...)` block. The `managed=False` approach is simpler and preferred.
+- Add a dedicated test for `shutdown()` with `managed=True` that verifies `_server_manager.stop()` is called before `whisper.close()`.
+
+`tests/test_server.py` -- add unit tests for the new module:
+- Test `_resolve_server_bin()` with existing path (returns resolved)
+- Test `_resolve_server_bin()` with non-existent path on Windows (finds `Release/*.exe` variant)
+- Test `stop()` is idempotent (calling twice does not raise)
+- Test `stop()` concurrent safety (two threads calling `stop()` simultaneously)
+- Test `_monitor_loop` exits after `_MAX_RESTARTS` failures
 
 **Exit criteria**:
 - [ ] Managed mode: server starts before hotkey listener, app exits on startup failure
@@ -312,11 +390,15 @@ Add a note in the WSL section that whisper.cpp must be built inside WSL (Linux b
 | Risk | Impact | Mitigation |
 |---|---|---|
 | Large model exceeds 30s startup timeout | App fails to start | Clear error message suggesting smaller model; timeout can be made configurable later |
-| Port conflict (another process on configured port) | whisper-server fails to bind | Detect from process exit/stderr, log clear message |
+| Port conflict (another process on configured port) | whisper-server fails to bind | `_wait_ready()` detects early exit and includes port conflict as a possible cause in error message. Since stderr goes to DEVNULL, the message also suggests running the binary manually for full output |
 | Zombie process on unclean exit (`kill -9` on SamWhispers) | Orphaned whisper-server | `atexit` handler as safety net; document in troubleshooting |
 | Relative path breaks when CWD differs from project root | Binary/model not found | Validation in `_validate()` gives clear error with resolved absolute path |
+| Windows build path differs from Linux (`build/bin/Release/*.exe`) | Default `server_bin` not found on Windows | `_resolve_server_bin()` auto-detects the Windows `Release/` + `.exe` variant |
 | Windows build in `tools/` confuses WSL users | Wrong binary used | README explicitly states WSL needs Linux build; validation catches non-executable files |
-| Monitor thread restarts server during intentional shutdown | Race condition | `_stop_event` is set before `stop()` terminates the process; monitor checks it first |
+| Monitor thread restarts server during intentional shutdown | Race condition | `threading.Lock` guards all `self._proc` access; `_monitor_loop` re-checks `_stop_event` after detecting crash before attempting restart |
+| Perpetually crashing server loops the monitor forever | CPU waste, log noise | Max 5 restart attempts with linear backoff; monitor exits and logs "giving up" message |
+| Non-loopback bind (`0.0.0.0`) exposes unauthenticated API | Network exposure | Warning logged at startup when host is not loopback; no blocking (user may intend this) |
+| Windows `terminate()` is immediate kill, not graceful | No flush/cleanup opportunity | Acceptable for whisper-server (stateless); documented in design decisions |
 
 ## 7) Verification
 
@@ -370,3 +452,20 @@ _Reserved -- filled during implementation._
 | 5 | No test changes mentioned in any phase | Medium | Resolved -- added test update guidance to Phase 3 |
 | 6 | `atexit` handler and `shutdown()` both call `stop()` -- double invocation | Low | Noted -- `stop()` is already idempotent (checks `poll()` before terminating, sets `_stop_event` which is harmless to set twice). No fix needed. |
 | 7 | Subprocess spawning uses list args (no `shell=True`) -- safe from shell injection. `_build_cmd` constructs args from config strings passed directly as list elements. Network binding defaults to `127.0.0.1` parsed from `server_url`. | Medium | Noted -- security posture is adequate. No fix needed. |
+
+### 2026-03-25 -- Per-persona sub-agent review -- personas: Implementability reviewer, Reliability engineer, Security auditor
+
+10 findings (3 High, 4 Medium, 3 Low). All auto-resolved.
+
+| # | Finding | Severity | Status |
+|---|---|---|---|
+| 1 | Race condition: `_monitor_loop` and `stop()` share `self._proc` without a lock; monitor can spawn a new process during shutdown that gets leaked | High | Resolved -- added `threading.Lock` to guard all `self._proc` access; `stop()` uses swap-to-local pattern; `_monitor_loop` re-checks `_stop_event` after detecting crash |
+| 2 | Windows binary path: design decision claims "auto-appends `Release/` and `.exe`" but no code implements it; default path always fails on Windows | High | Resolved -- added `_resolve_server_bin()` helper that tries `Release/*.exe` variant on `sys.platform == "win32"`; updated design decisions table prose |
+| 3 | `test_defaults` and other `load_config()` tests break when `managed=True` triggers `is_file()` on non-existent binary/model paths in CI | High | Resolved -- added explicit test update guidance: `test_defaults` must set `managed=false` or patch `Path.is_file`; `_make_app()` must set `managed=False`; added `tests/test_server.py` spec |
+| 4 | Concurrent double-`stop()` (atexit + shutdown) causes `AttributeError` on NoneType `self._proc` | Medium | Resolved -- `stop()` now uses swap-to-local pattern under lock: `proc, self._proc = self._proc, None`; second caller gets `None` and no-ops |
+| 5 | No restart limit: perpetually crashing server loops the monitor thread forever, wasting CPU and filling logs | Medium | Resolved -- added `_MAX_RESTARTS = 5` with linear backoff; monitor exits with "giving up" log message after limit |
+| 6 | `stop()` exit criteria says "sends SIGTERM" but on Windows `terminate()` calls `TerminateProcess` (immediate kill) | Medium | Resolved -- updated design decisions table and exit criteria to describe platform-specific behavior |
+| 7 | All line number references in "Current State" section were stale (off by 5-56 lines) despite previous review claiming to have fixed them | Medium | Resolved -- re-verified all references against current source |
+| 8 | Error message on early exit only suggests binary/model path issues; misses port conflicts and other causes | Low | Resolved -- expanded `RuntimeError` message to enumerate port conflict, hardware, and suggest running binary manually |
+| 9 | No executable bit check on `server_bin`; non-executable file passes `is_file()` but fails at `Popen` with confusing `PermissionError` | Low | Resolved -- added `os.access(bin_path, os.X_OK)` check in `_validate()` (harmless no-op on Windows) |
+| 10 | Non-loopback host (`0.0.0.0`) silently accepted; managed server bound to all interfaces without warning | Low | Resolved -- added warning log in `WhisperServerManager.__init__` when host is not loopback |
