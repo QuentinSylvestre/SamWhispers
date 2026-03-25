@@ -7,6 +7,7 @@ import logging
 import threading
 import time
 import wave
+from collections.abc import Callable
 from typing import Any
 
 import numpy as np
@@ -30,9 +31,15 @@ def numpy_to_wav(audio: np.ndarray, sample_rate: int) -> bytes:
 class AudioRecorder:
     """Record microphone audio and produce 16kHz mono 16-bit PCM WAV bytes."""
 
-    def __init__(self, sample_rate: int = 16000, max_duration: float = 300.0) -> None:
+    def __init__(
+        self,
+        sample_rate: int = 16000,
+        max_duration: float = 300.0,
+        on_auto_stop: Callable[[bytes], None] | None = None,
+    ) -> None:
         self._sample_rate = sample_rate
         self._max_duration = max_duration
+        self._on_auto_stop = on_auto_stop
         self._lock = threading.Lock()
         self._recording = False
         self._frames: list[np.ndarray] = []
@@ -86,7 +93,9 @@ class AudioRecorder:
 
     def _auto_stop(self) -> None:
         log.warning("Max recording duration (%.0fs) reached, auto-stopping", self._max_duration)
-        self.stop()
+        wav_bytes = self.stop()
+        if self._on_auto_stop and wav_bytes:
+            self._on_auto_stop(wav_bytes)
 
     def stop(self) -> bytes:
         """Stop recording and return WAV bytes. Returns b'' if not recording."""

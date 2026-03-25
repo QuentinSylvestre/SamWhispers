@@ -280,3 +280,23 @@ def test_startup_checks_fatal_when_whisper_unreachable() -> None:
     app.recorder.start = MagicMock()  # prevent real audio init
     with pytest.raises(SystemExit):
         app._startup_checks()
+
+
+def test_auto_stop_transitions_to_processing() -> None:
+    """on_auto_stop transitions from RECORDING to PROCESSING and enqueues WAV."""
+    app = _make_app()
+    app._state = State.RECORDING
+    wav_bytes = b"\x00" * 20000
+    app._on_auto_stop(wav_bytes)
+    assert app._state == State.PROCESSING
+    assert app._work_queue.qsize() == 1
+    assert app._work_queue.get_nowait() == wav_bytes
+
+
+def test_auto_stop_ignored_when_not_recording() -> None:
+    """on_auto_stop is ignored when not in RECORDING state."""
+    app = _make_app()
+    app._state = State.IDLE
+    app._on_auto_stop(b"\x00" * 20000)
+    assert app._state == State.IDLE
+    assert app._work_queue.qsize() == 0

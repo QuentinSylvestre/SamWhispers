@@ -41,6 +41,7 @@ class SamWhispers:
         self.recorder = AudioRecorder(
             sample_rate=config.audio.sample_rate,
             max_duration=config.audio.max_duration,
+            on_auto_stop=self._on_auto_stop,
         )
         self.whisper = WhisperClient(
             server_url=config.whisper.server_url,
@@ -150,6 +151,15 @@ class SamWhispers:
                 return
             self._state = State.PROCESSING
         wav_bytes = self.recorder.stop()
+        self._work_queue.put(wav_bytes)
+
+    def _on_auto_stop(self, wav_bytes: bytes) -> None:
+        """Handle max-duration auto-stop by processing the recorded audio."""
+        with self._lock:
+            if self._state != State.RECORDING:
+                return
+            self._state = State.PROCESSING
+        log.info("Auto-stop triggered, processing recorded audio")
         self._work_queue.put(wav_bytes)
 
     def _process_loop(self) -> None:
