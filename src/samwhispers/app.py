@@ -109,7 +109,12 @@ class SamWhispers:
             self.config.hotkey.key,
             self.config.hotkey.mode,
         )
-        self._shutdown_event.wait()
+        # Use a polling loop instead of bare .wait() so that Ctrl+C
+        # (SIGINT) is deliverable on Windows.  Event.wait(timeout) releases
+        # the GIL and re-acquires it periodically, giving the interpreter a
+        # chance to raise KeyboardInterrupt / run signal handlers.
+        while not self._shutdown_event.wait(timeout=0.5):
+            pass
         self.shutdown()
 
     def _handle_signal(self, signum: int, frame: FrameType | None) -> None:

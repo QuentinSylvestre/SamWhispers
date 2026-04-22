@@ -107,7 +107,11 @@ def main() -> None:
     print("---")
     try:
         with Listener(on_press=_on_press) as listener:
-            listener.join()
+            # listener.join() is not interruptible by Ctrl+C on Windows
+            # because Thread.join() without a timeout blocks in C-level
+            # code where Python cannot deliver signals.  Poll instead.
+            while listener.is_alive():
+                listener.join(timeout=0.5)
     except KeyboardInterrupt:
         pass
     except Exception as exc:
