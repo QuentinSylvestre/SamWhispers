@@ -1,7 +1,7 @@
 # Key Name Detection Utility
 
 > **Date**: 2026-04-22
-> **Status**: Draft  <!-- Status lifecycle: Exploring → Draft → In Progress → Complete -->
+> **Status**: Complete  <!-- Status lifecycle: Exploring → Draft → In Progress → Complete -->
 > **Scope**: Standalone script to detect and display config-compatible key names for samwhispers hotkey configuration
 
 ---
@@ -36,7 +36,7 @@ Note: `_SPECIAL_KEYS` also accepts `"escape"` as an alias for `"esc"` -- this is
 
 | File | Change |
 |---|---|
-| `tools/keyname.py` (new) | Standalone key name detection script |
+| `scripts/keyname.py` (new) | Standalone key name detection script |
 
 ## External Dependencies
 None -- code-only change. Uses `pynput` which is already a project dependency.
@@ -199,7 +199,10 @@ parse_hotkey("ctrl_r")            # should not raise
 ```
 
 ## Documentation updates
-None -- this is a standalone tool in `tools/`. The README already mentions `tools/` as a directory for whisper.cpp; no update needed for an internal diagnostic script.
+None -- this is a standalone tool in `scripts/`.
+
+## Implementation Divergences from Plan
+- Script placed in `scripts/keyname.py` instead of `tools/keyname.py` because `tools/` is gitignored (used for whisper.cpp clone).
 
 ## Review Log
 
@@ -217,3 +220,19 @@ None -- this is a standalone tool in `tools/`. The README already mentions `tool
 | 6 | `sys` import missing from code snippets | Low | Resolved -- added `import sys` in Step 1 imports |
 | 7 | `key.char` truthiness check should be `is not None` | Low | Resolved -- changed to `key.char is not None` in Step 2 |
 | 8 | Vocabulary drift risk (duplicated `_SPECIAL_KEYS` logic) | Low | Resolved -- added sync comment in Step 1 |
+
+### 2026-04-22 -- Implementation Review (Maintainability reviewer)
+
+Implementation health: Green.
+0 findings.
+
+All key names verified against `parse_hotkey()` -- every name the utility outputs is accepted. Reverse mapping coverage verified against `_SPECIAL_KEYS` -- no gaps. Ruff lint and format checks pass.
+
+### 2026-04-22 -- Post-Implementation Review
+
+Overall implementation health: Green.
+Personas: Maintainability reviewer.
+0 findings (0 High, 0 Medium, 0 Low).
+Self-reviewed (sub-agent unavailable) -- personas: [Maintainability reviewer]. REVISIT WHEN SUB-AGENTS AVAILABLE.
+
+Invoked on Light-tier plan; single implementation pass. All verification steps passed: syntax check, parse_hotkey() round-trip for all 31 key names, _SPECIAL_KEYS coverage audit, ruff lint, ruff format.
