@@ -8,7 +8,7 @@ mode = "hold"  # "hold" or "toggle"
 language_key = "ctrl+shift+l"  # Cycles through whisper.languages list
 
 [whisper]
-server_url = "http://localhost:8080"
+server_url = "http://localhost:8090"
 languages = ["auto"]  # Language cycle order. Use "auto" for auto-detection.
 managed = true                                              # false to use an external whisper-server
 server_bin = "tools/whisper.cpp/build/bin/whisper-server"    # path to whisper-server binary
