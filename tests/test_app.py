@@ -300,3 +300,19 @@ def test_auto_stop_ignored_when_not_recording() -> None:
     app._on_auto_stop(b"\x00" * 20000)
     assert app._state == State.IDLE
     assert app._work_queue.qsize() == 0
+
+
+def test_startup_checks_fatal_when_managed_server_fails() -> None:
+    """Managed whisper-server startup failure raises SystemExit."""
+    import pytest
+
+    from samwhispers.server import WhisperServerManager
+
+    app = _make_app()
+    mock_manager = MagicMock(spec=WhisperServerManager)
+    mock_manager.start.side_effect = RuntimeError("whisper-server exited immediately")
+    app._server_manager = mock_manager
+
+    with pytest.raises(SystemExit):
+        app._startup_checks()
+    mock_manager.start.assert_called_once()

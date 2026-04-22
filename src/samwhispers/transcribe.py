@@ -8,6 +8,8 @@ import time
 
 import httpx
 
+from samwhispers.exceptions import ShutdownRequested
+
 log = logging.getLogger("samwhispers")
 
 _RETRYABLE = (httpx.ConnectError, httpx.ConnectTimeout)
@@ -78,7 +80,7 @@ class WhisperClient:
         """Sleep that can be interrupted by the shutdown event."""
         if self._shutdown_event is not None:
             if self._shutdown_event.wait(seconds):
-                raise RuntimeError("Shutdown requested during retry")
+                raise ShutdownRequested("Shutdown requested during retry")
         else:
             time.sleep(seconds)
 

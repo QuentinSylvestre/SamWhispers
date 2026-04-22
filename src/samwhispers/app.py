@@ -13,6 +13,7 @@ from typing import Any
 from samwhispers.audio import AudioRecorder, min_wav_size
 from samwhispers.cleanup import CleanupProvider
 from samwhispers.config import AppConfig
+from samwhispers.exceptions import ShutdownRequested
 from samwhispers.server import WhisperServerManager
 from samwhispers.transcribe import WhisperClient
 
@@ -171,6 +172,8 @@ class SamWhispers:
                 continue
             try:
                 self._process_recording(wav_bytes)
+            except ShutdownRequested:
+                log.info("Processing interrupted by shutdown")
             except Exception:
                 log.exception("Pipeline error")
             finally:

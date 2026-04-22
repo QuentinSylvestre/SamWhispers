@@ -54,6 +54,11 @@ class WhisperServerManager:
         self._host = parsed.hostname or "127.0.0.1"
         self._port = str(parsed.port or 8080)
 
+        # Note: parsed.hostname preserves the original form ("localhost" vs
+        # "127.0.0.1"). whisper-server treats both identically for binding,
+        # so no normalization is applied. If this causes issues with specific
+        # whisper-server versions, normalize to "127.0.0.1" here.
+
         if self._host not in ("127.0.0.1", "localhost", "::1"):
             log.warning(
                 "whisper.server_url binds managed server to non-loopback host %r. "

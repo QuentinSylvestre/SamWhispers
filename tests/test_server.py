@@ -104,3 +104,32 @@ def test_monitor_loop_exits_after_max_restarts() -> None:
     # Loop exited naturally (not via _stop_event) after first failed restart
     assert not mgr._stop_event.is_set()
     mock_spawn.assert_called_once()
+
+
+def test_start_happy_path() -> None:
+    """start() spawns process, waits for health check, and starts monitor thread."""
+    config = _make_config()
+    with patch("samwhispers.server.atexit"):
+        mgr = WhisperServerManager(config)
+
+    mock_proc = MagicMock()
+    mock_proc.poll.return_value = None  # process is running
+
+    with (
+        patch.object(mgr, "_spawn") as mock_spawn,
+        patch.object(mgr, "_wait_ready") as mock_wait,
+    ):
+        # _spawn sets _proc
+        def fake_spawn() -> None:
+            mgr._proc = mock_proc
+
+        mock_spawn.side_effect = fake_spawn
+        mgr.start()
+
+    mock_spawn.assert_called_once()
+    mock_wait.assert_called_once()
+    assert mgr._monitor_thread is not None
+    assert mgr._monitor_thread.is_alive()
+
+    # Clean up
+    mgr.stop()

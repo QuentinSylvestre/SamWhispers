@@ -6,6 +6,7 @@ import httpx
 import pytest
 import respx
 
+from samwhispers.exceptions import ShutdownRequested
 from samwhispers.transcribe import WhisperClient
 
 
@@ -111,5 +112,5 @@ def test_retry_exits_early_on_shutdown_event() -> None:
     respx.post("http://localhost:8080/inference").mock(
         return_value=httpx.Response(503, text="Service Unavailable")
     )
-    with pytest.raises(RuntimeError, match="Shutdown requested"):
+    with pytest.raises(ShutdownRequested, match="Shutdown requested"):
         client.transcribe(b"fake-wav")

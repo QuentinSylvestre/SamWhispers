@@ -178,7 +178,12 @@ def test_whisper_config_defaults() -> None:
 def test_managed_missing_binary_raises(tmp_path: Path) -> None:
     """managed=true with missing binary raises ValueError."""
     cfg = tmp_path / "config.toml"
-    cfg.write_text("[whisper]\nmanaged = true\n")
+    # Use explicit non-existent paths with forward slashes (TOML-safe)
+    cfg.write_text(
+        '[whisper]\nmanaged = true\n'
+        'server_bin = "/nonexistent/whisper-server"\n'
+        'model_path = "/nonexistent/model.bin"\n'
+    )
     with pytest.raises(ValueError, match="whisper.server_bin not found"):
         load_config(cfg)
 
@@ -191,9 +196,12 @@ def test_managed_missing_model_raises(tmp_path: Path) -> None:
     bin_path.write_bytes(b"fake")
     bin_path.chmod(0o755)
     model_path = tmp_path / "nonexistent.bin"
+    # Use forward slashes for TOML compatibility on Windows
+    bin_str = str(bin_path).replace("\\", "/")
+    model_str = str(model_path).replace("\\", "/")
     cfg.write_text(
-        f'[whisper]\nmanaged = true\nserver_bin = "{bin_path}"\n'
-        f'model_path = "{model_path}"\n'
+        f'[whisper]\nmanaged = true\nserver_bin = "{bin_str}"\n'
+        f'model_path = "{model_str}"\n'
     )
     with pytest.raises(ValueError, match="whisper.model_path not found"):
         load_config(cfg)
@@ -226,3 +234,27 @@ def test_managed_nonexecutable_binary_raises(tmp_path: Path) -> None:
     )
     with pytest.raises(ValueError, match="not executable"):
         load_config(cfg)
+
+
+def test_invalid_server_url_scheme_raises(tmp_path: Path) -> None:
+    """Invalid server_url scheme raises ValueError."""
+    cfg = tmp_path / "config.toml"
+    cfg.write_text('[whisper]\nserver_url = "ftp://localhost:8080"\nmanaged = false\n')
+    with pytest.raises(ValueError, match="Invalid whisper.server_url scheme"):
+        load_config(cfg)
+
+
+def test_invalid_server_url_port_raises(tmp_path: Path) -> None:
+    """Invalid server_url port raises ValueError."""
+    cfg = tmp_path / "config.toml"
+    cfg.write_text('[whisper]\nserver_url = "http://localhost:99999"\nmanaged = false\n')
+    with pytest.raises(ValueError, match="whisper.server_url port"):
+        load_config(cfg)
+
+
+def test_valid_server_url_accepted(tmp_path: Path) -> None:
+    """Valid http server_url passes validation."""
+    cfg = tmp_path / "config.toml"
+    cfg.write_text('[whisper]\nserver_url = "http://127.0.0.1:9090"\nmanaged = false\n')
+    config = load_config(cfg)
+    assert config.whisper.server_url == "http://127.0.0.1:9090"
