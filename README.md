@@ -199,18 +199,31 @@ paste_delay = 0.1           # Seconds between clipboard write and Ctrl+V
 
 ## Usage
 
-Start the daemon:
+Launcher scripts in the project root activate the venv for you:
+
+```bash
+# Linux / macOS
+./samwhispers.sh
+
+# WSL
+./samwhispers-wsl.sh
+
+# Windows
+samwhispers.bat
+```
+
+All arguments are forwarded:
+
+```bash
+./samwhispers.sh -v                # Verbose/debug logging
+./samwhispers.sh -c myconfig.toml  # Custom config path
+./samwhispers.sh --version         # Show version
+```
+
+You can also run manually with an activated venv:
 
 ```bash
 python -m samwhispers
-```
-
-With options:
-
-```bash
-python -m samwhispers -v                # Verbose/debug logging
-python -m samwhispers -c myconfig.toml  # Custom config path
-python -m samwhispers --version         # Show version
 ```
 
 Once running, open any text editor or input field, hold the hotkey, speak, and release.
