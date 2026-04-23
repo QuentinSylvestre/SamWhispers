@@ -24,6 +24,10 @@ def test_defaults(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     assert config.audio.sample_rate == 16000
     assert config.cleanup.enabled is False
     assert config.inject.paste_delay == 0.1
+    assert config.postprocess.collapse_newlines is True
+    assert config.postprocess.collapse_whitespace is True
+    assert config.postprocess.trim is True
+    assert config.postprocess.trailing == "newline"
 
 
 def test_load_valid_toml(tmp_path: Path) -> None:
@@ -258,3 +262,11 @@ def test_valid_server_url_accepted(tmp_path: Path) -> None:
     cfg.write_text('[whisper]\nserver_url = "http://127.0.0.1:9090"\nmanaged = false\n')
     config = load_config(cfg)
     assert config.whisper.server_url == "http://127.0.0.1:9090"
+
+
+def test_invalid_trailing_raises(tmp_path: Path) -> None:
+    """Invalid postprocess.trailing raises ValueError."""
+    cfg = tmp_path / "config.toml"
+    cfg.write_text('[postprocess]\ntrailing = "invalid"\n[whisper]\nmanaged = false\n')
+    with pytest.raises(ValueError, match="Invalid postprocess.trailing"):
+        load_config(cfg)

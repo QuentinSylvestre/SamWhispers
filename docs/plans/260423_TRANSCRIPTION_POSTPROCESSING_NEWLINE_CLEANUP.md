@@ -1,7 +1,7 @@
 # Transcription Post-Processing & Newline Cleanup
 
 > **Date**: 2025-04-23
-> **Status**: Draft  <!-- Status lifecycle: Exploring → Draft → In Progress → Complete -->
+> **Status**: Complete  <!-- Status lifecycle: Exploring → Draft → In Progress → Complete -->
 > **Scope**: Add configurable text post-processing between whisper transcription and AI cleanup to remove unwanted newlines and normalize whitespace
 
 ---

@@ -56,7 +56,7 @@ def test_full_pipeline_wav_to_text(sample_wav: bytes) -> None:
         )
         app._process_recording(sample_wav)
 
-    app.injector.inject.assert_called_once_with("Hello, world.")
+    app.injector.inject.assert_called_once_with("Hello, world.\n")
 
 
 def test_pipeline_cleanup_disabled(sample_wav: bytes) -> None:
@@ -69,7 +69,7 @@ def test_pipeline_cleanup_disabled(sample_wav: bytes) -> None:
         )
         app._process_recording(sample_wav)
 
-    app.injector.inject.assert_called_once_with("hello world")
+    app.injector.inject.assert_called_once_with("hello world\n")
 
 
 def test_pipeline_whisper_failure(sample_wav: bytes) -> None:
@@ -163,7 +163,7 @@ def test_e2e_hotkey_record_transcribe_inject(sample_wav: bytes) -> None:
         t.join(timeout=1)
 
     # Verify text was injected and state returned to IDLE
-    app.injector.inject.assert_called_once_with("hello from e2e")
+    app.injector.inject.assert_called_once_with("hello from e2e\n")
     app.hotkey_listener.suppress.assert_called_once()
     app.hotkey_listener.resume.assert_called_once()
     assert app._state == State.IDLE

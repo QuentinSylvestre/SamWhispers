@@ -170,12 +170,32 @@ class InjectConfig:
     paste_delay: float = 0.1
 
 
+_TRAILING_MAP = {
+    "none": "",
+    "space": " ",
+    "newline": "\n",
+    "double_newline": "\n\n",
+    "tab": "\t",
+}
+
+_VALID_TRAILING = tuple(_TRAILING_MAP.keys())
+
+
+@dataclass
+class PostprocessConfig:
+    collapse_newlines: bool = True
+    collapse_whitespace: bool = True
+    trim: bool = True
+    trailing: str = "newline"
+
+
 @dataclass
 class AppConfig:
     hotkey: HotkeyConfig = field(default_factory=HotkeyConfig)
     whisper: WhisperConfig = field(default_factory=WhisperConfig)
     audio: AudioConfig = field(default_factory=AudioConfig)
     cleanup: CleanupConfig = field(default_factory=CleanupConfig)
+    postprocess: PostprocessConfig = field(default_factory=PostprocessConfig)
     inject: InjectConfig = field(default_factory=InjectConfig)
 
 
@@ -274,6 +294,11 @@ def _validate(config: AppConfig) -> None:
                 UserWarning,
                 stacklevel=3,
             )
+    if config.postprocess.trailing not in _VALID_TRAILING:
+        raise ValueError(
+            f"Invalid postprocess.trailing {config.postprocess.trailing!r}, "
+            f"must be one of {_VALID_TRAILING}"
+        )
 
 
 def load_config(path: Path | str | None = None) -> AppConfig:
@@ -315,6 +340,7 @@ def load_config(path: Path | str | None = None) -> AppConfig:
             openai=OpenAIConfig(**d.get("cleanup", {}).get("openai", {})),
             anthropic=AnthropicConfig(**d.get("cleanup", {}).get("anthropic", {})),
         ),
+        postprocess=PostprocessConfig(**d.get("postprocess", {})),
         inject=InjectConfig(**d.get("inject", {})),
     )
     _validate(config)

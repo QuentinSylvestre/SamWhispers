@@ -12,7 +12,8 @@ log = logging.getLogger("samwhispers")
 
 _SYSTEM_PROMPT = (
     "You are a text cleanup assistant. Fix grammar, punctuation, and capitalization "
-    "in the following dictated text. Return only the corrected text, nothing else."
+    "in the following dictated text. When appropriate for readability, add paragraph "
+    "breaks. Return only the corrected text, nothing else."
 )
 
 

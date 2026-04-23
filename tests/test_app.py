@@ -99,7 +99,7 @@ def test_process_recording_full_pipeline() -> None:
     app.whisper.transcribe.assert_called_once_with(wav_bytes)
     app.cleanup.cleanup.assert_called_once_with("hello world")
     app.hotkey_listener.suppress.assert_called_once()
-    app.injector.inject.assert_called_once_with("Hello, world.")
+    app.injector.inject.assert_called_once_with("Hello, world.\n")
     app.hotkey_listener.resume.assert_called_once()
 
 

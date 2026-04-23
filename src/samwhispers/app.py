@@ -14,6 +14,7 @@ from samwhispers.audio import AudioRecorder, min_wav_size
 from samwhispers.cleanup import CleanupProvider
 from samwhispers.config import AppConfig
 from samwhispers.exceptions import ShutdownRequested
+from samwhispers.postprocess import TextPostprocessor
 from samwhispers.server import WhisperServerManager
 from samwhispers.transcribe import WhisperClient
 
@@ -50,6 +51,7 @@ class SamWhispers:
             shutdown_event=self._shutdown_event,
         )
         self.cleanup = CleanupProvider(config.cleanup)
+        self.postprocessor = TextPostprocessor(config.postprocess)
 
         self._server_manager: WhisperServerManager | None = None
         if config.whisper.managed:
@@ -208,11 +210,15 @@ class SamWhispers:
             log.warning("Empty transcription, skipping")
             return
 
+        text = self.postprocessor.normalize(text)
+
         t0 = time.monotonic()
         text = self.cleanup.cleanup(text)
         cleanup_ms = (time.monotonic() - t0) * 1000
         if self.config.cleanup.enabled:
             log.info("Cleanup took %.0fms", cleanup_ms)
+
+        text = self.postprocessor.finalize(text)
 
         log.info("Result: %s", text)
 
