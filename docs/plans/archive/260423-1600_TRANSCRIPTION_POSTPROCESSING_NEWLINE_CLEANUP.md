@@ -1,8 +1,9 @@
 # Transcription Post-Processing & Newline Cleanup
 
 > **Date**: 2025-04-23
-> **Status**: Complete  <!-- Status lifecycle: Exploring → Draft → In Progress → Complete -->
+> **Status**: All 8 steps COMPLETE  <!-- Status lifecycle: Exploring → Draft → In Progress → Complete -->
 > **Scope**: Add configurable text post-processing between whisper transcription and AI cleanup to remove unwanted newlines and normalize whitespace
+> **Last Updated**: 2025-04-23 16:00
 
 ---
 
@@ -481,4 +482,4 @@ Remove the "many newlines created?" line (this issue is now resolved).
 | 5 | Cleanup prompt change is a behavior change for existing users | Medium | Resolved -- noted in Rollout section |
 | 6 | Line references are inaccurate | Low | Resolved -- corrected key references, used approximate markers |
 | 7 | `finalize()` appends trailing to empty strings | Low | Resolved -- added empty-string guard in `finalize()` |
-| 8 | `collapse_whitespace` name slightly misleading | Low | Noted -- acceptable for the use case (whisper output is spaces and newlines only); rename deferred |
+| 8 | `collapse_whitespace` name slightly misleading | Low | Resolved -- renamed to `collapse_spaces` at archival (b25965a) |
