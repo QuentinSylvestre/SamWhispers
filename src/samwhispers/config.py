@@ -184,7 +184,7 @@ _VALID_TRAILING = tuple(_TRAILING_MAP.keys())
 @dataclass
 class PostprocessConfig:
     collapse_newlines: bool = True
-    collapse_whitespace: bool = True
+    collapse_spaces: bool = True
     trim: bool = True
     trailing: str = "newline"
 

@@ -21,7 +21,7 @@ class TextPostprocessor:
         if self._config.collapse_newlines:
             text = text.replace("\n", " ")
 
-        if self._config.collapse_whitespace:
+        if self._config.collapse_spaces:
             text = re.sub(r" {2,}", " ", text)
 
         if self._config.trim:

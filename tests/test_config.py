@@ -25,7 +25,7 @@ def test_defaults(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     assert config.cleanup.enabled is False
     assert config.inject.paste_delay == 0.1
     assert config.postprocess.collapse_newlines is True
-    assert config.postprocess.collapse_whitespace is True
+    assert config.postprocess.collapse_spaces is True
     assert config.postprocess.trim is True
     assert config.postprocess.trailing == "newline"
 

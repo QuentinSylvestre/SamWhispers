@@ -8,14 +8,14 @@ from samwhispers.postprocess import TextPostprocessor
 
 def _make(
     collapse_newlines: bool = True,
-    collapse_whitespace: bool = True,
+    collapse_spaces: bool = True,
     trim: bool = True,
     trailing: str = "newline",
 ) -> TextPostprocessor:
     return TextPostprocessor(
         PostprocessConfig(
             collapse_newlines=collapse_newlines,
-            collapse_whitespace=collapse_whitespace,
+            collapse_spaces=collapse_spaces,
             trim=trim,
             trailing=trailing,
         )
@@ -32,18 +32,18 @@ def test_collapse_multiple_newlines() -> None:
     assert pp.normalize("hello\n\nworld") == "hello world"
 
 
-def test_collapse_whitespace() -> None:
+def test_collapse_spaces() -> None:
     pp = _make(collapse_newlines=False)
     assert pp.normalize("hello   world") == "hello world"
 
 
 def test_trim() -> None:
-    pp = _make(collapse_newlines=False, collapse_whitespace=False)
+    pp = _make(collapse_newlines=False, collapse_spaces=False)
     assert pp.normalize("  hello  ") == "hello"
 
 
 def test_all_disabled_passthrough() -> None:
-    pp = _make(collapse_newlines=False, collapse_whitespace=False, trim=False)
+    pp = _make(collapse_newlines=False, collapse_spaces=False, trim=False)
     assert pp.normalize("  hello\n  world  ") == "  hello\n  world  "
 
 
