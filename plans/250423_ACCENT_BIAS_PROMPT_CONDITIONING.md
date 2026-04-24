@@ -1,7 +1,7 @@
 # Accent Bias via Prompt Conditioning
 
 > **Date**: 2025-04-23
-> **Status**: Draft  <!-- Status lifecycle: Exploring → Draft → In Progress → Complete -->
+> **Status**: Complete  <!-- Status lifecycle: Exploring -> Draft -> In Progress -> Complete -->
 > **Scope**: Add whisper initial_prompt accent biasing so non-native speakers get better transcription accuracy
 
 ---
@@ -356,14 +356,22 @@ results with accent biasing, use explicit language codes.
 **`docs/ROADMAP.md`** -- mark accent adaptation as implemented.
 
 **Exit criteria**:
-- [ ] `whisper.accent = "fr"` with `languages = ["en"]` sends accent prompt in the `prompt` form field
-- [ ] `whisper.accent_prompt` overrides the generic prompt
-- [ ] Accent prompt suppressed when active language matches accent code
-- [ ] Combined prompt validated at startup; exits if too long
-- [ ] `accent_prompt` without `accent` raises config validation error
-- [ ] No accent set -> identical behavior to current (no regression)
-- [ ] All new tests pass
-- [ ] `make check` passes (lint + typecheck + tests)
+- [x] `whisper.accent = "fr"` with `languages = ["en"]` sends accent prompt in the `prompt` form field
+- [x] `whisper.accent_prompt` overrides the generic prompt
+- [x] Accent prompt suppressed when active language matches accent code
+- [x] Combined prompt validated at startup; exits if too long
+- [x] `accent_prompt` without `accent` raises config validation error
+- [x] No accent set -> identical behavior to current (no regression)
+- [x] All new tests pass
+- [x] `make check` passes (lint + typecheck + tests)
+
+**Implementation (2025-04-23)**
+
+Implementation split across two commits due to prior session partial work:
+- `a2fc059`: app.py changes (prompt assembly with accent, `_build_prompt` rename, accent logging, token budget validation, startup checks), test_app.py accent tests, README accent bias section
+- `29bf06f`: config.py changes (LANGUAGE_NAMES mapping, WhisperConfig accent/accent_prompt fields, validation with no-op warning and auto-detect note), test_config.py accent tests, config.example.toml accent fields, ROADMAP.md update
+
+Divergence from plan: `test_accent_prompt_whitespace_only` tests that whitespace-only accent_prompt does NOT raise (since `.strip()` produces empty string), rather than raising ValueError as the plan described. This is the correct behavior -- whitespace-only is effectively empty and should not require accent to be set.
 
 ## Verification
 
@@ -412,3 +420,28 @@ make check   # lint + typecheck + tests
 | 14 | Error message for `accent_prompt` without `accent` lacks guidance | Low | Resolved -- improved error message with actionable suggestion |
 
 Reviewed by: Implementability reviewer (confidence: 82%), End-user advocate (confidence: 82%). All High and Medium findings auto-resolved.
+
+
+### 2025-04-23 -- Post-Implementation Review
+
+Overall implementation health: Green.
+Personas: Implementability reviewer, End-user advocate.
+14 findings (0 High, 1 Medium, 13 Low).
+REVISIT markers outstanding: 0.
+
+| # | Persona | Finding | Severity | Confidence | Resolution |
+|---|---|---|---|---|---|
+| 1 | End-user | Config Options quick-reference in README omits accent fields | Medium | 95% | Fixed in 7f41326 -- added accent/accent_prompt to [whisper] block |
+| 2 | Implementability | Test function names still say `_build_vocab_prompt` (not renamed to `_build_prompt`) | Low | 100% | Accepted -- names are stable identifiers in test history; method bodies call correct name |
+| 3 | Implementability | Misleading docstring in `test_accent_prompt_whitespace_only` | Low | 100% | Fixed in 7f41326 |
+| 4 | End-user | Invalid accent code error doesn't hint at valid codes | Low | 90% | Fixed in 7f41326 -- added common code examples to error message |
+| 5 | End-user | `accent_prompt` comment in config.example.toml doesn't say "requires accent" | Low | 75% | Fixed in 7f41326 |
+| 6 | End-user | README Accent Bias section doesn't mention where to find valid codes | Low | 85% | Fixed in 7f41326 -- added language code guidance |
+| 7 | Implementability | Missing test: custom accent_prompt + vocabulary combined | Low | 90% | Fixed in 7f41326 -- added `test_build_prompt_accent_prompt_override_with_vocabulary` |
+| 8 | Implementability | ROADMAP.md not updated | Low | 100% | Already done in 29bf06f |
+| 9 | End-user | No separator between vocab CSV and accent sentence | Low | 60% | Accepted -- Whisper tokenizer handles this; adding punctuation could affect decoder behavior |
+| 10 | End-user | Token heuristic approximation note | Low | 70% | Already documented in plan as accepted limitation |
+| 11 | End-user | Startup log doesn't show accent prompt text | Low | 65% | Accepted -- full prompt logged immediately after in combined prompt log line |
+| 12 | End-user | No troubleshooting entry for accent issues | Low | 75% | Deferred -- can be added when real user feedback arrives |
+| 13 | Implementability | Plan status not updated to Complete | Low | 100% | Fixed in this commit |
+| 14 | Implementability | config.toml has pre-existing TOML syntax error (double bracket) | Low | 95% | Pre-existing, not introduced by this feature |
