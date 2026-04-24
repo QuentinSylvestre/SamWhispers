@@ -16,6 +16,13 @@ model_path = "tools/whisper.cpp/models/ggml-base.en.bin"    # path to whisper mo
 # For multi-language, use a multilingual model (e.g., ggml-base.bin, not ggml-base.en.bin).
 # Recommended: ggml-medium.bin or larger for reliable auto-detection.
 # Examples: ["auto", "en", "fr"], ["en"], ["auto"]
+accent = ""                     # Your native language code for accent biasing (e.g., "fr" for
+                                # a French speaker dictating in English). Biases Whisper toward
+                                # recognizing accented speech. Suppressed when the active
+                                # language matches the accent code.
+# accent_prompt = ""            # Custom accent prompt (overrides the generic template).
+                                # Example: "The speaker is a native French speaker.
+                                # Words like 'the', 'this', 'that' may sound like 'ze', 'zis', 'zat'."
 
 [audio]
 sample_rate = 16000

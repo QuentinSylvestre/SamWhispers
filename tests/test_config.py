@@ -362,3 +362,85 @@ def test_filler_builtins_disabled(tmp_path: Path) -> None:
     cfg.write_text("[whisper]\nmanaged = false\n[filler]\nuse_builtins = false\n")
     config = load_config(cfg)
     assert config.filler.use_builtins is False
+
+
+# --- Accent config tests ---
+
+
+def test_accent_valid(tmp_path: Path) -> None:
+    """whisper.accent = 'fr' loads successfully."""
+    cfg = tmp_path / "config.toml"
+    cfg.write_text('[whisper]\nmanaged = false\naccent = "fr"\n')
+    config = load_config(cfg)
+    assert config.whisper.accent == "fr"
+
+
+def test_accent_invalid_code(tmp_path: Path) -> None:
+    """Invalid accent code raises ValueError."""
+    cfg = tmp_path / "config.toml"
+    cfg.write_text('[whisper]\nmanaged = false\naccent = "zzzz"\n')
+    with pytest.raises(ValueError, match="Invalid whisper.accent"):
+        load_config(cfg)
+
+
+def test_accent_auto_rejected(tmp_path: Path) -> None:
+    """whisper.accent = 'auto' is rejected."""
+    cfg = tmp_path / "config.toml"
+    cfg.write_text('[whisper]\nmanaged = false\naccent = "auto"\n')
+    with pytest.raises(ValueError, match="Invalid whisper.accent"):
+        load_config(cfg)
+
+
+def test_accent_empty_default(tmp_path: Path) -> None:
+    """No accent field gives empty string default."""
+    cfg = tmp_path / "config.toml"
+    cfg.write_text("[whisper]\nmanaged = false\n")
+    config = load_config(cfg)
+    assert config.whisper.accent == ""
+
+
+def test_accent_prompt_requires_accent(tmp_path: Path) -> None:
+    """accent_prompt without accent raises ValueError."""
+    cfg = tmp_path / "config.toml"
+    cfg.write_text('[whisper]\nmanaged = false\naccent_prompt = "some text"\n')
+    with pytest.raises(ValueError, match="whisper.accent_prompt requires whisper.accent"):
+        load_config(cfg)
+
+
+def test_accent_prompt_with_accent(tmp_path: Path) -> None:
+    """Both accent and accent_prompt set loads successfully."""
+    cfg = tmp_path / "config.toml"
+    cfg.write_text(
+        '[whisper]\nmanaged = false\naccent = "fr"\naccent_prompt = "Custom accent text"\n'
+    )
+    config = load_config(cfg)
+    assert config.whisper.accent == "fr"
+    assert config.whisper.accent_prompt == "Custom accent text"
+
+
+def test_accent_noop_warning(tmp_path: Path) -> None:
+    """accent matching all configured languages emits UserWarning."""
+    cfg = tmp_path / "config.toml"
+    cfg.write_text('[whisper]\nmanaged = false\nlanguages = ["fr"]\naccent = "fr"\n')
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        load_config(cfg)
+        assert len(w) == 1
+        assert "accent prompt will never be active" in str(w[0].message)
+
+
+def test_accent_prompt_whitespace_only(tmp_path: Path) -> None:
+    """Whitespace-only accent_prompt without accent raises ValueError."""
+    cfg = tmp_path / "config.toml"
+    cfg.write_text('[whisper]\nmanaged = false\naccent_prompt = "   "\n')
+    # Whitespace-only should NOT raise (strip() produces empty string)
+    config = load_config(cfg)
+    assert config.whisper.accent_prompt == "   "
+
+
+def test_language_names_covers_all_languages() -> None:
+    """LANGUAGE_NAMES covers all WHISPER_LANGUAGES except 'auto'."""
+    from samwhispers.config import LANGUAGE_NAMES, WHISPER_LANGUAGES
+
+    expected = WHISPER_LANGUAGES - {"auto"}
+    assert expected == set(LANGUAGE_NAMES.keys())
