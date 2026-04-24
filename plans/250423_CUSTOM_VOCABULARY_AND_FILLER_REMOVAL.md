@@ -576,11 +576,11 @@ Add sections documenting:
 Mark "custom vocab" and "filler words removal" as implemented.
 
 **Exit criteria**:
-- [ ] `config.example.toml` includes documented vocabulary and filler sections
-- [ ] `config.toml` includes the new sections
-- [ ] `README.md` documents both features
-- [ ] `docs/ROADMAP.md` updated
-- [ ] `make check` passes
+- [x] `config.example.toml` includes documented vocabulary and filler sections
+- [x] `config.toml` includes the new sections
+- [x] `README.md` documents both features
+- [x] `docs/ROADMAP.md` updated
+- [x] `make check` passes
 
 ## 6) Risk Assessment
 

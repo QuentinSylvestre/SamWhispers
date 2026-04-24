@@ -193,8 +193,23 @@ api_key = ""                # Your Anthropic API key
 model = "claude-sonnet-4-20250514"
 api_base = "https://api.anthropic.com"
 
+[postprocess]
+collapse_newlines = true    # Replace \n from whisper segments with spaces
+collapse_spaces = true      # Collapse multiple spaces into one
+trim = true                 # Strip leading/trailing whitespace
+trailing = "newline"        # Append after text: "none", "space", "newline", "double_newline", "tab"
+
 [inject]
 paste_delay = 0.1           # Seconds between clipboard write and Ctrl+V
+
+[vocabulary]
+words = []                  # Words to bias Whisper toward recognizing
+# Per-language: [vocabulary.en] words = ["Bluetooth Low Energy"]
+
+[filler]
+enabled = true              # Remove filler words from transcription
+use_builtins = true         # Include built-in filler lists (English + French)
+words = []                  # Additional filler words to remove
 ```
 
 ## Usage
@@ -241,6 +256,87 @@ AI cleanup is optional and disabled by default. When enabled, transcribed text i
 Typical cost: less than $0.01 per cleanup call with `gpt-4o-mini` or `claude-sonnet-4-20250514`.
 
 If the cleanup API fails, the original transcription is used as fallback.
+
+## Custom Vocabulary
+
+SamWhispers can bias Whisper toward recognizing specific words by sending them as an `initial_prompt`. This is useful for proper nouns, project names, and technical terms that Whisper frequently misrecognizes.
+
+### Setup
+
+Add words to the `[vocabulary]` section in `config.toml`:
+
+```toml
+[vocabulary]
+words = ["RSSI", "pynput", "SamWhispers", "BLE"]
+```
+
+### Per-language Vocabulary
+
+You can define language-specific words that are only sent when that language is active. Per-language words are merged with the global list:
+
+```toml
+[vocabulary]
+words = ["RSSI", "BLE"]  # Always sent
+
+[vocabulary.en]
+words = ["Bluetooth Low Energy"]
+
+[vocabulary.fr]
+words = ["Bluetooth basse consommation"]
+```
+
+When the active language is `en`, Whisper receives: `RSSI, BLE, Bluetooth Low Energy`. When set to `fr`: `RSSI, BLE, Bluetooth basse consommation`. In `auto` mode, only the global words are sent (the language is unknown until after transcription).
+
+### Tips
+
+- Keep the list short. The `initial_prompt` token limit is roughly 150-200 words total (global + per-language combined). A warning is logged if you exceed 100 words.
+- Use broadly applicable terms. Domain-specific jargon for a single conversation may cause mild misrecognition in unrelated contexts.
+- Duplicates are automatically removed (case-insensitive).
+
+## Filler Word Removal
+
+SamWhispers automatically removes filler words (um, uh, euh, etc.) from transcriptions. This runs as a post-processing step before any AI cleanup, so it works without cloud dependencies.
+
+### Built-in Fillers
+
+Two languages are covered out of the box:
+
+- **English**: um, uh, hmm, mm, mhm, mmm, ah, oh, er
+- **French**: euh, bah, beh, ben, hein, mmh, mh, pfff
+
+Only unambiguous interjections are included. Borderline fillers like "like" or "genre" are excluded because they are also real words.
+
+### Elongated Variants
+
+Filler removal automatically catches elongated variants. For example, `euh` also matches `euuuuuh`, and `hmm` matches `hmmmmmm`. You do not need to list every possible spelling.
+
+### Custom Filler Words
+
+Add your own filler words in `config.toml`:
+
+```toml
+[filler]
+words = ["hum", "bof", "ouais"]
+```
+
+Custom words are added alongside the built-in lists. To use only your own words without the built-in lists:
+
+```toml
+[filler]
+use_builtins = false
+words = ["hum", "bof"]
+```
+
+### Disabling Filler Removal
+
+```toml
+[filler]
+enabled = false
+```
+
+### How It Works
+
+Filler removal uses word-boundary-anchored regex matching. This means `ben` is removed as a filler but `benefit` is preserved. Orphaned punctuation is cleaned up automatically -- `"I went to the, euh, store"` becomes `"I went to the store"`.
 
 ## Multi-language Support
 

@@ -35,5 +35,32 @@ api_key = ""
 model = "claude-sonnet-4-20250514"
 api_base = "https://api.anthropic.com"
 
+[postprocess]
+collapse_newlines = true     # Replace \n from whisper segments with spaces
+collapse_spaces = true       # Collapse multiple spaces into one
+trim = true                  # Strip leading/trailing whitespace
+trailing = "newline"         # Append after text: "none", "space", "newline", "double_newline", "tab"
+
 [inject]
 paste_delay = 0.1  # seconds between clipboard write and Ctrl+V
+
+[vocabulary]
+# Words to bias Whisper toward recognizing (sent as initial_prompt).
+# Keep this list short and broadly applicable -- domain-specific jargon
+# for a single conversation may cause mild misrecognition in unrelated contexts.
+# Best for: proper nouns, project names, technical terms you use frequently.
+# Token limit: ~150-200 words total (shared with per-language lists).
+words = []
+
+# Per-language vocabulary (merged with global words when that language is active).
+# [vocabulary.en]
+# words = ["Bluetooth Low Energy"]
+# [vocabulary.fr]
+# words = ["Bluetooth basse consommation"]
+
+[filler]
+enabled = true          # Remove filler words from transcription
+use_builtins = true     # Include built-in filler lists (English + French)
+words = []              # Additional filler words to remove (elongated variants auto-detected)
+# Built-in English: um, uh, hmm, mm, mhm, mmm, ah, oh, er
+# Built-in French: euh, bah, beh, ben, hein, mmh, mh, pfff
