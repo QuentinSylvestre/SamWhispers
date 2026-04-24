@@ -1,7 +1,8 @@
 # Custom Vocabulary Support & Filler Word Removal
 
 > **Date**: 2025-04-23
-> **Status**: Complete  <!-- Status lifecycle: Exploring → Draft → In Progress → Complete -->
+> **Status**: All 3 phases COMPLETE  <!-- Status lifecycle: Exploring → Draft → In Progress → Complete -->
+> **Last Updated**: 2025-04-23
 > **Scope**: Add whisper initial_prompt vocabulary biasing and regex-based filler word removal to the transcription pipeline
 > **Estimated effort**: 1-2 days
 
