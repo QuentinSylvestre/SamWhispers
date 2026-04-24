@@ -506,14 +506,14 @@ self.postprocessor = TextPostprocessor(
 - `test_filler_all_fillers_pipeline`: full normalize+finalize on all-filler text produces empty string (finalize returns "" for empty input) <!-- resolves review finding #9 -->
 
 **Exit criteria**:
-- [ ] Filler removal correctly strips built-in English and French fillers
-- [ ] Elongated variants are caught (euuuuh, mmmmmh, etc.)
-- [ ] Word boundaries prevent partial matches inside real words
-- [ ] Orphaned punctuation is cleaned up after filler removal
-- [ ] Feature can be disabled via config
-- [ ] Custom filler words work alongside or instead of builtins
-- [ ] All new tests pass
-- [ ] `make check` passes
+- [x] Filler removal correctly strips built-in English and French fillers
+- [x] Elongated variants are caught (euuuuh, mmmmmh, etc.)
+- [x] Word boundaries prevent partial matches inside real words
+- [x] Orphaned punctuation is cleaned up after filler removal
+- [x] Feature can be disabled via config
+- [x] Custom filler words work alongside or instead of builtins
+- [x] All new tests pass
+- [x] `make check` passes
 
 ### Phase 3: Config examples and documentation
 

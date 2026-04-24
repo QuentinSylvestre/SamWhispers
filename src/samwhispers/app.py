@@ -51,7 +51,31 @@ class SamWhispers:
             shutdown_event=self._shutdown_event,
         )
         self.cleanup = CleanupProvider(config.cleanup)
-        self.postprocessor = TextPostprocessor(config.postprocess)
+
+        # Build filler word list from config
+        filler_words: list[str] | None = None
+        if config.filler.enabled:
+            words: list[str] = list(config.filler.words)
+            if config.filler.use_builtins:
+                from samwhispers.config import BUILTIN_FILLERS
+
+                for lang_words in BUILTIN_FILLERS.values():
+                    words.extend(lang_words)
+            if words:
+                # Deduplicate while preserving order
+                seen: set[str] = set()
+                unique: list[str] = []
+                for w in words:
+                    wl = w.lower()
+                    if wl not in seen:
+                        seen.add(wl)
+                        unique.append(w)
+                filler_words = unique
+
+        self.postprocessor = TextPostprocessor(
+            config.postprocess,
+            filler_words=filler_words,
+        )
 
         self.whisper.prompt = self._build_vocab_prompt()
 

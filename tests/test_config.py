@@ -325,3 +325,40 @@ def test_vocabulary_merged_with_defaults(tmp_path: Path) -> None:
     config = load_config(cfg)
     assert config.vocabulary.words == ["RSSI"]
     assert config.vocabulary.languages == {}
+
+
+# --- Phase 2: Filler config tests ---
+
+
+def test_filler_defaults(tmp_path: Path) -> None:
+    """No [filler] section gives enabled=True, use_builtins=True, words=[]."""
+    cfg = tmp_path / "config.toml"
+    cfg.write_text("[whisper]\nmanaged = false\n")
+    config = load_config(cfg)
+    assert config.filler.enabled is True
+    assert config.filler.use_builtins is True
+    assert config.filler.words == []
+
+
+def test_filler_disabled(tmp_path: Path) -> None:
+    """[filler] enabled = false disables filler removal."""
+    cfg = tmp_path / "config.toml"
+    cfg.write_text("[whisper]\nmanaged = false\n[filler]\nenabled = false\n")
+    config = load_config(cfg)
+    assert config.filler.enabled is False
+
+
+def test_filler_custom_words(tmp_path: Path) -> None:
+    """[filler] words = ["hum", "bof"] loads custom words."""
+    cfg = tmp_path / "config.toml"
+    cfg.write_text('[whisper]\nmanaged = false\n[filler]\nwords = ["hum", "bof"]\n')
+    config = load_config(cfg)
+    assert config.filler.words == ["hum", "bof"]
+
+
+def test_filler_builtins_disabled(tmp_path: Path) -> None:
+    """[filler] use_builtins = false disables built-in fillers."""
+    cfg = tmp_path / "config.toml"
+    cfg.write_text("[whisper]\nmanaged = false\n[filler]\nuse_builtins = false\n")
+    config = load_config(cfg)
+    assert config.filler.use_builtins is False
