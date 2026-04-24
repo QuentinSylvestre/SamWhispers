@@ -128,6 +128,12 @@ def test_filler_removal_with_comma() -> None:
     assert pp.normalize("I went to the, euh, store") == "I went to the store"
 
 
+def test_filler_removal_comma_before_period() -> None:
+    """Comma before sentence-end punctuation is cleaned after filler removal."""
+    pp = _make_with_filler(["euh"])
+    assert pp.normalize("okay, euh.") == "okay."
+
+
 def test_filler_removal_start_of_text() -> None:
     pp = _make_with_filler(["euh"])
     assert pp.normalize("Euh I went to the store") == "I went to the store"

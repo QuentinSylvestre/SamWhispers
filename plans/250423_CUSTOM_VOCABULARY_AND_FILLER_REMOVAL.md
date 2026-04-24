@@ -515,6 +515,10 @@ self.postprocessor = TextPostprocessor(
 - [x] All new tests pass
 - [x] `make check` passes
 
+**Implementation (2025-04-23, code: c382502)**
+
+Implemented Phase 2 (filler word removal) across 4 source files and 2 test files. Added `FillerRemover` class to `postprocess.py` with `_build_pattern()` (auto-generates regex allowing repeated characters, word-boundary anchored) and `remove()` (removes fillers + cleans orphaned punctuation with simplified 2-rule cleanup). Updated `TextPostprocessor.__init__()` to accept `filler_words: list[str] | None = None`, keeping postprocess.py config-agnostic. Reordered `normalize()`: collapse_newlines -> filler_removal -> collapse_spaces -> trim. In `app.py`, builds filler word list from `config.filler` with builtin merging and deduplication, passes to `TextPostprocessor`. Added 20 postprocess tests and 4 config tests covering all planned scenarios plus comma-before-period cleanup.
+
 ### Phase 3: Config examples and documentation
 
 **Goal**: Update config files and documentation to reflect both new features.
@@ -614,7 +618,8 @@ make check   # lint + typecheck + tests
 | `docs/ROADMAP.md` | Mark custom vocab and filler removal as done | Phase 3 |
 
 ## 9) Implementation Divergences from Plan
-<Reserved -- filled during implementation>
+
+1. **Phase 2 -- Simplified orphaned punctuation cleanup**: Plan specified 4 regex rules in `FillerRemover.remove()`. Implementation uses 2 rules: (a) remove double commas entirely (`r",\s*,"` → `""`) instead of collapsing to single comma, and (b) comma before sentence-end punct. Rules (c) orphaned comma with spaces and (d) comma followed by excess space were dropped because `collapse_spaces` in `normalize()` handles leftover whitespace after filler removal. The simplified approach produces correct output with fewer regex passes.
 
 ## Review Log
 
