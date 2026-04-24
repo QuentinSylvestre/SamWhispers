@@ -174,6 +174,8 @@ managed = true              # false to run your own whisper-server
 server_bin = "tools/whisper.cpp/build/bin/whisper-server"
 model_path = "tools/whisper.cpp/models/ggml-base.en.bin"
 # Examples: ["auto", "en", "fr"], ["en"], ["auto"]
+accent = ""                 # Native language code for accent biasing (see Accent Bias section)
+# accent_prompt = ""        # Custom accent prompt override (requires accent to be set)
 
 [audio]
 sample_rate = 16000         # Must be 16000 for whisper.cpp
@@ -304,6 +306,10 @@ bias Whisper's decoder to improve recognition accuracy:
 [whisper]
 accent = "fr"    # Your native language code
 ```
+
+Use any language code supported by whisper.cpp (e.g., `fr`, `de`, `ja`, `hi`, `ta` --
+99 languages total). See `config.py` for the full `WHISPER_LANGUAGES` set, or run
+with `-v` to see the prompt in startup logs.
 
 This adds a conditioning prompt to Whisper's decoder. When you cycle to a
 language that matches your accent (e.g., switching to French), the accent

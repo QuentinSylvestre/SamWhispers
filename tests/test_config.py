@@ -430,7 +430,7 @@ def test_accent_noop_warning(tmp_path: Path) -> None:
 
 
 def test_accent_prompt_whitespace_only(tmp_path: Path) -> None:
-    """Whitespace-only accent_prompt without accent raises ValueError."""
+    """Whitespace-only accent_prompt without accent does not raise (strip produces empty string)."""
     cfg = tmp_path / "config.toml"
     cfg.write_text('[whisper]\nmanaged = false\naccent_prompt = "   "\n')
     # Whitespace-only should NOT raise (strip() produces empty string)

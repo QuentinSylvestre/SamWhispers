@@ -544,6 +544,16 @@ def test_build_prompt_no_accent() -> None:
     assert app._build_prompt() == "RSSI"
 
 
+def test_build_prompt_accent_prompt_override_with_vocabulary() -> None:
+    """Custom accent_prompt combined with vocabulary produces both parts."""
+    app = _make_app()
+    app.config.vocabulary.words = ["RSSI"]
+    app.config.whisper.accent = "fr"
+    app.config.whisper.accent_prompt = "Custom accent text"
+    app.whisper.language = "en"
+    assert app._build_prompt() == "RSSI Custom accent text"
+
+
 # --- Token budget validation tests ---
 
 

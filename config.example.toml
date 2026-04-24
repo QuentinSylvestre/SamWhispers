@@ -21,6 +21,7 @@ accent = ""                     # Your native language code for accent biasing (
                                 # recognizing accented speech. Suppressed when the active
                                 # language matches the accent code.
 # accent_prompt = ""            # Custom accent prompt (overrides the generic template).
+                                # Requires accent to be set.
                                 # Example: "The speaker is a native French speaker.
                                 # Words like 'the', 'this', 'that' may sound like 'ze', 'zis', 'zat'."
 

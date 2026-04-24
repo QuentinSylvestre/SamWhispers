@@ -438,7 +438,8 @@ def _validate(config: AppConfig) -> None:
         if config.whisper.accent not in WHISPER_LANGUAGES or config.whisper.accent == "auto":
             raise ValueError(
                 f"Invalid whisper.accent {config.whisper.accent!r}, "
-                "must be a whisper.cpp language code (not 'auto')"
+                "must be a whisper.cpp language code (not 'auto'). "
+                "Common codes: en, fr, de, es, zh, ja, ko, pt, it, ru."
             )
         # Warn if accent matches all configured languages (accent prompt will never be active)
         if all(lang == config.whisper.accent for lang in config.whisper.languages):
