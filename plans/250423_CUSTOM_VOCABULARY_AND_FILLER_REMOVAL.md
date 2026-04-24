@@ -582,6 +582,10 @@ Mark "custom vocab" and "filler words removal" as implemented.
 - [x] `docs/ROADMAP.md` updated
 - [x] `make check` passes
 
+**Implementation (2025-04-23, code: 00842ae)**
+
+Added `[postprocess]`, `[vocabulary]`, and `[filler]` sections with full comments to `config.example.toml`. Added vocabulary and filler sections to user's local `config.toml` (gitignored, not committed). Added two new README sections -- "Custom Vocabulary" and "Filler Word Removal" -- plus updated the Config Options code block. Marked vocabulary and filler features as done in `docs/ROADMAP.md` with strikethrough.
+
 ## 6) Risk Assessment
 
 | Risk | Impact | Mitigation |
