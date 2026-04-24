@@ -270,3 +270,73 @@ def test_invalid_trailing_raises(tmp_path: Path) -> None:
     cfg.write_text('[postprocess]\ntrailing = "invalid"\n[whisper]\nmanaged = false\n')
     with pytest.raises(ValueError, match="Invalid postprocess.trailing"):
         load_config(cfg)
+
+
+# --- Phase 1: Vocabulary config tests ---
+
+
+def test_vocabulary_global_words(tmp_path: Path) -> None:
+    """Load config with global vocabulary words."""
+    cfg = tmp_path / "config.toml"
+    cfg.write_text(
+        '[whisper]\nmanaged = false\n'
+        '[vocabulary]\nwords = ["RSSI", "pynput"]\n'
+    )
+    config = load_config(cfg)
+    assert config.vocabulary.words == ["RSSI", "pynput"]
+
+
+def test_vocabulary_per_language(tmp_path: Path) -> None:
+    """Load config with per-language vocabulary words."""
+    cfg = tmp_path / "config.toml"
+    cfg.write_text(
+        '[whisper]\nmanaged = false\n'
+        '[vocabulary]\nwords = ["RSSI"]\n'
+        '[vocabulary.fr]\nwords = ["BLE"]\n'
+    )
+    config = load_config(cfg)
+    assert config.vocabulary.words == ["RSSI"]
+    assert config.vocabulary.languages["fr"] == ["BLE"]
+
+
+def test_vocabulary_invalid_language(tmp_path: Path) -> None:
+    """Invalid vocabulary language code raises ValueError."""
+    cfg = tmp_path / "config.toml"
+    cfg.write_text(
+        '[whisper]\nmanaged = false\n'
+        '[vocabulary.zzzz]\nwords = ["test"]\n'
+    )
+    with pytest.raises(ValueError, match="Invalid vocabulary language"):
+        load_config(cfg)
+
+
+def test_vocabulary_auto_language_rejected(tmp_path: Path) -> None:
+    """Vocabulary language 'auto' is rejected."""
+    cfg = tmp_path / "config.toml"
+    cfg.write_text(
+        '[whisper]\nmanaged = false\n'
+        '[vocabulary.auto]\nwords = ["test"]\n'
+    )
+    with pytest.raises(ValueError, match="Invalid vocabulary language"):
+        load_config(cfg)
+
+
+def test_vocabulary_empty_default(tmp_path: Path) -> None:
+    """No vocabulary section gives empty defaults."""
+    cfg = tmp_path / "config.toml"
+    cfg.write_text('[whisper]\nmanaged = false\n')
+    config = load_config(cfg)
+    assert config.vocabulary.words == []
+    assert config.vocabulary.languages == {}
+
+
+def test_vocabulary_merged_with_defaults(tmp_path: Path) -> None:
+    """Partial vocabulary config merges correctly with defaults."""
+    cfg = tmp_path / "config.toml"
+    cfg.write_text(
+        '[whisper]\nmanaged = false\n'
+        '[vocabulary]\nwords = ["RSSI"]\n'
+    )
+    config = load_config(cfg)
+    assert config.vocabulary.words == ["RSSI"]
+    assert config.vocabulary.languages == {}

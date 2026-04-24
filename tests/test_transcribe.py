@@ -114,3 +114,42 @@ def test_retry_exits_early_on_shutdown_event() -> None:
     )
     with pytest.raises(ShutdownRequested, match="Shutdown requested"):
         client.transcribe(b"fake-wav")
+
+
+# --- Phase 1: Prompt tests ---
+
+
+def test_prompt_property() -> None:
+    """Prompt getter/setter works correctly."""
+    client = WhisperClient("http://localhost:8080", language="en")
+    assert client.prompt == ""
+    client.prompt = "RSSI, pynput"
+    assert client.prompt == "RSSI, pynput"
+
+
+@respx.mock
+def test_prompt_sent_when_set() -> None:
+    """Prompt is included in POST form data when set."""
+    client = WhisperClient("http://localhost:8080", language="en")
+    client.prompt = "RSSI, pynput"
+
+    route = respx.post("http://localhost:8080/inference").mock(
+        return_value=httpx.Response(200, json={"text": "ok"})
+    )
+    client.transcribe(b"fake-wav")
+    body = route.calls[0].request.content.decode()
+    assert "RSSI, pynput" in body
+
+
+@respx.mock
+def test_prompt_not_sent_when_empty() -> None:
+    """Empty prompt is not included in POST form data."""
+    client = WhisperClient("http://localhost:8080", language="en")
+    assert client.prompt == ""
+
+    route = respx.post("http://localhost:8080/inference").mock(
+        return_value=httpx.Response(200, json={"text": "ok"})
+    )
+    client.transcribe(b"fake-wav")
+    body = route.calls[0].request.content.decode()
+    assert "prompt" not in body

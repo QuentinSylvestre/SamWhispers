@@ -190,6 +190,25 @@ class PostprocessConfig:
 
 
 @dataclass
+class VocabularyConfig:
+    words: list[str] = field(default_factory=list)
+    languages: dict[str, list[str]] = field(default_factory=dict)
+
+
+BUILTIN_FILLERS: dict[str, list[str]] = {
+    "en": ["um", "uh", "hmm", "mm", "mhm", "mmm", "ah", "oh", "er"],
+    "fr": ["euh", "bah", "beh", "ben", "hein", "mmh", "mh", "pfff"],
+}
+
+
+@dataclass
+class FillerConfig:
+    enabled: bool = True
+    words: list[str] = field(default_factory=list)
+    use_builtins: bool = True
+
+
+@dataclass
 class AppConfig:
     hotkey: HotkeyConfig = field(default_factory=HotkeyConfig)
     whisper: WhisperConfig = field(default_factory=WhisperConfig)
@@ -197,6 +216,8 @@ class AppConfig:
     cleanup: CleanupConfig = field(default_factory=CleanupConfig)
     postprocess: PostprocessConfig = field(default_factory=PostprocessConfig)
     inject: InjectConfig = field(default_factory=InjectConfig)
+    vocabulary: VocabularyConfig = field(default_factory=VocabularyConfig)
+    filler: FillerConfig = field(default_factory=FillerConfig)
 
 
 def find_config() -> Path | None:
@@ -300,6 +321,14 @@ def _validate(config: AppConfig) -> None:
             f"must be one of {_VALID_TRAILING}"
         )
 
+    # Validate vocabulary language codes
+    for lang in config.vocabulary.languages:
+        if lang not in WHISPER_LANGUAGES or lang == "auto":
+            raise ValueError(
+                f"Invalid vocabulary language {lang!r}, "
+                "must be a whisper.cpp language code (not 'auto')"
+            )
+
 
 def load_config(path: Path | str | None = None) -> AppConfig:
     """Load TOML config, merge with defaults, validate."""
@@ -330,6 +359,24 @@ def load_config(path: Path | str | None = None) -> AppConfig:
 
     d = _merge(_to_dict(defaults), raw)
 
+    # --- Vocabulary: manual parsing (sub-tables like [vocabulary.en] mix with scalar keys) ---
+    vocab_raw = d.get("vocabulary", {})
+    vocab_words = vocab_raw.get("words", [])
+    vocab_langs: dict[str, list[str]] = {}
+    for k, v in vocab_raw.items():
+        if k in ("words", "languages"):
+            continue  # skip the top-level keys, only process language sub-tables
+        if isinstance(v, dict) and "words" in v:
+            vocab_langs[k] = v["words"]
+
+    # --- Filler: manual field extraction (safe against unexpected TOML keys) ---
+    filler_raw = d.get("filler", {})
+    filler_cfg = FillerConfig(
+        enabled=filler_raw.get("enabled", True),
+        words=filler_raw.get("words", []),
+        use_builtins=filler_raw.get("use_builtins", True),
+    )
+
     config = AppConfig(
         hotkey=HotkeyConfig(**d.get("hotkey", {})),
         whisper=WhisperConfig(**d.get("whisper", {})),
@@ -342,6 +389,8 @@ def load_config(path: Path | str | None = None) -> AppConfig:
         ),
         postprocess=PostprocessConfig(**d.get("postprocess", {})),
         inject=InjectConfig(**d.get("inject", {})),
+        vocabulary=VocabularyConfig(words=vocab_words, languages=vocab_langs),
+        filler=filler_cfg,
     )
     _validate(config)
     return config

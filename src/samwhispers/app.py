@@ -53,6 +53,8 @@ class SamWhispers:
         self.cleanup = CleanupProvider(config.cleanup)
         self.postprocessor = TextPostprocessor(config.postprocess)
 
+        self.whisper.prompt = self._build_vocab_prompt()
+
         self._server_manager: WhisperServerManager | None = None
         if config.whisper.managed:
             self._server_manager = WhisperServerManager(config.whisper)
@@ -95,6 +97,30 @@ class SamWhispers:
                 on_language_cycle=lang_cb,
             )
 
+    def _build_vocab_prompt(self) -> str:
+        """Build initial_prompt string from vocabulary config and current language."""
+        words = list(self.config.vocabulary.words)
+        lang = self.whisper.language
+        if lang != "auto" and lang in self.config.vocabulary.languages:
+            words.extend(self.config.vocabulary.languages[lang])
+        if not words:
+            return ""
+        # Deduplicate while preserving order
+        seen: set[str] = set()
+        unique: list[str] = []
+        for w in words:
+            wl = w.lower()
+            if wl not in seen:
+                seen.add(wl)
+                unique.append(w)
+        if len(unique) > 100:
+            log.warning(
+                "Vocabulary has %d words; initial_prompt token limit is ~150-200 words. "
+                "Consider trimming the list.",
+                len(unique),
+            )
+        return ", ".join(unique)
+
     def run(self) -> None:
         """Start daemon: checks, worker thread, hotkey listener, block until shutdown."""
         self._startup_checks()
@@ -132,6 +158,7 @@ class SamWhispers:
         self._lang_index = (self._lang_index + 1) % len(self._languages)
         lang = self._languages[self._lang_index]
         self.whisper.language = lang
+        self.whisper.prompt = self._build_vocab_prompt()
         label = "Auto-detect" if lang == "auto" else lang
         log.info("Language switched to: %s", label)
         from samwhispers.notify import notify
@@ -297,6 +324,24 @@ class SamWhispers:
             notify("SamWhispers", f"Language: {label}")
         else:
             log.info("Language: %s", label)
+
+        # Vocabulary logging
+        if self.config.vocabulary.words or self.config.vocabulary.languages:
+            log.info(
+                "Vocabulary: %d global + %d language-specific words",
+                len(self.config.vocabulary.words),
+                sum(len(v) for v in self.config.vocabulary.languages.values()),
+            )
+
+        # Filler logging
+        if self.config.filler.enabled:
+            filler_count = len(self.config.filler.words)
+            builtin_label = "built-in + " if self.config.filler.use_builtins else ""
+            log.info(
+                "Filler removal: enabled (%s%d custom words)", builtin_label, filler_count
+            )
+        else:
+            log.info("Filler removal: disabled")
 
         log.info("Startup checks complete")
 

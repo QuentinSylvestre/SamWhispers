@@ -316,3 +316,77 @@ def test_startup_checks_fatal_when_managed_server_fails() -> None:
     with pytest.raises(SystemExit):
         app._startup_checks()
     mock_manager.start.assert_called_once()
+
+
+# --- Phase 1: Vocabulary prompt tests ---
+
+
+def test_build_vocab_prompt_global_only() -> None:
+    """Global words with language=auto returns comma-joined global words."""
+    app = _make_app()
+    app.config.vocabulary.words = ["RSSI", "pynput"]
+    app.whisper.language = "auto"
+    assert app._build_vocab_prompt() == "RSSI, pynput"
+
+
+def test_build_vocab_prompt_with_language() -> None:
+    """Global + per-language words are merged when language matches."""
+    app = _make_app()
+    app.config.vocabulary.words = ["RSSI"]
+    app.config.vocabulary.languages = {"fr": ["BLE"]}
+    app.whisper.language = "fr"
+    assert app._build_vocab_prompt() == "RSSI, BLE"
+
+
+def test_build_vocab_prompt_auto_language() -> None:
+    """Language=auto uses only global words, not per-language."""
+    app = _make_app()
+    app.config.vocabulary.words = ["RSSI"]
+    app.config.vocabulary.languages = {"fr": ["BLE"]}
+    app.whisper.language = "auto"
+    assert app._build_vocab_prompt() == "RSSI"
+
+
+def test_build_vocab_prompt_empty() -> None:
+    """No vocabulary returns empty string."""
+    app = _make_app()
+    app.whisper.language = "auto"
+    assert app._build_vocab_prompt() == ""
+
+
+def test_build_vocab_prompt_deduplicates() -> None:
+    """Duplicate words (case-insensitive) are deduplicated."""
+    app = _make_app()
+    app.config.vocabulary.words = ["RSSI"]
+    app.config.vocabulary.languages = {"en": ["RSSI"]}
+    app.whisper.language = "en"
+    assert app._build_vocab_prompt() == "RSSI"
+
+
+def test_vocab_prompt_updates_on_language_cycle() -> None:
+    """Prompt rebuilds when language is cycled."""
+    config = AppConfig()
+    config.whisper.languages = ["auto", "fr"]
+    config.whisper.managed = False
+    config.vocabulary.words = ["RSSI"]
+    config.vocabulary.languages = {"fr": ["BLE"]}
+    with (
+        patch("samwhispers.app.AudioRecorder"),
+        patch("samwhispers.app.WhisperClient"),
+        patch("samwhispers.app.CleanupProvider"),
+        patch("samwhispers.wsl.is_wsl", return_value=False),
+    ):
+        app = SamWhispers(config)
+        app.injector = MagicMock()
+        app.hotkey_listener = MagicMock()
+        # After init, whisper is a mock; set language to match initial
+        app.whisper.language = "auto"
+
+    # Initial prompt should be global only
+    assert app._build_vocab_prompt() == "RSSI"
+
+    with patch("samwhispers.notify.notify"):
+        app._cycle_language()
+        # After cycling to "fr", prompt should include both
+        app.whisper.language = "fr"
+        assert app._build_vocab_prompt() == "RSSI, BLE"

@@ -21,6 +21,7 @@ class WhisperClient:
     def __init__(self, server_url: str, language: str = "auto",
                  shutdown_event: threading.Event | None = None) -> None:
         self._language = language
+        self._prompt: str = ""
         self._shutdown_event = shutdown_event
         self._client = httpx.Client(
             base_url=server_url.rstrip("/"),
@@ -35,6 +36,14 @@ class WhisperClient:
     def language(self, value: str) -> None:
         self._language = value
 
+    @property
+    def prompt(self) -> str:
+        return self._prompt
+
+    @prompt.setter
+    def prompt(self, value: str) -> None:
+        self._prompt = value
+
     def transcribe(self, wav_bytes: bytes) -> str:
         """Send WAV audio to /inference and return transcription text."""
         return self._post_with_retry(wav_bytes, retries=1, backoff=1.0)
@@ -43,14 +52,18 @@ class WhisperClient:
         last_exc: Exception | None = None
         for attempt in range(1 + retries):
             try:
+                data: dict[str, str] = {
+                    "temperature": "0.0",
+                    "response_format": "json",
+                    "language": self._language,
+                }
+                if self._prompt:
+                    data["prompt"] = self._prompt
+
                 resp = self._client.post(
                     "/inference",
                     files={"file": ("audio.wav", wav_bytes, "audio/wav")},
-                    data={
-                        "temperature": "0.0",
-                        "response_format": "json",
-                        "language": self._language,
-                    },
+                    data=data,
                 )
                 if resp.status_code >= 500:
                     last_exc = httpx.HTTPStatusError(

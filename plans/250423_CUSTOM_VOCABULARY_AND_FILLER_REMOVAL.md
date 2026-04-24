@@ -299,12 +299,12 @@ else:
 - `test_vocab_prompt_updates_on_language_cycle`: verify prompt rebuilds when language changes
 
 **Exit criteria**:
-- [ ] `[vocabulary]` config section loads and validates correctly
-- [ ] `prompt` form field is sent to `/inference` when vocabulary is configured
-- [ ] Prompt merges global + per-language words based on active language
-- [ ] Prompt updates when language is cycled
-- [ ] All new tests pass
-- [ ] `make check` passes (lint + typecheck + tests)
+- [x] `[vocabulary]` config section loads and validates correctly
+- [x] `prompt` form field is sent to `/inference` when vocabulary is configured
+- [x] Prompt merges global + per-language words based on active language
+- [x] Prompt updates when language is cycled
+- [x] All new tests pass
+- [x] `make check` passes (lint + typecheck + tests)
 
 ### Phase 2: Filler word removal
 
