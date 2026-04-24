@@ -623,7 +623,7 @@ make check   # lint + typecheck + tests
 
 ## 9) Implementation Divergences from Plan
 
-1. **Phase 2 -- Simplified orphaned punctuation cleanup**: Plan specified 4 regex rules in `FillerRemover.remove()`. Implementation uses 2 rules: (a) remove double commas entirely (`r",\s*,"` → `""`) instead of collapsing to single comma, and (b) comma before sentence-end punct. Rules (c) orphaned comma with spaces and (d) comma followed by excess space were dropped because `collapse_spaces` in `normalize()` handles leftover whitespace after filler removal. The simplified approach produces correct output with fewer regex passes.
+1. **Phase 2 -- Simplified orphaned punctuation cleanup**: Plan specified 4 regex rules in `FillerRemover.remove()`. Implementation uses 3 rules: (a) strip leading commas left by filler at start of text, (b) collapse double commas to single comma (preserving structural commas), and (c) comma before sentence-end punct. Rules for orphaned comma with spaces and comma followed by excess space were dropped because `collapse_spaces` in `normalize()` handles leftover whitespace after filler removal.
 
 ## Review Log
 

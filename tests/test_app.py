@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import logging
 import threading
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 from samwhispers.app import SamWhispers, State
 from samwhispers.config import AppConfig
@@ -325,8 +328,9 @@ def test_build_vocab_prompt_global_only() -> None:
     """Global words with language=auto returns comma-joined global words."""
     app = _make_app()
     app.config.vocabulary.words = ["RSSI", "pynput"]
+    app.config.whisper.accent = ""
     app.whisper.language = "auto"
-    assert app._build_vocab_prompt() == "RSSI, pynput"
+    assert app._build_prompt() == "RSSI, pynput"
 
 
 def test_build_vocab_prompt_with_language() -> None:
@@ -334,8 +338,9 @@ def test_build_vocab_prompt_with_language() -> None:
     app = _make_app()
     app.config.vocabulary.words = ["RSSI"]
     app.config.vocabulary.languages = {"fr": ["BLE"]}
+    app.config.whisper.accent = ""
     app.whisper.language = "fr"
-    assert app._build_vocab_prompt() == "RSSI, BLE"
+    assert app._build_prompt() == "RSSI, BLE"
 
 
 def test_build_vocab_prompt_auto_language() -> None:
@@ -343,15 +348,17 @@ def test_build_vocab_prompt_auto_language() -> None:
     app = _make_app()
     app.config.vocabulary.words = ["RSSI"]
     app.config.vocabulary.languages = {"fr": ["BLE"]}
+    app.config.whisper.accent = ""
     app.whisper.language = "auto"
-    assert app._build_vocab_prompt() == "RSSI"
+    assert app._build_prompt() == "RSSI"
 
 
 def test_build_vocab_prompt_empty() -> None:
     """No vocabulary returns empty string."""
     app = _make_app()
+    app.config.whisper.accent = ""
     app.whisper.language = "auto"
-    assert app._build_vocab_prompt() == ""
+    assert app._build_prompt() == ""
 
 
 def test_build_vocab_prompt_deduplicates() -> None:
@@ -359,8 +366,9 @@ def test_build_vocab_prompt_deduplicates() -> None:
     app = _make_app()
     app.config.vocabulary.words = ["RSSI"]
     app.config.vocabulary.languages = {"en": ["RSSI"]}
+    app.config.whisper.accent = ""
     app.whisper.language = "en"
-    assert app._build_vocab_prompt() == "RSSI"
+    assert app._build_prompt() == "RSSI"
 
 
 def test_vocab_prompt_updates_on_language_cycle() -> None:
@@ -383,9 +391,195 @@ def test_vocab_prompt_updates_on_language_cycle() -> None:
         app.whisper.language = "auto"
 
     # Initial prompt should be global only
-    assert app._build_vocab_prompt() == "RSSI"
+    assert app._build_prompt() == "RSSI"
 
     with patch("samwhispers.notify.notify"):
         app._cycle_language()
         # _cycle_language() should have assigned the prompt to whisper
         assert app.whisper.prompt == "RSSI, BLE"
+
+
+def test_build_vocab_prompt_warns_on_large_list(caplog: pytest.LogCaptureFixture) -> None:
+    """Vocabulary >100 words logs a warning."""
+    app = _make_app()
+    app.config.vocabulary.words = [f"word{i}" for i in range(101)]
+    app.config.whisper.accent = ""
+    app.whisper.language = "auto"
+    with caplog.at_level(logging.WARNING, logger="samwhispers"):
+        app._build_prompt()
+    assert any("101 words" in r.message for r in caplog.records)
+
+
+def test_filler_word_list_with_builtins() -> None:
+    """Default config (filler enabled, use_builtins=True) produces a FillerRemover."""
+    app = _make_app()
+    assert app.postprocessor._filler_remover is not None
+
+
+def test_filler_word_list_disabled() -> None:
+    """filler.enabled=False produces no FillerRemover."""
+    config = AppConfig()
+    config.whisper.managed = False
+    config.filler.enabled = False
+    with (
+        patch("samwhispers.app.AudioRecorder"),
+        patch("samwhispers.app.WhisperClient"),
+        patch("samwhispers.app.CleanupProvider"),
+        patch("samwhispers.wsl.is_wsl", return_value=False),
+    ):
+        app = SamWhispers(config)
+    assert app.postprocessor._filler_remover is None
+
+
+def test_filler_word_list_custom_with_builtins_dedup() -> None:
+    """Custom words + builtins are merged and deduplicated."""
+    config = AppConfig()
+    config.whisper.managed = False
+    config.filler.enabled = True
+    config.filler.use_builtins = True
+    config.filler.words = ["um", "hum"]  # "um" overlaps with builtin
+    with (
+        patch("samwhispers.app.AudioRecorder"),
+        patch("samwhispers.app.WhisperClient"),
+        patch("samwhispers.app.CleanupProvider"),
+        patch("samwhispers.wsl.is_wsl", return_value=False),
+    ):
+        app = SamWhispers(config)
+    remover = app.postprocessor._filler_remover
+    assert remover is not None
+    # "hum" should be in the list, "um" should appear only once
+    # Verify by testing removal
+    assert remover.remove("hum okay") == " okay"
+    # "um" from builtins should still work
+    assert remover.remove("um okay") == " okay"
+
+
+# --- Accent bias prompt tests ---
+
+
+def test_build_prompt_accent_only() -> None:
+    """Accent with no vocabulary produces accent prompt."""
+    app = _make_app()
+    app.config.whisper.accent = "fr"
+    app.config.whisper.accent_prompt = ""
+    app.whisper.language = "en"
+    assert app._build_prompt() == "The speaker has a French accent."
+
+
+def test_build_prompt_accent_suppressed_when_language_matches() -> None:
+    """Accent prompt is suppressed when active language matches accent code."""
+    app = _make_app()
+    app.config.whisper.accent = "fr"
+    app.config.whisper.accent_prompt = ""
+    app.whisper.language = "fr"
+    assert app._build_prompt() == ""
+
+
+def test_build_prompt_accent_with_vocabulary() -> None:
+    """Accent prompt is appended after vocabulary words."""
+    app = _make_app()
+    app.config.vocabulary.words = ["RSSI"]
+    app.config.whisper.accent = "fr"
+    app.config.whisper.accent_prompt = ""
+    app.whisper.language = "en"
+    assert app._build_prompt() == "RSSI The speaker has a French accent."
+
+
+def test_build_prompt_accent_prompt_override() -> None:
+    """Custom accent_prompt overrides the generic template."""
+    app = _make_app()
+    app.config.whisper.accent = "fr"
+    app.config.whisper.accent_prompt = "Custom accent text"
+    app.whisper.language = "en"
+    assert app._build_prompt() == "Custom accent text"
+
+
+def test_build_prompt_accent_suppressed_on_cycle() -> None:
+    """Accent prompt disappears when cycling to matching language, reappears on cycle back."""
+    config = AppConfig()
+    config.whisper.languages = ["en", "fr"]
+    config.whisper.managed = False
+    config.whisper.accent = "fr"
+    config.whisper.accent_prompt = ""
+    with (
+        patch("samwhispers.app.AudioRecorder"),
+        patch("samwhispers.app.WhisperClient"),
+        patch("samwhispers.app.CleanupProvider"),
+        patch("samwhispers.wsl.is_wsl", return_value=False),
+    ):
+        app = SamWhispers(config)
+        app.injector = MagicMock()
+        app.hotkey_listener = MagicMock()
+        app.whisper.language = "en"
+
+    # English active, accent=fr -> accent prompt present
+    assert app._build_prompt() == "The speaker has a French accent."
+
+    with patch("samwhispers.notify.notify"):
+        app._cycle_language()  # en -> fr
+        # Accent matches language -> suppressed
+        assert app.whisper.prompt == ""
+
+        app._cycle_language()  # fr -> en (wrap)
+        # Accent != language -> reappears
+        assert app.whisper.prompt == "The speaker has a French accent."
+
+
+def test_build_prompt_accent_auto_language() -> None:
+    """Accent prompt is included when language is auto (auto != accent code)."""
+    app = _make_app()
+    app.config.whisper.accent = "fr"
+    app.config.whisper.accent_prompt = ""
+    app.whisper.language = "auto"
+    assert app._build_prompt() == "The speaker has a French accent."
+
+
+def test_build_prompt_no_accent() -> None:
+    """No accent set behaves identically to vocabulary-only prompt."""
+    app = _make_app()
+    app.config.vocabulary.words = ["RSSI"]
+    app.config.whisper.accent = ""
+    app.config.whisper.accent_prompt = ""
+    app.whisper.language = "auto"
+    assert app._build_prompt() == "RSSI"
+
+
+# --- Token budget validation tests ---
+
+
+def test_startup_prompt_too_long_exits() -> None:
+    """Very long prompt causes SystemExit at startup."""
+    import pytest
+
+    app = _make_app()
+    app.config.whisper.accent = "fr"
+    app.config.whisper.accent_prompt = "x" * 1000  # >900 chars -> >224 tokens
+    app.whisper.language = "en"
+    app.whisper.health_check.return_value = True
+    app.injector.check_clipboard_available.return_value = True
+    with (
+        patch("samwhispers.notify.check_notify_available", return_value=True),
+        patch("samwhispers.notify.notify"),
+        pytest.raises(SystemExit),
+    ):
+        app._startup_checks()
+
+
+def test_startup_prompt_warning_near_limit(caplog: pytest.LogCaptureFixture) -> None:
+    """Prompt near the token limit logs a warning but does not exit."""
+    import logging
+
+    app = _make_app()
+    app.config.whisper.accent = "fr"
+    # ~750 chars -> ~187 tokens (above 180 warning threshold, below 224 error)
+    app.config.whisper.accent_prompt = "x" * 750
+    app.whisper.language = "en"
+    app.whisper.health_check.return_value = True
+    app.injector.check_clipboard_available.return_value = True
+    with (
+        patch("samwhispers.notify.check_notify_available", return_value=True),
+        patch("samwhispers.notify.notify"),
+        caplog.at_level(logging.WARNING),
+    ):
+        app._startup_checks()
+    assert "approaching token limit" in caplog.text

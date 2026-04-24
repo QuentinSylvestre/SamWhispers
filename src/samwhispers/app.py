@@ -12,13 +12,27 @@ from typing import Any
 
 from samwhispers.audio import AudioRecorder, min_wav_size
 from samwhispers.cleanup import CleanupProvider
-from samwhispers.config import AppConfig
+from samwhispers.config import AppConfig, LANGUAGE_NAMES
 from samwhispers.exceptions import ShutdownRequested
 from samwhispers.postprocess import TextPostprocessor
 from samwhispers.server import WhisperServerManager
 from samwhispers.transcribe import WhisperClient
 
 log = logging.getLogger("samwhispers")
+
+_ACCENT_PROMPT_TEMPLATE = "The speaker has a {accent_name} accent."
+
+
+def _dedup_words(words: list[str]) -> list[str]:
+    """Deduplicate words case-insensitively while preserving order."""
+    seen: set[str] = set()
+    unique: list[str] = []
+    for w in words:
+        wl = w.lower()
+        if wl not in seen:
+            seen.add(wl)
+            unique.append(w)
+    return unique
 
 
 class State(enum.Enum):
@@ -62,22 +76,14 @@ class SamWhispers:
                 for lang_words in BUILTIN_FILLERS.values():
                     words.extend(lang_words)
             if words:
-                # Deduplicate while preserving order
-                seen: set[str] = set()
-                unique: list[str] = []
-                for w in words:
-                    wl = w.lower()
-                    if wl not in seen:
-                        seen.add(wl)
-                        unique.append(w)
-                filler_words = unique
+                filler_words = _dedup_words(words)
 
         self.postprocessor = TextPostprocessor(
             config.postprocess,
             filler_words=filler_words,
         )
 
-        self.whisper.prompt = self._build_vocab_prompt()
+        self.whisper.prompt = self._build_prompt()
 
         self._server_manager: WhisperServerManager | None = None
         if config.whisper.managed:
@@ -121,29 +127,35 @@ class SamWhispers:
                 on_language_cycle=lang_cb,
             )
 
-    def _build_vocab_prompt(self) -> str:
-        """Build initial_prompt string from vocabulary config and current language."""
+    def _build_prompt(self) -> str:
+        """Build initial_prompt from vocabulary + accent config and current language."""
+        parts: list[str] = []
+
+        # --- Vocabulary portion ---
         words = list(self.config.vocabulary.words)
         lang = self.whisper.language
         if lang != "auto" and lang in self.config.vocabulary.languages:
             words.extend(self.config.vocabulary.languages[lang])
-        if not words:
-            return ""
-        # Deduplicate while preserving order
-        seen: set[str] = set()
-        unique: list[str] = []
-        for w in words:
-            wl = w.lower()
-            if wl not in seen:
-                seen.add(wl)
-                unique.append(w)
-        if len(unique) > 100:
-            log.warning(
-                "Vocabulary has %d words; initial_prompt token limit is ~150-200 words. "
-                "Consider trimming the list.",
-                len(unique),
-            )
-        return ", ".join(unique)
+        if words:
+            unique = _dedup_words(words)
+            if len(unique) > 100:
+                log.warning(
+                    "Vocabulary has %d words; initial_prompt token limit is ~150-200 words. "
+                    "Consider trimming the list.",
+                    len(unique),
+                )
+            parts.append(", ".join(unique))
+
+        # --- Accent portion ---
+        accent = self.config.whisper.accent
+        if accent and lang != accent:
+            if self.config.whisper.accent_prompt.strip():
+                parts.append(self.config.whisper.accent_prompt.strip())
+            else:
+                accent_name = LANGUAGE_NAMES.get(accent, accent)
+                parts.append(_ACCENT_PROMPT_TEMPLATE.format(accent_name=accent_name))
+
+        return " ".join(parts)
 
     def run(self) -> None:
         """Start daemon: checks, worker thread, hotkey listener, block until shutdown."""
@@ -182,7 +194,7 @@ class SamWhispers:
         self._lang_index = (self._lang_index + 1) % len(self._languages)
         lang = self._languages[self._lang_index]
         self.whisper.language = lang
-        self.whisper.prompt = self._build_vocab_prompt()
+        self.whisper.prompt = self._build_prompt()
         label = "Auto-detect" if lang == "auto" else lang
         log.info("Language switched to: %s", label)
         from samwhispers.notify import notify
@@ -356,11 +368,54 @@ class SamWhispers:
                 sum(len(v) for v in self.config.vocabulary.languages.values()),
             )
 
+        # Accent logging
+        if self.config.whisper.accent:
+            accent_name = LANGUAGE_NAMES.get(self.config.whisper.accent, self.config.whisper.accent)
+            if self.config.whisper.accent_prompt:
+                log.info("Accent bias: %s (custom prompt)", accent_name)
+            else:
+                log.info("Accent bias: %s (generic prompt)", accent_name)
+
+        # Validate combined prompt token budget
+        prompt = self._build_prompt()
+        if prompt:
+            # whisper.cpp initial_prompt limit: whisper_n_text_ctx()/2 ~ 224 tokens
+            # Heuristic: ~4 chars per BPE token for English text
+            estimated_tokens = len(prompt) / 4
+            if estimated_tokens > 224:
+                log.error(
+                    "Combined prompt is too long (~%d tokens, limit ~224). "
+                    "Reduce vocabulary list or accent_prompt. Prompt: %.100s...",
+                    int(estimated_tokens),
+                    prompt,
+                )
+                raise SystemExit(1)
+            elif estimated_tokens > 180:
+                log.warning(
+                    "Combined prompt is approaching token limit (~%d/224 tokens). "
+                    "Consider reducing vocabulary list or accent_prompt.",
+                    int(estimated_tokens),
+                )
+            log.info(
+                "Prompt (%d chars, ~%d tokens): %s",
+                len(prompt),
+                int(estimated_tokens),
+                prompt,
+            )
+
         # Filler logging
         if self.config.filler.enabled:
             filler_count = len(self.config.filler.words)
-            builtin_label = "built-in + " if self.config.filler.use_builtins else ""
-            log.info("Filler removal: enabled (%s%d custom words)", builtin_label, filler_count)
+            if self.config.filler.use_builtins and filler_count:
+                log.info(
+                    "Filler removal: enabled (built-in defaults + %d custom words)", filler_count
+                )
+            elif self.config.filler.use_builtins:
+                log.info("Filler removal: enabled (built-in defaults)")
+            elif filler_count:
+                log.info("Filler removal: enabled (%d custom words)", filler_count)
+            else:
+                log.info("Filler removal: enabled (no words configured)")
         else:
             log.info("Filler removal: disabled")
 

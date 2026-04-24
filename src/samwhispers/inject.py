@@ -29,7 +29,7 @@ class TextInjector:
             return
 
         import pyperclip  # type: ignore[import-untyped]
-        from pynput.keyboard import Controller, Key
+        from pynput.keyboard import Key
 
         self._ensure_keyboard()
         pyperclip.copy(text)

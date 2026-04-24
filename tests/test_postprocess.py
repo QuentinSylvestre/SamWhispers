@@ -230,15 +230,20 @@ def test_filler_removal_preserves_real_words() -> None:
     assert pp.normalize("ben the benefit is clear") == "the benefit is clear"
 
 
-def test_filler_removal_preserves_err() -> None:
-    """'er' is a filler but 'err' (standalone word) should be preserved."""
+def test_filler_er_elongation_tradeoff() -> None:
+    """'er' filler catches 'err' (elongated variant) -- known trade-off.
+
+    The elongation pattern e+r+ matches both "er" and "err". Standalone "err"
+    (as in "to err is human") is removed. This is accepted because "er" as a
+    filler is far more common in dictation than "err" as a word. Users who need
+    "err" can disable builtins and define their own filler list.
+    """
     pp = _make_with_filler(["er"])
     # "er" standalone is removed
     assert pp.normalize("er I think so") == "I think so"
-    # "err" is a real word ("to err is human") -- not matched because
-    # the pattern e+r+ matches "err" too. This is a known trade-off:
-    # the elongation pattern treats "err" as an elongated "er".
-    # However, "error" should NOT be matched (partial word).
+    # "err" standalone is also removed (known trade-off: elongated variant)
+    assert pp.normalize("to err is human") == "to is human"
+    # "error" is NOT matched (word boundary prevents partial match)
     assert pp.normalize("an error occurred") == "an error occurred"
 
 

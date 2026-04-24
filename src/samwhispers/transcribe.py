@@ -80,8 +80,8 @@ class WhisperClient:
                         continue
                     raise last_exc
                 resp.raise_for_status()
-                data = resp.json()
-                return str(data.get("text", "")).strip()
+                result = resp.json()
+                return str(result.get("text", "")).strip()
             except _RETRYABLE as exc:
                 last_exc = exc
                 if attempt < retries:

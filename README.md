@@ -285,13 +285,49 @@ words = ["Bluetooth Low Energy"]
 words = ["Bluetooth basse consommation"]
 ```
 
-When the active language is `en`, Whisper receives: `RSSI, BLE, Bluetooth Low Energy`. When set to `fr`: `RSSI, BLE, Bluetooth basse consommation`. In `auto` mode, only the global words are sent (the language is unknown until after transcription).
+When the active language is `en`, Whisper receives: `RSSI, BLE, Bluetooth Low Energy`. When set to `fr`: `RSSI, BLE, Bluetooth basse consommation`.
+
+**Note**: In `auto` mode, only the global words are sent because the language is unknown until after transcription. If you primarily use auto-detect, put your most important terms in the global `words` list rather than per-language sections.
 
 ### Tips
 
 - Keep the list short. The `initial_prompt` token limit is roughly 150-200 words total (global + per-language combined). A warning is logged if you exceed 100 words.
 - Use broadly applicable terms. Domain-specific jargon for a single conversation may cause mild misrecognition in unrelated contexts.
 - Duplicates are automatically removed (case-insensitive).
+
+## Accent Bias
+
+If you speak with a non-native accent (e.g., French-accented English), you can
+bias Whisper's decoder to improve recognition accuracy:
+
+```toml
+[whisper]
+accent = "fr"    # Your native language code
+```
+
+This adds a conditioning prompt to Whisper's decoder. When you cycle to a
+language that matches your accent (e.g., switching to French), the accent
+prompt is automatically suppressed since it's not needed.
+
+For custom control, override the generated prompt:
+
+```toml
+[whisper]
+accent = "fr"
+accent_prompt = "The speaker is a native French speaker with a strong accent."
+```
+
+Note: Accent biasing conditions the text decoder, not the acoustic model.
+It helps with ambiguous words but cannot fix purely acoustic misrecognitions.
+For best results, combine with a larger model (medium or large).
+
+The accent prompt is combined with your vocabulary list into a single prompt.
+If you use both features, keep the total short to stay within Whisper's ~224
+token limit.
+
+When using auto-detect (`languages = ["auto"]`), the accent prompt is always
+active because the detected language is not known at prompt time. For best
+results with accent biasing, use explicit language codes.
 
 ## Filler Word Removal
 
@@ -309,6 +345,8 @@ Only unambiguous interjections are included. Borderline fillers like "like" or "
 ### Elongated Variants
 
 Filler removal automatically catches elongated variants. For example, `euh` also matches `euuuuuh`, and `hmm` matches `hmmmmmm`. You do not need to list every possible spelling.
+
+Note: very short real words that look like elongated fillers may occasionally be caught. For example, `er` (a built-in filler) also matches `err` as in "to err is human." If this is a problem for your use case, disable builtins and define your own filler list.
 
 ### Custom Filler Words
 
