@@ -125,13 +125,26 @@ def test_filler_removal_elongated() -> None:
 
 def test_filler_removal_with_comma() -> None:
     pp = _make_with_filler(["euh"])
-    assert pp.normalize("I went to the, euh, store") == "I went to the store"
+    # Double commas around filler collapse to single comma; collapse_spaces cleans up
+    assert pp.normalize("I went to the, euh, store") == "I went to the, store"
 
 
 def test_filler_removal_comma_before_period() -> None:
     """Comma before sentence-end punctuation is cleaned after filler removal."""
     pp = _make_with_filler(["euh"])
     assert pp.normalize("okay, euh.") == "okay."
+
+
+def test_filler_removal_leading_comma() -> None:
+    """Filler at start of text with comma doesn't leave orphaned comma."""
+    pp = _make_with_filler(["euh"])
+    assert pp.normalize("Euh, I think so") == "I think so"
+
+
+def test_filler_removal_preserves_structural_comma() -> None:
+    """Comma between non-filler words is preserved when filler sits between them."""
+    pp = _make_with_filler(["um"])
+    assert pp.normalize("Hello, um, yes.") == "Hello, yes."
 
 
 def test_filler_removal_start_of_text() -> None:

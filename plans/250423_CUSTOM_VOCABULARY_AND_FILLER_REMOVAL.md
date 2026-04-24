@@ -1,7 +1,7 @@
 # Custom Vocabulary Support & Filler Word Removal
 
 > **Date**: 2025-04-23
-> **Status**: In Progress  <!-- Status lifecycle: Exploring → Draft → In Progress → Complete -->
+> **Status**: Complete  <!-- Status lifecycle: Exploring → Draft → In Progress → Complete -->
 > **Scope**: Add whisper initial_prompt vocabulary biasing and regex-based filler word removal to the transcription pipeline
 > **Estimated effort**: 1-2 days
 
@@ -664,3 +664,38 @@ Implementation health: Green (after auto-fix cycle).
 | 5 | Implementability | `data` variable shadowed in `_post_with_retry` | Low | 100% | Noted -- pre-existing, out of scope |
 | 6 | Implementability | No test for >100 words vocabulary warning | Low | 95% | Noted -- simple code path, low regression risk |
 | 7 | Implementability | `config.toml` missing vocabulary/filler sections | Low | 100% | Noted -- Phase 3 scope |
+
+### 2025-04-23 -- Implementation Review (after Phase 2, persona: Maintainability reviewer)
+
+Implementation health: Green.
+7 findings (2 Medium, 5 Low). 0 auto-resolved (all noted or deferred).
+
+| # | Persona | Finding | Severity | Confidence | Resolution |
+|---|---|---|---|---|---|
+| 1 | Maintainability | Punctuation cleanup diverges from plan (2 rules vs. 4) | Medium | 75% | Noted -- documented in Section 9 divergences |
+| 2 | Maintainability | No test for comma-before-sentence-end-punct cleanup | Medium | 95% | Resolved -- added test_filler_removal_comma_before_period |
+| 3 | Maintainability | `"er"` filler matches standalone `"err"` -- test name misleading | Low | 95% | Noted -- known trade-off, documented in test comments |
+| 4 | Maintainability | Filler word list assembly is 15-line inline block | Low | 85% | Noted -- follow-up extraction opportunity |
+| 5 | Maintainability | Deduplication logic duplicated in two places | Low | 90% | Noted -- follow-up extraction opportunity |
+| 6 | Maintainability | Both disabled paths tested (empty list and None) | Info | 100% | No action needed |
+| 7 | Maintainability | No integration test for builtin filler merging in app.py | Low | 80% | Noted -- follow-up |
+
+### 2025-04-23 -- Post-Implementation Review
+
+Overall implementation health: Green.
+Personas: Implementability reviewer, End-user advocate.
+9 findings (2 Medium, 7 Low). 2 auto-resolved.
+
+| # | Persona | Finding | Severity | Confidence | Resolution |
+|---|---|---|---|---|---|
+| 1 | End-user | Leading comma when filler starts text with comma | Medium | 100% | Resolved -- added leading comma cleanup rule and test |
+| 2 | End-user | Double-comma rule too aggressive, loses structural commas | Medium | 100% | Resolved -- changed to collapse to single comma instead of removing entirely; preserves structural commas |
+| 3 | Implementability | No app-level test for filler word list building | Medium | 90% | Noted -- low risk, follow-up |
+| 4 | Implementability | Duplicated deduplication logic | Low | 95% | Noted -- follow-up extraction |
+| 5 | Implementability | `data` variable shadowed in transcribe.py | Low | 100% | Noted -- pre-existing |
+| 6 | Implementability | No test for >100 words vocabulary warning | Low | 95% | Noted -- low regression risk |
+| 7 | End-user | README auto mode behavior could be more prominent | Low | 85% | Noted -- minor polish |
+| 8 | End-user | Startup log "built-in + 0 custom words" reads oddly | Low | 75% | Noted -- minor polish |
+| 9 | End-user | `"er"` matches `"err"` trade-off not in user docs | Low | 95% | Noted -- acceptable trade-off |
+
+REVISIT markers outstanding: 0.

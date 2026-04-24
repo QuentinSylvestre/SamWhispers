@@ -54,8 +54,8 @@ class FillerRemover:
         text = self._pattern.sub("", text)
 
         # Clean orphaned punctuation left by filler removal.
-        # ", <filler>, " leaves ", , " -- collapse to single space.
-        text = re.sub(r",\s*,", "", text)  # remove double commas entirely
+        text = re.sub(r"^\s*,\s*", "", text)  # leading comma (filler at start of text)
+        text = re.sub(r",\s*,", ",", text)  # double commas → single comma
         text = re.sub(r",\s+([.!?])", r"\1", text)  # comma before sentence-end punct
         # Note: double-space collapse is handled by normalize()'s collapse_spaces step
 
