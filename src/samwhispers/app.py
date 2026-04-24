@@ -283,8 +283,7 @@ class SamWhispers:
             log.info("Whisper server: OK")
         else:
             log.error(
-                "Whisper server at %s is not reachable. "
-                "Start the server and try again.",
+                "Whisper server at %s is not reachable. Start the server and try again.",
                 self.config.whisper.server_url,
             )
             raise SystemExit(1)
@@ -337,9 +336,7 @@ class SamWhispers:
         if self.config.filler.enabled:
             filler_count = len(self.config.filler.words)
             builtin_label = "built-in + " if self.config.filler.use_builtins else ""
-            log.info(
-                "Filler removal: enabled (%s%d custom words)", builtin_label, filler_count
-            )
+            log.info("Filler removal: enabled (%s%d custom words)", builtin_label, filler_count)
         else:
             log.info("Filler removal: disabled")
 

@@ -94,7 +94,7 @@ def test_cleanup_with_key_no_warning(tmp_path: Path) -> None:
     cfg.write_text(
         '[cleanup]\nenabled = true\nprovider = "openai"\n'
         '[cleanup.openai]\napi_key = "sk-test"\n'
-        '[whisper]\nmanaged = false\n'
+        "[whisper]\nmanaged = false\n"
     )
     with warnings.catch_warnings(record=True) as w:
         warnings.simplefilter("always")
@@ -184,7 +184,7 @@ def test_managed_missing_binary_raises(tmp_path: Path) -> None:
     cfg = tmp_path / "config.toml"
     # Use explicit non-existent paths with forward slashes (TOML-safe)
     cfg.write_text(
-        '[whisper]\nmanaged = true\n'
+        "[whisper]\nmanaged = true\n"
         'server_bin = "/nonexistent/whisper-server"\n'
         'model_path = "/nonexistent/model.bin"\n'
     )
@@ -204,8 +204,7 @@ def test_managed_missing_model_raises(tmp_path: Path) -> None:
     bin_str = str(bin_path).replace("\\", "/")
     model_str = str(model_path).replace("\\", "/")
     cfg.write_text(
-        f'[whisper]\nmanaged = true\nserver_bin = "{bin_str}"\n'
-        f'model_path = "{model_str}"\n'
+        f'[whisper]\nmanaged = true\nserver_bin = "{bin_str}"\nmodel_path = "{model_str}"\n'
     )
     with pytest.raises(ValueError, match="whisper.model_path not found"):
         load_config(cfg)
@@ -233,9 +232,7 @@ def test_managed_nonexecutable_binary_raises(tmp_path: Path) -> None:
     bin_path = tmp_path / "whisper-server"
     bin_path.write_bytes(b"fake")
     bin_path.chmod(0o644)  # not executable
-    cfg.write_text(
-        f'[whisper]\nmanaged = true\nserver_bin = "{bin_path}"\n'
-    )
+    cfg.write_text(f'[whisper]\nmanaged = true\nserver_bin = "{bin_path}"\n')
     with pytest.raises(ValueError, match="not executable"):
         load_config(cfg)
 
@@ -278,10 +275,7 @@ def test_invalid_trailing_raises(tmp_path: Path) -> None:
 def test_vocabulary_global_words(tmp_path: Path) -> None:
     """Load config with global vocabulary words."""
     cfg = tmp_path / "config.toml"
-    cfg.write_text(
-        '[whisper]\nmanaged = false\n'
-        '[vocabulary]\nwords = ["RSSI", "pynput"]\n'
-    )
+    cfg.write_text('[whisper]\nmanaged = false\n[vocabulary]\nwords = ["RSSI", "pynput"]\n')
     config = load_config(cfg)
     assert config.vocabulary.words == ["RSSI", "pynput"]
 
@@ -290,7 +284,7 @@ def test_vocabulary_per_language(tmp_path: Path) -> None:
     """Load config with per-language vocabulary words."""
     cfg = tmp_path / "config.toml"
     cfg.write_text(
-        '[whisper]\nmanaged = false\n'
+        "[whisper]\nmanaged = false\n"
         '[vocabulary]\nwords = ["RSSI"]\n'
         '[vocabulary.fr]\nwords = ["BLE"]\n'
     )
@@ -302,10 +296,7 @@ def test_vocabulary_per_language(tmp_path: Path) -> None:
 def test_vocabulary_invalid_language(tmp_path: Path) -> None:
     """Invalid vocabulary language code raises ValueError."""
     cfg = tmp_path / "config.toml"
-    cfg.write_text(
-        '[whisper]\nmanaged = false\n'
-        '[vocabulary.zzzz]\nwords = ["test"]\n'
-    )
+    cfg.write_text('[whisper]\nmanaged = false\n[vocabulary.zzzz]\nwords = ["test"]\n')
     with pytest.raises(ValueError, match="Invalid vocabulary language"):
         load_config(cfg)
 
@@ -313,10 +304,7 @@ def test_vocabulary_invalid_language(tmp_path: Path) -> None:
 def test_vocabulary_auto_language_rejected(tmp_path: Path) -> None:
     """Vocabulary language 'auto' is rejected."""
     cfg = tmp_path / "config.toml"
-    cfg.write_text(
-        '[whisper]\nmanaged = false\n'
-        '[vocabulary.auto]\nwords = ["test"]\n'
-    )
+    cfg.write_text('[whisper]\nmanaged = false\n[vocabulary.auto]\nwords = ["test"]\n')
     with pytest.raises(ValueError, match="Invalid vocabulary language"):
         load_config(cfg)
 
@@ -324,7 +312,7 @@ def test_vocabulary_auto_language_rejected(tmp_path: Path) -> None:
 def test_vocabulary_empty_default(tmp_path: Path) -> None:
     """No vocabulary section gives empty defaults."""
     cfg = tmp_path / "config.toml"
-    cfg.write_text('[whisper]\nmanaged = false\n')
+    cfg.write_text("[whisper]\nmanaged = false\n")
     config = load_config(cfg)
     assert config.vocabulary.words == []
     assert config.vocabulary.languages == {}
@@ -333,10 +321,7 @@ def test_vocabulary_empty_default(tmp_path: Path) -> None:
 def test_vocabulary_merged_with_defaults(tmp_path: Path) -> None:
     """Partial vocabulary config merges correctly with defaults."""
     cfg = tmp_path / "config.toml"
-    cfg.write_text(
-        '[whisper]\nmanaged = false\n'
-        '[vocabulary]\nwords = ["RSSI"]\n'
-    )
+    cfg.write_text('[whisper]\nmanaged = false\n[vocabulary]\nwords = ["RSSI"]\n')
     config = load_config(cfg)
     assert config.vocabulary.words == ["RSSI"]
     assert config.vocabulary.languages == {}

@@ -87,9 +87,7 @@ class WhisperServerManager:
         cmd = self._build_cmd()
         log.info("Starting whisper-server: %s", " ".join(cmd))
         with self._lock:
-            self._proc = subprocess.Popen(
-                cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-            )
+            self._proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     def _wait_ready(self) -> None:
         client = WhisperClient(server_url=self._config.server_url)
@@ -135,8 +133,7 @@ class WhisperServerManager:
                     )
                     return
                 log.error(
-                    "whisper-server crashed (exit code %d), restarting "
-                    "(attempt %d/%d)...",
+                    "whisper-server crashed (exit code %d), restarting (attempt %d/%d)...",
                     proc.returncode,
                     restart_count,
                     _MAX_RESTARTS,

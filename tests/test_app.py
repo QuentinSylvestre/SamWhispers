@@ -387,6 +387,5 @@ def test_vocab_prompt_updates_on_language_cycle() -> None:
 
     with patch("samwhispers.notify.notify"):
         app._cycle_language()
-        # After cycling to "fr", prompt should include both
-        app.whisper.language = "fr"
-        assert app._build_vocab_prompt() == "RSSI, BLE"
+        # _cycle_language() should have assigned the prompt to whisper
+        assert app.whisper.prompt == "RSSI, BLE"

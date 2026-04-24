@@ -262,8 +262,7 @@ def _validate(config: AppConfig) -> None:
     parsed_url = urlparse(config.whisper.server_url)
     if parsed_url.scheme not in ("http", "https"):
         raise ValueError(
-            f"Invalid whisper.server_url scheme {parsed_url.scheme!r}, "
-            "must be 'http' or 'https'"
+            f"Invalid whisper.server_url scheme {parsed_url.scheme!r}, must be 'http' or 'https'"
         )
     try:
         port = parsed_url.port
@@ -273,10 +272,7 @@ def _validate(config: AppConfig) -> None:
             "must be between 1 and 65535"
         ) from None
     if port is not None and not (1 <= port <= 65535):
-        raise ValueError(
-            f"Invalid whisper.server_url port {port}, "
-            "must be between 1 and 65535"
-        )
+        raise ValueError(f"Invalid whisper.server_url port {port}, must be between 1 and 65535")
 
     if config.whisper.managed:
         from samwhispers.server import _resolve_server_bin
