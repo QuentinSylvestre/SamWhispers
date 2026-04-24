@@ -1,7 +1,7 @@
 # Custom Vocabulary Support & Filler Word Removal
 
 > **Date**: 2025-04-23
-> **Status**: Draft  <!-- Status lifecycle: Exploring → Draft → In Progress → Complete -->
+> **Status**: In Progress  <!-- Status lifecycle: Exploring → Draft → In Progress → Complete -->
 > **Scope**: Add whisper initial_prompt vocabulary biasing and regex-based filler word removal to the transcription pipeline
 > **Estimated effort**: 1-2 days
 
@@ -305,6 +305,10 @@ else:
 - [x] Prompt updates when language is cycled
 - [x] All new tests pass
 - [x] `make check` passes (lint + typecheck + tests)
+
+**Implementation (2025-04-23, code: 2faa2c1, fix: befc3f1)**
+
+Implemented Phase 1 (vocabulary config and prompt delivery) across four source files and three test files. Added `VocabularyConfig` and `FillerConfig` dataclasses to `config.py` along with the `BUILTIN_FILLERS` constant, updated `AppConfig` with `vocabulary` and `filler` fields, added manual TOML parsing for the `[vocabulary]` section (separating `words` from language sub-table keys) and explicit field extraction for `[filler]`, and added vocabulary language code validation in `_validate()`. In `transcribe.py`, added a `_prompt` attribute with property/setter and updated `_post_with_retry()` to conditionally include `prompt` in the POST form data. In `app.py`, added `_build_vocab_prompt()` with case-insensitive deduplication and token limit warning, wired it in `__init__()` and `_cycle_language()`, and added vocabulary/filler logging in `_startup_checks()`. Added 6 config tests, 3 transcribe tests, and 6 app tests covering global words, per-language merging, auto-language behavior, deduplication, prompt delivery, and language cycle prompt rebuilding.
 
 ### Phase 2: Filler word removal
 
@@ -636,3 +640,18 @@ make check   # lint + typecheck + tests
 | 14 | Coupling: `TextPostprocessor` imports `FillerConfig` + `BUILTIN_FILLERS` | Medium | Resolved -- postprocessor now accepts `list[str]`; config resolution moved to `app.py` |
 
 Reviewed by: Implementability reviewer (confidence: 78%), Maintainability reviewer (confidence: 82%). All findings auto-resolved.
+
+### 2025-04-23 -- Implementation Review (after Phase 1, persona: Implementability reviewer)
+
+Implementation health: Green (after auto-fix cycle).
+7 findings (1 High, 2 Medium, 4 Low). 2 auto-resolved, 5 noted.
+
+| # | Persona | Finding | Severity | Confidence | Resolution |
+|---|---|---|---|---|---|
+| 1 | Implementability | `ruff format` fails on 5 Phase 1 modified files | High | 100% | Resolved -- ran `ruff format` in fix commit befc3f1 |
+| 2 | Implementability | Pre-existing `ruff check` F401 in inject.py | Medium | 100% | Noted -- pre-existing, out of scope for Phase 1 |
+| 3 | Implementability | `test_vocab_prompt_updates_on_language_cycle` doesn't verify wiring to `whisper.prompt` | Medium | 90% | Resolved -- fixed in befc3f1 to assert `app.whisper.prompt` after `_cycle_language()` |
+| 4 | Implementability | `FillerConfig` + `BUILTIN_FILLERS` added but not consumed until Phase 2 | Low | 95% | Noted -- deliberate front-loading per plan |
+| 5 | Implementability | `data` variable shadowed in `_post_with_retry` | Low | 100% | Noted -- pre-existing, out of scope |
+| 6 | Implementability | No test for >100 words vocabulary warning | Low | 95% | Noted -- simple code path, low regression risk |
+| 7 | Implementability | `config.toml` missing vocabulary/filler sections | Low | 100% | Noted -- Phase 3 scope |
