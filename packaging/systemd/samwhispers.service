@@ -1,0 +1,20 @@
+[Unit]
+Description=SamWhispers voice-to-text (tray + worker)
+# Start once the graphical session is up so DISPLAY, audio, and the
+# clipboard are available to the worker.
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+# Adjust this path to wherever `samwhispers-supervisor` was installed:
+#   pipx / pip --user -> %h/.local/bin/samwhispers-supervisor
+#   a virtualenv      -> /path/to/.venv/bin/samwhispers-supervisor
+ExecStart=%h/.local/bin/samwhispers-supervisor
+Restart=on-failure
+RestartSec=5
+
+[Install]
+# Use graphical-session.target if your desktop reaches it; otherwise
+# `default.target` is a reliable fallback for "start on login".
+WantedBy=graphical-session.target

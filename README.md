@@ -247,6 +247,22 @@ Once running, open any text editor or input field, hold the hotkey, speak, and r
 
 Stop with `Ctrl+C` or `SIGTERM`.
 
+### Run in the background with a tray icon
+
+To run SamWhispers in the background with a system tray icon (and start it
+automatically on login), use the supervisor instead of running the worker
+directly:
+
+```bash
+samwhispers-supervisor            # tray icon + managed worker
+samwhispers-supervisor --no-tray  # headless (no display)
+```
+
+The tray icon shows status (running / paused / stopped) and offers
+Pause/Resume, Restart, and Quit. See [docs/STARTUP.md](docs/STARTUP.md) for
+start-on-login setup (systemd user service on Linux, launchd on macOS, Task
+Scheduler on Windows).
+
 ## AI Cleanup Setup
 
 AI cleanup is optional and disabled by default. When enabled, transcribed text is sent to an AI model to fix grammar, punctuation, and capitalization before pasting.
