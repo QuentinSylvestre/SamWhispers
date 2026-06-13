@@ -14,6 +14,8 @@ log = logging.getLogger("samwhispers")
 
 _VALID_MODES = ("hold", "toggle")
 _VALID_PROVIDERS = ("openai", "anthropic")
+_VALID_STREAM_ENGINES = ("chunked", "faster_whisper")
+_VALID_STREAM_MODES = ("preview", "progressive")
 
 # ISO 639-1 codes supported by whisper.cpp, plus "auto" for auto-detection
 WHISPER_LANGUAGES = {
@@ -338,6 +340,21 @@ class OverlayConfig:
 
 
 @dataclass
+class StreamingConfig:
+    # Continuous (streaming) transcription instead of batch-at-the-end.
+    #   engine:      "chunked" (re-decode via whisper.cpp) | "faster_whisper"
+    #   output_mode: "preview" (A: live preview, inject final paragraph) |
+    #                "progressive" (B: inject stable words as they commit)
+    enabled: bool = False
+    engine: str = "chunked"
+    output_mode: str = "preview"
+    interval_seconds: float = 0.8  # how often to re-decode while speaking
+    window_seconds: float = 0.0  # max recent audio to decode (0 = whole buffer)
+    model: str = "base"  # faster-whisper model name or path
+    compute_type: str = "int8"  # faster-whisper compute type
+
+
+@dataclass
 class AppConfig:
     hotkey: HotkeyConfig = field(default_factory=HotkeyConfig)
     whisper: WhisperConfig = field(default_factory=WhisperConfig)
@@ -350,6 +367,7 @@ class AppConfig:
     history: HistoryConfig = field(default_factory=HistoryConfig)
     translation: TranslationConfig = field(default_factory=TranslationConfig)
     overlay: OverlayConfig = field(default_factory=OverlayConfig)
+    streaming: StreamingConfig = field(default_factory=StreamingConfig)
 
 
 def find_config() -> Path | None:
@@ -453,6 +471,31 @@ def _validate(config: AppConfig) -> None:
         raise ValueError(
             f"Invalid history.max_entries {config.history.max_entries}, must be >= 0 (0 = unlimited)"
         )
+
+    if config.streaming.engine not in _VALID_STREAM_ENGINES:
+        raise ValueError(
+            f"Invalid streaming.engine {config.streaming.engine!r}, "
+            f"must be one of {_VALID_STREAM_ENGINES}"
+        )
+    if config.streaming.output_mode not in _VALID_STREAM_MODES:
+        raise ValueError(
+            f"Invalid streaming.output_mode {config.streaming.output_mode!r}, "
+            f"must be one of {_VALID_STREAM_MODES}"
+        )
+    if config.streaming.interval_seconds <= 0:
+        raise ValueError("streaming.interval_seconds must be > 0")
+    if config.streaming.window_seconds < 0:
+        raise ValueError("streaming.window_seconds must be >= 0 (0 = whole buffer)")
+    if config.streaming.enabled and config.streaming.engine == "faster_whisper":
+        import importlib.util
+
+        if importlib.util.find_spec("faster_whisper") is None:
+            warnings.warn(
+                "streaming.engine is 'faster_whisper' but the package is not installed. "
+                "Install it with: pip install samwhispers[faster-whisper]",
+                UserWarning,
+                stacklevel=3,
+            )
 
     if config.translation.target_language not in WHISPER_LANGUAGES or (
         config.translation.target_language == "auto"
@@ -586,6 +629,7 @@ def build_config(raw: dict[str, Any], validate: bool = True) -> AppConfig:
         history=HistoryConfig(**d.get("history", {})),
         translation=TranslationConfig(**d.get("translation", {})),
         overlay=OverlayConfig(**d.get("overlay", {})),
+        streaming=StreamingConfig(**d.get("streaming", {})),
     )
     if validate:
         _validate(config)

@@ -79,6 +79,7 @@ class OverlayController:
         self._lock = threading.Lock()
         self._state = "idle"
         self._level = 0.0
+        self._text = ""
         self._stop = threading.Event()
         self._wake = threading.Event()
         self._thread: threading.Thread | None = None
@@ -107,11 +108,18 @@ class OverlayController:
             self._state = state
             if state == "idle":
                 self._level = 0.0
+                self._text = ""
         self._wake.set()
 
     def set_level(self, level: float) -> None:
         with self._lock:
             self._level = level
+
+    def set_preview(self, text: str) -> None:
+        """Set the live preview text shown in the overlay (output mode A)."""
+        with self._lock:
+            self._text = text
+        self._wake.set()
 
     def _sender(self) -> None:
         idle_sent = False
@@ -120,16 +128,16 @@ class OverlayController:
             if proc is None or proc.poll() is not None:
                 return
             with self._lock:
-                state, level = self._state, self._level
+                state, level, text = self._state, self._level, self._text
             if state == "idle":
-                if not idle_sent and not self._write({"state": "idle", "level": 0.0}):
+                if not idle_sent and not self._write({"state": "idle", "level": 0.0, "text": ""}):
                     return
                 idle_sent = True
                 self._wake.wait(0.2)
                 self._wake.clear()
                 continue
             idle_sent = False
-            if not self._write({"state": state, "level": round(level, 3)}):
+            if not self._write({"state": state, "level": round(level, 3), "text": text}):
                 return
             time.sleep(1.0 / _FPS)
 
@@ -171,8 +179,6 @@ class OverlayApp:
     """The Tk window: animated bars (recording) or spinner (transcribing)."""
 
     def __init__(self, root: tk.Tk) -> None:
-        import tkinter as tk
-
         self.root = root
         self._lock = threading.Lock()
         self._state = "idle"
@@ -189,23 +195,46 @@ class OverlayApp:
         except Exception:
             pass
 
-        sw, sh = root.winfo_screenwidth(), root.winfo_screenheight()
-        x, y = bottom_center_geometry(sw, sh)
-        root.geometry(f"{_W}x{_H}+{x}+{y}")
+        self._text = ""
+        self._sw = root.winfo_screenwidth()
+        self._sh = root.winfo_screenheight()
 
-        bg = _TRANSPARENT_KEY if sys.platform == "win32" else _PILL
+        self._bg = _TRANSPARENT_KEY if sys.platform == "win32" else _PILL
         if sys.platform == "win32":
             try:
                 root.attributes("-transparentcolor", _TRANSPARENT_KEY)
             except Exception:
-                bg = _PILL
-        root.configure(bg=bg)
+                self._bg = _PILL
+        root.configure(bg=self._bg)
 
-        self.canvas: Any = tk.Canvas(root, width=_W, height=_H, bg=bg, highlightthickness=0)
+        self._wide = False
+        self.canvas: Any = None
+        self._bars: list[tuple[int, int]] = []
+        self._arc = 0
+        self._text_item = 0
+        self._cy = _H // 2
+        self._build_canvas(_W, _H)
+
+        root.withdraw()
+        reader = threading.Thread(target=self._read_stdin, daemon=True, name="overlay-reader")
+        reader.start()
+        self._tick()
+
+    def _build_canvas(self, w: int, h: int) -> None:
+        """(Re)create the canvas and its items for the given window size."""
+        import tkinter as tk
+
+        x, y = bottom_center_geometry(self._sw, self._sh, w, h)
+        self.root.geometry(f"{w}x{h}+{x}+{y}")
+        if self.canvas is not None:
+            self.canvas.destroy()
+        self.canvas = tk.Canvas(self.root, width=w, height=h, bg=self._bg, highlightthickness=0)
         self.canvas.pack()
-        self._draw_pill(bg != _PILL)
+        self._draw_pill(w, h, self._bg != _PILL)
 
-        cx, cy = _W // 2, _H // 2
+        cx = w // 2
+        cy = 16 if self._wide else h // 2  # leave room for the text line when wide
+        self._cy = cy
         group_w = _N_BARS * _BAR_W + (_N_BARS - 1) * _BAR_GAP
         x0 = cx - group_w // 2
         self._bars = []
@@ -227,19 +256,23 @@ class OverlayApp:
             width=3,
             state="hidden",
         )
+        self._text_item = self.canvas.create_text(
+            w // 2,
+            h - 16,
+            text="",
+            fill="#e6e9ef",
+            width=w - 24,
+            font=("TkDefaultFont", 10),
+            justify="center",
+        )
 
-        root.withdraw()
-        reader = threading.Thread(target=self._read_stdin, daemon=True, name="overlay-reader")
-        reader.start()
-        self._tick()
-
-    def _draw_pill(self, rounded: bool) -> None:
+    def _draw_pill(self, w: int, h: int, rounded: bool) -> None:
         """Draw the glass background. Rounded corners only where keyed-out (Windows)."""
         if rounded:
-            r = _H // 2
-            self.canvas.create_oval(0, 0, _H, _H, fill=_PILL, outline="")
-            self.canvas.create_oval(_W - _H, 0, _W, _H, fill=_PILL, outline="")
-            self.canvas.create_rectangle(r, 0, _W - r, _H, fill=_PILL, outline="")
+            r = h // 2
+            self.canvas.create_oval(0, 0, h, h, fill=_PILL, outline="")
+            self.canvas.create_oval(w - h, 0, w, h, fill=_PILL, outline="")
+            self.canvas.create_rectangle(r, 0, w - r, h, fill=_PILL, outline="")
         # On non-Windows the canvas bg already is the pill colour (translucent
         # via -alpha), so nothing extra to draw.
 
@@ -255,6 +288,7 @@ class OverlayApp:
             with self._lock:
                 self._state = str(msg.get("state", self._state))
                 self._level = float(msg.get("level", 0.0))
+                self._text = str(msg.get("text", ""))
         # Parent closed the pipe -> exit.
         try:
             self.root.after(0, self.root.destroy)
@@ -264,7 +298,7 @@ class OverlayApp:
     def _tick(self) -> None:
         self._t += 1
         with self._lock:
-            state, level = self._state, self._level
+            state, level, text = self._state, self._level, self._text
 
         if state == "idle":
             if self._visible:
@@ -272,6 +306,11 @@ class OverlayApp:
                 self._visible = False
             self.root.after(int(1000 / _FPS), self._tick)
             return
+
+        want_wide = bool(text)
+        if want_wide != self._wide:
+            self._wide = want_wide
+            self._build_canvas(440, 64) if want_wide else self._build_canvas(_W, _H)
 
         if not self._visible:
             self.root.deiconify()
@@ -282,6 +321,9 @@ class OverlayApp:
             self._animate_spinner()
         else:
             self._animate_bars(level)
+        if self._wide:
+            tail = text if len(text) <= 160 else "…" + text[-159:]
+            self.canvas.itemconfigure(self._text_item, text=tail)
 
         self.root.after(int(1000 / _FPS), self._tick)
 
@@ -289,7 +331,7 @@ class OverlayApp:
         self.canvas.itemconfigure(self._arc, state="hidden")
         self._display_level += (level - self._display_level) * 0.35
         targets = bar_targets(self._display_level)
-        cy = _H // 2
+        cy = self._cy
         for i, (item, bx) in enumerate(self._bars):
             osc = 0.12 * math.sin(self._t * 0.4 + i) * self._display_level
             frac = min(1.0, max(0.0, targets[i] + osc))

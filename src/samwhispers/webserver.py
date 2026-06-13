@@ -52,6 +52,8 @@ def create_app(
         from samwhispers.config import (
             _VALID_MODES,
             _VALID_PROVIDERS,
+            _VALID_STREAM_ENGINES,
+            _VALID_STREAM_MODES,
             _VALID_TRAILING,
             LANGUAGE_NAMES,
             WHISPER_LANGUAGES,
@@ -63,6 +65,8 @@ def create_app(
             "modes": list(_VALID_MODES),
             "providers": list(_VALID_PROVIDERS),
             "trailing": list(_VALID_TRAILING),
+            "stream_engines": list(_VALID_STREAM_ENGINES),
+            "stream_modes": list(_VALID_STREAM_MODES),
         }
 
     @app.get("/api/status")

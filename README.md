@@ -307,6 +307,28 @@ and API keys configured in `[cleanup]` (so set those up first). The History tab
 shows both the original transcription and its translation. As with cleanup, if
 the API call fails the original text is used.
 
+### Streaming (continuous) transcription
+
+By default SamWhispers transcribes once, when you release the hotkey. Enable
+`streaming.enabled` for continuous transcription that updates while you speak.
+All streaming settings are editable in the config UI.
+
+- **Engine** (`streaming.engine`):
+  - `chunked` — re-decodes the audio via the existing whisper.cpp server every
+    `interval_seconds`. No extra dependency; reuses your current setup.
+  - `faster_whisper` — uses [faster-whisper](https://github.com/SYSTRAN/faster-whisper)
+    (CTranslate2) for incremental decoding. Install with
+    `pip install samwhispers[faster-whisper]` and set `streaming.model`.
+- **Output mode** (`streaming.output_mode`):
+  - `preview` (A) — the evolving text shows in the on-screen overlay; the target
+    app receives only the final paragraph (with cleanup/translate applied). Best
+    when you want the model to revise earlier words before committing.
+  - `progressive` (B) — stable words are typed into the target app as they lock
+    in. Cleanup/translation don't apply in this mode (text is already committed).
+
+Streaming re-decodes repeatedly, so it uses more CPU than batch mode; smaller
+models keep up best. Batch mode remains the default.
+
 ## AI Cleanup Setup
 
 AI cleanup is optional and disabled by default. When enabled, transcribed text is sent to an AI model to fix grammar, punctuation, and capitalization before pasting.

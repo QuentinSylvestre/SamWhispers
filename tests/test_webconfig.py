@@ -49,6 +49,30 @@ def test_translation_settings_roundtrip(tmp_path: Path) -> None:
     assert reloaded["translation"]["target_language"] == "fr"
 
 
+def test_streaming_settings_roundtrip(tmp_path: Path) -> None:
+    path = tmp_path / "config.toml"
+    data = load_config_dict(path)
+    data["whisper"]["managed"] = False
+    data["streaming"]["enabled"] = True
+    data["streaming"]["engine"] = "chunked"
+    data["streaming"]["output_mode"] = "progressive"
+    data["streaming"]["interval_seconds"] = 1.5
+    save_config_dict(data, path)
+    reloaded = load_config_dict(path)
+    assert reloaded["streaming"]["enabled"] is True
+    assert reloaded["streaming"]["output_mode"] == "progressive"
+    assert reloaded["streaming"]["interval_seconds"] == 1.5
+
+
+def test_streaming_rejects_bad_engine(tmp_path: Path) -> None:
+    path = tmp_path / "config.toml"
+    data = load_config_dict(path)
+    data["whisper"]["managed"] = False
+    data["streaming"]["engine"] = "bogus"
+    with pytest.raises(ValueError):
+        save_config_dict(data, path)
+
+
 def test_translation_rejects_auto_target(tmp_path: Path) -> None:
     path = tmp_path / "config.toml"
     data = load_config_dict(path)

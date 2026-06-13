@@ -16,6 +16,15 @@ import numpy as np
 log = logging.getLogger("samwhispers")
 
 
+def wav_to_float32(wav_bytes: bytes) -> np.ndarray:
+    """Decode mono 16-bit PCM WAV bytes back to a float32 array (inverse of below)."""
+    if not wav_bytes:
+        return np.zeros(0, dtype=np.float32)
+    with wave.open(io.BytesIO(wav_bytes), "rb") as wf:
+        raw = wf.readframes(wf.getnframes())
+    return np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32767.0
+
+
 def compute_level(samples: np.ndarray, gain: float = 12.0) -> float:
     """Normalized 0..1 loudness (RMS * gain) for the on-screen meter."""
     if samples.size == 0:
@@ -148,6 +157,13 @@ class AudioRecorder:
         wav = numpy_to_wav(audio, self._sample_rate)
         log.debug("Recording stopped: %.1fs, %d bytes", len(audio) / self._sample_rate, len(wav))
         return wav
+
+    def snapshot(self) -> np.ndarray:
+        """Return a copy of the audio captured so far (for streaming decode)."""
+        with self._lock:
+            if not self._frames:
+                return np.zeros(0, dtype=np.float32)
+            return np.concatenate(self._frames)
 
     def is_recording(self) -> bool:
         with self._lock:

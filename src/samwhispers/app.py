@@ -8,7 +8,10 @@ import queue
 import signal
 import threading
 from types import FrameType
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from samwhispers.streaming import StreamingEngine, StreamingSession
 
 from samwhispers.audio import AudioRecorder, min_wav_size
 from samwhispers.cleanup import CleanupProvider
@@ -100,6 +103,26 @@ class SamWhispers:
                 self.history = HistoryStore(max_entries=config.history.max_entries)
             except Exception:
                 log.exception("Failed to open history store; history disabled")
+
+        # Streaming (continuous) transcription -- optional, off by default.
+        self._stream_engine: StreamingEngine | None = None
+        self._stream_session: StreamingSession | None = None
+        self._stream_thread: threading.Thread | None = None
+        self._stream_stop = threading.Event()
+        self._stream_injected_any = False
+        if config.streaming.enabled:
+            try:
+                from samwhispers.streaming import make_engine
+
+                self._stream_engine = make_engine(config.streaming, self.whisper)
+                log.info(
+                    "Streaming enabled: engine=%s, mode=%s",
+                    config.streaming.engine,
+                    config.streaming.output_mode,
+                )
+            except Exception:
+                log.exception("Failed to initialize streaming engine; using batch mode")
+                self._stream_engine = None
 
         # When launched by the supervisor (manage_server=False), the supervisor
         # owns whisper-server and the worker only connects to it.
@@ -244,6 +267,8 @@ class SamWhispers:
                 self._state = State.IDLE
             return
         self._set_overlay("recording")
+        if self._stream_engine is not None:
+            self._start_stream()
         log.info("Recording...")
 
     def _on_record_stop(self) -> None:
@@ -252,6 +277,9 @@ class SamWhispers:
                 return
             self._state = State.PROCESSING
         self._set_overlay("processing")
+        if self._stream_session is not None:
+            self._finalize_streaming(from_auto_stop=False)
+            return
         wav_bytes = self.recorder.stop()
         self._work_queue.put(wav_bytes)
 
@@ -262,8 +290,153 @@ class SamWhispers:
                 return
             self._state = State.PROCESSING
         self._set_overlay("processing")
+        if self._stream_session is not None:
+            self._finalize_streaming(from_auto_stop=True, wav_bytes=wav_bytes)
+            return
         log.info("Auto-stop triggered, processing recorded audio")
         self._work_queue.put(wav_bytes)
+
+    # --- Streaming transcription ---------------------------------------
+
+    def _start_stream(self) -> None:
+        """Begin a streaming session and the periodic decode loop."""
+        from samwhispers.streaming import StreamingSession
+
+        assert self._stream_engine is not None
+        self._stream_stop.clear()
+        self._stream_injected_any = False
+        mode = self.config.streaming.output_mode
+        self._stream_session = StreamingSession(
+            self._stream_engine,
+            self.config.audio.sample_rate,
+            on_commit=self._inject_committed if mode == "progressive" else None,
+            on_preview=self._preview_text,
+        )
+        self._stream_thread = threading.Thread(
+            target=self._stream_loop, daemon=True, name="stream-loop"
+        )
+        self._stream_thread.start()
+
+    def _stream_loop(self) -> None:
+        interval = self.config.streaming.interval_seconds
+        while not self._stream_stop.wait(interval):
+            session = self._stream_session
+            if session is None:
+                return
+            try:
+                audio = self.recorder.snapshot()
+                if audio.size:
+                    session.tick(audio)
+            except Exception:
+                log.exception("Streaming tick failed")
+
+    def _finalize_streaming(self, from_auto_stop: bool, wav_bytes: bytes = b"") -> None:
+        """Stop the decode loop and run the final decode + output off-thread."""
+        from samwhispers.audio import wav_to_float32
+
+        self._stream_stop.set()
+        if self._stream_thread is not None:
+            self._stream_thread.join(timeout=5.0)
+
+        if from_auto_stop:
+            final_audio = wav_to_float32(wav_bytes)  # recorder already stopped
+        else:
+            final_audio = self.recorder.snapshot()
+            self.recorder.stop()
+
+        session = self._stream_session
+        self._stream_session = None
+        threading.Thread(
+            target=self._finalize_stream_worker,
+            args=(session, final_audio),
+            daemon=True,
+            name="stream-finalize",
+        ).start()
+
+    def _finalize_stream_worker(self, session: StreamingSession | None, final_audio: Any) -> None:
+        import time
+
+        try:
+            if session is None:
+                return
+            t0 = time.monotonic()
+            final_text = session.finalize(final_audio)
+            log.info("Streaming finalize took %.0fms", (time.monotonic() - t0) * 1000)
+            duration_ms = int(len(final_audio) / self.config.audio.sample_rate * 1000)
+
+            if self.config.streaming.output_mode == "preview":
+                self._inject_final_paragraph(final_text, duration_ms)
+            else:
+                self._finish_progressive(final_text, duration_ms)
+        except Exception:
+            log.exception("Streaming finalize failed")
+        finally:
+            with self._lock:
+                self._state = State.IDLE
+            self._set_overlay("idle")
+
+    def _inject_final_paragraph(self, raw_text: str, duration_ms: int) -> None:
+        """Output mode A: clean/translate the full text and inject it once."""
+        text = self.postprocessor.normalize(raw_text)
+        text = self.cleanup.cleanup(text)
+        translated: str | None = None
+        inject_source = text
+        if self.config.translation.enabled:
+            translated = self.translator.translate(text)
+            inject_source = translated
+        final = self.postprocessor.finalize(inject_source)
+        log.info("Result: %s", final)
+        if final.strip():
+            self.hotkey_listener.suppress()
+            try:
+                self.injector.inject(final)
+            finally:
+                self.hotkey_listener.resume()
+        self._store_history(text, translated, duration_ms)
+
+    def _finish_progressive(self, final_text: str, duration_ms: int) -> None:
+        """Output mode B: words were injected live; add trailing char and store."""
+        from samwhispers.config import _TRAILING_MAP
+
+        trail = _TRAILING_MAP.get(self.config.postprocess.trailing, "")
+        if trail:
+            self.hotkey_listener.suppress()
+            try:
+                self.injector.inject(trail)
+            finally:
+                self.hotkey_listener.resume()
+        self._store_history(final_text, None, duration_ms)
+
+    def _inject_committed(self, words: list[str]) -> None:
+        """Output mode B: inject newly-stabilized words into the active app."""
+        chunk = " ".join(words)
+        if not chunk:
+            return
+        prefix = "" if not self._stream_injected_any else " "
+        self._stream_injected_any = True
+        self.hotkey_listener.suppress()
+        try:
+            self.injector.inject(prefix + chunk)
+        finally:
+            self.hotkey_listener.resume()
+
+    def _preview_text(self, text: str) -> None:
+        if self.overlay is not None:
+            self.overlay.set_preview(text)
+
+    def _store_history(self, text: str, translated: str | None, duration_ms: int) -> None:
+        if self.history is None:
+            return
+        try:
+            self.history.add(
+                text,
+                language=self.whisper.language,
+                duration_ms=duration_ms,
+                cleanup_used=self.config.cleanup.enabled,
+                translated_text=translated,
+            )
+        except Exception:
+            log.exception("Failed to write transcription history")
 
     def _process_loop(self) -> None:
         """Worker thread: dequeue WAV bytes, transcribe, cleanup, inject."""
@@ -480,6 +653,11 @@ class SamWhispers:
         """Stop all components, close resources."""
         log.info("Shutting down...")
         self._shutdown_event.set()
+        self._stream_stop.set()
+        if self._stream_thread is not None and self._stream_thread.is_alive():
+            self._stream_thread.join(timeout=2.0)
+        if self._stream_engine is not None:
+            self._stream_engine.close()
         self.hotkey_listener.stop()
         self.recorder.close()
         if self._server_manager:

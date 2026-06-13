@@ -155,6 +155,16 @@
     <div class="field"><label>Show overlay</label><input type="checkbox" data-path="overlay.enabled" data-type="bool" /><span class="hint">animated bars while recording, spinner while transcribing</span></div>
   </section>
 
+  <section>
+    <h2>Streaming transcription</h2>
+    <div class="field"><label>Enabled</label><input type="checkbox" data-path="streaming.enabled" data-type="bool" /><span class="hint">continuous instead of batch-at-the-end</span></div>
+    <div class="field"><label>Engine</label><select data-path="streaming.engine" data-meta="stream_engines"></select></div>
+    <div class="field"><label>Output mode</label><select data-path="streaming.output_mode" data-meta="stream_modes"></select><span class="hint">preview = live panel, inject final · progressive = type as you speak</span></div>
+    <div class="field"><label>Re-decode interval (s)</label><input type="number" step="any" data-path="streaming.interval_seconds" data-type="number" /></div>
+    <div class="field"><label>faster-whisper model</label><input type="text" data-path="streaming.model" /><span class="hint">only for the faster-whisper engine (e.g. base, small)</span></div>
+    <div class="field"><label>faster-whisper compute</label><input type="text" data-path="streaming.compute_type" /><span class="hint">e.g. int8, int8_float16, float16</span></div>
+  </section>
+
   <div class="savebar">
     <button class="primary" id="btnSave">Save</button>
     <span class="hint" id="saveHint">The worker restarts automatically when a change requires it.</span>

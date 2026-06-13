@@ -59,6 +59,8 @@ def test_meta(client_and_sup: tuple[TestClient, FakeSupervisor, Path]) -> None:
     assert {"hold", "toggle"} <= set(meta["modes"])
     assert any(lang["code"] == "auto" for lang in meta["languages"])
     assert "openai" in meta["providers"]
+    assert {"chunked", "faster_whisper"} <= set(meta["stream_engines"])
+    assert {"preview", "progressive"} <= set(meta["stream_modes"])
 
 
 def test_status(client_and_sup: tuple[TestClient, FakeSupervisor, Path]) -> None:
