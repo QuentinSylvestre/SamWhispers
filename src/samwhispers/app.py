@@ -14,6 +14,7 @@ from samwhispers.audio import AudioRecorder, min_wav_size
 from samwhispers.cleanup import CleanupProvider
 from samwhispers.config import AppConfig, LANGUAGE_NAMES
 from samwhispers.exceptions import ShutdownRequested
+from samwhispers.history import HistoryStore
 from samwhispers.postprocess import TextPostprocessor
 from samwhispers.server import WhisperServerManager
 from samwhispers.transcribe import WhisperClient
@@ -84,6 +85,13 @@ class SamWhispers:
         )
 
         self.whisper.prompt = self._build_prompt()
+
+        self.history: HistoryStore | None = None
+        if config.history.enabled:
+            try:
+                self.history = HistoryStore(max_entries=config.history.max_entries)
+            except Exception:
+                log.exception("Failed to open history store; history disabled")
 
         self._server_manager: WhisperServerManager | None = None
         if config.whisper.managed:
@@ -284,6 +292,17 @@ class SamWhispers:
         text = self.postprocessor.finalize(text)
 
         log.info("Result: %s", text)
+
+        if self.history is not None:
+            try:
+                self.history.add(
+                    text,
+                    language=self.whisper.language,
+                    duration_ms=int(duration * 1000),
+                    cleanup_used=self.config.cleanup.enabled,
+                )
+            except Exception:
+                log.exception("Failed to write transcription history")
 
         self.hotkey_listener.suppress()
         try:

@@ -317,6 +317,12 @@ class FillerConfig:
 
 
 @dataclass
+class HistoryConfig:
+    enabled: bool = True
+    max_entries: int = 1000  # retention cap; 0 = unlimited
+
+
+@dataclass
 class AppConfig:
     hotkey: HotkeyConfig = field(default_factory=HotkeyConfig)
     whisper: WhisperConfig = field(default_factory=WhisperConfig)
@@ -326,6 +332,7 @@ class AppConfig:
     inject: InjectConfig = field(default_factory=InjectConfig)
     vocabulary: VocabularyConfig = field(default_factory=VocabularyConfig)
     filler: FillerConfig = field(default_factory=FillerConfig)
+    history: HistoryConfig = field(default_factory=HistoryConfig)
 
 
 def find_config() -> Path | None:
@@ -423,6 +430,11 @@ def _validate(config: AppConfig) -> None:
         raise ValueError(
             f"Invalid postprocess.trailing {config.postprocess.trailing!r}, "
             f"must be one of {_VALID_TRAILING}"
+        )
+
+    if config.history.max_entries < 0:
+        raise ValueError(
+            f"Invalid history.max_entries {config.history.max_entries}, must be >= 0 (0 = unlimited)"
         )
 
     # Validate vocabulary language codes
@@ -534,6 +546,7 @@ def build_config(raw: dict[str, Any], validate: bool = True) -> AppConfig:
         inject=InjectConfig(**d.get("inject", {})),
         vocabulary=VocabularyConfig(words=vocab_words, languages=vocab_langs),
         filler=filler_cfg,
+        history=HistoryConfig(**d.get("history", {})),
     )
     if validate:
         _validate(config)

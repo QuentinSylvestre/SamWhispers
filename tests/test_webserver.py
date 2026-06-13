@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
+from samwhispers.history import HistoryStore
 from samwhispers.supervisor import WorkerState
 from samwhispers.webserver import create_app
 
@@ -125,3 +126,47 @@ def test_worker_action_without_supervisor(tmp_path: Path) -> None:
     app = create_app(None, config_path=tmp_path / "c.toml")
     client = TestClient(app)
     assert client.post("/api/worker/pause").status_code == 503
+
+
+@pytest.fixture
+def history_client(tmp_path: Path) -> tuple[TestClient, HistoryStore]:
+    store = HistoryStore(tmp_path / "history.db")
+    app = create_app(None, config_path=tmp_path / "c.toml", history_store=store)
+    return TestClient(app), store
+
+
+def test_history_list_and_search(history_client: tuple[TestClient, HistoryStore]) -> None:
+    client, store = history_client
+    store.add("buy milk", language="en")
+    store.add("meeting notes", language="en")
+
+    res = client.get("/api/history").json()
+    assert res["total"] == 2
+    assert res["items"][0]["text"] == "meeting notes"  # recent first
+
+    filtered = client.get("/api/history", params={"q": "milk"}).json()
+    assert filtered["total"] == 1
+    assert filtered["items"][0]["text"] == "buy milk"
+
+
+def test_history_pagination(history_client: tuple[TestClient, HistoryStore]) -> None:
+    client, store = history_client
+    for i in range(5):
+        store.add(f"e{i}")
+    page = client.get("/api/history", params={"limit": 2, "offset": 0}).json()
+    assert len(page["items"]) == 2 and page["total"] == 5
+
+
+def test_history_delete_entry(history_client: tuple[TestClient, HistoryStore]) -> None:
+    client, store = history_client
+    rid = store.add("temp")
+    assert client.delete(f"/api/history/{rid}").json()["deleted"] is True
+    assert client.delete(f"/api/history/{rid}").status_code == 404
+
+
+def test_history_clear(history_client: tuple[TestClient, HistoryStore]) -> None:
+    client, store = history_client
+    store.add("a")
+    store.add("b")
+    assert client.delete("/api/history").json()["deleted"] == 2
+    assert client.get("/api/history").json()["total"] == 0

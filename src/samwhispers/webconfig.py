@@ -76,6 +76,7 @@ def to_toml_dict(config: AppConfig) -> dict[str, Any]:
         "postprocess": asdict(config.postprocess),
         "inject": asdict(config.inject),
         "filler": asdict(config.filler),
+        "history": asdict(config.history),
     }
 
     vocab: dict[str, Any] = {"words": list(config.vocabulary.words)}

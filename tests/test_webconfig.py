@@ -22,6 +22,19 @@ def test_load_defaults_when_no_file(tmp_path: Path) -> None:
     assert data["whisper"]["languages"] == ["auto"]
     # Vocabulary is laid out in TOML shape (no "languages" key).
     assert "languages" not in data["vocabulary"]
+    assert data["history"]["enabled"] is True
+
+
+def test_history_settings_roundtrip(tmp_path: Path) -> None:
+    path = tmp_path / "config.toml"
+    data = load_config_dict(path)
+    data["whisper"]["managed"] = False
+    data["history"]["enabled"] = False
+    data["history"]["max_entries"] = 50
+    save_config_dict(data, path)
+    reloaded = load_config_dict(path)
+    assert reloaded["history"]["enabled"] is False
+    assert reloaded["history"]["max_entries"] == 50
 
 
 def test_save_then_load_roundtrip(tmp_path: Path) -> None:

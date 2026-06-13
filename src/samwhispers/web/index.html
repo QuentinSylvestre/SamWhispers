@@ -52,6 +52,21 @@
     padding: 14px 0; border-top: 1px solid var(--border); display: flex; gap: 10px;
     align-items: center; }
   .savebar .hint { color: var(--muted); font-size: 13px; }
+  .tabs { display: flex; gap: 4px; margin-bottom: 18px; }
+  .tab { background: transparent; border: none; border-bottom: 2px solid transparent;
+    border-radius: 0; padding: 8px 14px; color: var(--muted); }
+  .tab.active { color: var(--fg); border-bottom-color: var(--accent2); }
+  .histbar { display: flex; gap: 8px; margin-bottom: 14px; }
+  .histbar input { flex: 1; }
+  .entry { background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+    padding: 12px 14px; margin-bottom: 10px; }
+  .entry .meta { display: flex; gap: 10px; align-items: center; color: var(--muted);
+    font-size: 12px; margin-bottom: 6px; flex-wrap: wrap; }
+  .entry .meta .tag { border: 1px solid var(--border); border-radius: 999px; padding: 1px 8px; }
+  .entry .text { white-space: pre-wrap; word-break: break-word; }
+  .entry .row-actions { margin-left: auto; display: flex; gap: 6px; }
+  .entry .row-actions button { padding: 3px 9px; font-size: 12px; }
+  .empty { color: var(--muted); text-align: center; padding: 40px 0; }
 </style>
 </head>
 <body>
@@ -60,6 +75,12 @@
   <span class="pill"><span class="dot" id="statusDot"></span><span id="statusText">…</span></span>
 </header>
 <main>
+  <nav class="tabs">
+    <button class="tab active" data-view="settings">Settings</button>
+    <button class="tab" data-view="history">History</button>
+  </nav>
+
+  <div id="view-settings">
   <div class="actions">
     <button id="btnPause">Pause</button>
     <button id="btnRestart">Restart worker</button>
@@ -117,9 +138,28 @@
     <div class="field"><label>Custom fillers</label><textarea data-path="filler.words" data-type="list"></textarea></div>
   </section>
 
+  <section>
+    <h2>History</h2>
+    <div class="field"><label>Save transcriptions</label><input type="checkbox" data-path="history.enabled" data-type="bool" /></div>
+    <div class="field"><label>Max entries</label><input type="number" data-path="history.max_entries" data-type="number" /><span class="hint">0 = unlimited</span></div>
+  </section>
+
   <div class="savebar">
     <button class="primary" id="btnSave">Save</button>
     <span class="hint" id="saveHint">The worker restarts automatically when a change requires it.</span>
+  </div>
+  </div><!-- /view-settings -->
+
+  <div id="view-history" hidden>
+    <div class="histbar">
+      <input type="text" id="histSearch" placeholder="Search transcriptions…" />
+      <button id="btnHistRefresh">Refresh</button>
+      <button id="btnHistClear">Clear all</button>
+    </div>
+    <div id="histList"></div>
+    <div style="text-align:center">
+      <button id="btnHistMore" hidden>Load more</button>
+    </div>
   </div>
 </main>
 <div class="toast" id="toast"></div>
@@ -234,6 +274,84 @@ document.getElementById("btnRestart").addEventListener("click", async () => {
   await api("POST", "/api/worker/restart");
   toast("Worker restarting…", "ok");
   loadStatus();
+});
+
+// --- Tabs ---
+for (const tab of document.querySelectorAll(".tab")) {
+  tab.addEventListener("click", () => {
+    document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+    tab.classList.add("active");
+    const view = tab.dataset.view;
+    document.getElementById("view-settings").hidden = view !== "settings";
+    document.getElementById("view-history").hidden = view !== "history";
+    if (view === "history") loadHistory(true);
+  });
+}
+
+// --- History ---
+const HIST_PAGE = 50;
+let histOffset = 0;
+let histTotal = 0;
+
+function fmtTime(iso) {
+  const d = new Date(iso);
+  return isNaN(d) ? iso : d.toLocaleString();
+}
+function esc(s) {
+  return (s ?? "").replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+}
+
+function renderEntry(e) {
+  const div = document.createElement("div");
+  div.className = "entry";
+  const lang = e.language ? `<span class="tag">${esc(e.language)}</span>` : "";
+  const clean = e.cleanup_used ? `<span class="tag">cleaned</span>` : "";
+  const dur = e.duration_ms ? `<span>${(e.duration_ms / 1000).toFixed(1)}s</span>` : "";
+  const translated = e.translated_text
+    ? `<div class="text" style="color:var(--muted);margin-top:6px">↳ ${esc(e.translated_text)}</div>`
+    : "";
+  div.innerHTML =
+    `<div class="meta"><span>${fmtTime(e.created_at)}</span>${lang}${clean}${dur}` +
+    `<span class="row-actions">` +
+    `<button data-copy>Copy</button><button data-del>Delete</button></span></div>` +
+    `<div class="text">${esc(e.text)}</div>${translated}`;
+  div.querySelector("[data-copy]").addEventListener("click", () =>
+    navigator.clipboard.writeText(e.text).then(() => toast("Copied.", "ok")));
+  div.querySelector("[data-del]").addEventListener("click", async () => {
+    await api("DELETE", `/api/history/${e.id}`);
+    loadHistory(true);
+  });
+  return div;
+}
+
+async function loadHistory(reset) {
+  if (reset) { histOffset = 0; document.getElementById("histList").innerHTML = ""; }
+  const q = document.getElementById("histSearch").value.trim();
+  const url = `/api/history?limit=${HIST_PAGE}&offset=${histOffset}` +
+    (q ? `&q=${encodeURIComponent(q)}` : "");
+  const { items, total } = await api("GET", url);
+  histTotal = total;
+  const list = document.getElementById("histList");
+  if (reset && items.length === 0) {
+    list.innerHTML = `<div class="empty">No transcriptions yet.</div>`;
+  }
+  for (const e of items) list.appendChild(renderEntry(e));
+  histOffset += items.length;
+  document.getElementById("btnHistMore").hidden = histOffset >= histTotal;
+}
+
+let histTimer;
+document.getElementById("histSearch").addEventListener("input", () => {
+  clearTimeout(histTimer);
+  histTimer = setTimeout(() => loadHistory(true), 250);
+});
+document.getElementById("btnHistRefresh").addEventListener("click", () => loadHistory(true));
+document.getElementById("btnHistMore").addEventListener("click", () => loadHistory(false));
+document.getElementById("btnHistClear").addEventListener("click", async () => {
+  if (!confirm("Delete all transcription history?")) return;
+  await api("DELETE", "/api/history");
+  loadHistory(true);
+  toast("History cleared.", "ok");
 });
 
 loadAll().catch(e => toast("Failed to load config: " + e.message, "err"));

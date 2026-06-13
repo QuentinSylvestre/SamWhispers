@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Any
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse
 
+from samwhispers.history import HistoryStore, default_db_path
 from samwhispers.webconfig import (
     current_app_config,
     load_config_dict,
@@ -36,9 +37,11 @@ DEFAULT_PORT = 7891
 def create_app(
     supervisor: WorkerSupervisor | None = None,
     config_path: str | Path | None = None,
+    history_store: HistoryStore | None = None,
 ) -> FastAPI:
     """Build the FastAPI app. ``supervisor`` may be None for API-only testing."""
     app = FastAPI(title="SamWhispers", docs_url=None, redoc_url=None)
+    store = history_store if history_store is not None else HistoryStore(default_db_path())
 
     @app.get("/", response_class=HTMLResponse)
     def index() -> str:
@@ -84,6 +87,23 @@ def create_app(
             supervisor.restart()
             restarted = True
         return {"saved": True, "restarted": restarted}
+
+    @app.get("/api/history")
+    def get_history(limit: int = 50, offset: int = 0, q: str | None = None) -> dict[str, Any]:
+        return {
+            "items": store.list(limit=limit, offset=offset, search=q),
+            "total": store.count(search=q),
+        }
+
+    @app.delete("/api/history/{entry_id}")
+    def delete_history_entry(entry_id: int) -> dict[str, Any]:
+        if not store.delete(entry_id):
+            raise HTTPException(status_code=404, detail="Entry not found")
+        return {"deleted": True}
+
+    @app.delete("/api/history")
+    def clear_history() -> dict[str, Any]:
+        return {"deleted": store.clear()}
 
     @app.post("/api/worker/{action}")
     def worker_action(action: str) -> dict[str, Any]:
