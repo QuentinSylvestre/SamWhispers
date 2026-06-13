@@ -52,12 +52,14 @@ def _make_image(state: WorkerState, size: int = 64) -> Any:
     return image
 
 
-def run_tray(supervisor: WorkerSupervisor, settings_url: str | None = None) -> None:
+def run_tray(supervisor: WorkerSupervisor, settings_url: str | None = None, stop_event: Any = None) -> None:
     """Run the tray icon loop on the calling (main) thread; blocks until Quit.
 
     Installs SIGINT/SIGTERM handlers that stop the icon so the supervisor exits
     cleanly when the login session ends or systemd stops the service. If
     ``settings_url`` is given, an "Open settings" item opens it in the browser.
+    If ``stop_event`` is a threading.Event, a background thread watches it and
+    calls icon.stop() when set (allows the web endpoint to stop the tray).
     """
     import webbrowser
 
@@ -130,6 +132,14 @@ def run_tray(supervisor: WorkerSupervisor, settings_url: str | None = None) -> N
 
     supervisor.set_state_listener(on_state_change)
     try:
+        if stop_event is not None:
+            import threading
+
+            def _watch_stop() -> None:
+                stop_event.wait()
+                icon.stop()
+
+            threading.Thread(target=_watch_stop, daemon=True, name="tray-stop-watcher").start()
         icon.run()
     finally:
         supervisor.set_state_listener(None)

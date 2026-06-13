@@ -550,7 +550,7 @@ def main() -> None:
             from samwhispers.tray import run_tray
 
             try:
-                run_tray(supervisor, settings_url)  # installs signals, blocks until Quit
+                run_tray(supervisor, settings_url, stop_event=_main_stop)
             except Exception:
                 log.exception("Tray failed to start; falling back to headless mode")
                 use_tray = False
