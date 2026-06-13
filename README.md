@@ -265,6 +265,9 @@ You can also run manually with an activated venv:
 ```bash
 samwhispers              # start in the background (frees the terminal)
 samwhispers -f           # or run in the foreground (attached, shows logs)
+samwhispers start        # start (default, same as bare `samwhispers`)
+samwhispers stop         # stop the running instance
+samwhispers restart      # full restart (supervisor + whisper-server + worker)
 ```
 
 `samwhispers` (also `samwhispers-supervisor` / `python -m samwhispers`) launches

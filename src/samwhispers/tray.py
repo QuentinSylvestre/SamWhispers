@@ -79,6 +79,11 @@ def run_tray(supervisor: WorkerSupervisor, settings_url: str | None = None) -> N
     def on_restart(_icon: Any, _item: Any) -> None:
         supervisor.restart()
 
+    def on_restart_all(icon: Any, _item: Any) -> None:
+        supervisor.request_relaunch()
+        notify("SamWhispers", "SamWhispers is restarting...")
+        icon.stop()
+
     def on_open_settings(_icon: Any, _item: Any) -> None:
         if settings_url:
             webbrowser.open(settings_url)
@@ -95,6 +100,7 @@ def run_tray(supervisor: WorkerSupervisor, settings_url: str | None = None) -> N
     items += [
         pystray.MenuItem("Pause", on_toggle_pause, checked=is_paused),
         pystray.MenuItem("Restart worker", on_restart),
+        pystray.MenuItem("Restart SamWhispers", on_restart_all),
         pystray.Menu.SEPARATOR,
         pystray.MenuItem("Quit", on_quit),
     ]

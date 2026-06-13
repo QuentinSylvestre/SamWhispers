@@ -171,6 +171,7 @@ button.primary:disabled { opacity: .5; cursor: default; }
   <div class="actions">
     <button id="btnPause">Pause</button>
     <button id="btnRestart">Restart worker</button>
+    <button id="btnRestartAll">Restart SamWhispers</button>
     <button id="btnReload">Reload from disk</button>
   </div>
 
@@ -674,6 +675,19 @@ document.getElementById("btnRestart").addEventListener("click", async () => {
   await api("POST", "/api/worker/restart");
   toast("Worker restarting\u2026", "ok");
   loadStatus();
+});
+
+document.getElementById("btnRestartAll").addEventListener("click", async () => {
+  try {
+    await api("POST", "/api/supervisor/restart");
+    toast("Restarting SamWhispers\u2026", "ok");
+    let tries = 0;
+    const poll = setInterval(async () => {
+      tries++;
+      try { await api("GET", "/api/status"); clearInterval(poll); location.reload(); }
+      catch (_) { if (tries >= 8) clearInterval(poll); }
+    }, 2000);
+  } catch (e) { toast("Restart failed: " + e.message, "err"); }
 });
 
 // --- Status ---
