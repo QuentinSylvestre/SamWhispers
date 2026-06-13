@@ -17,19 +17,20 @@ SERVICE_NAME = "samwhispers"
 
 
 def supervisor_command() -> str:
-    """Command that launches the supervisor, preferring the installed script.
+    """Command that launches the supervisor.
 
-    On Windows, prefer ``pythonw`` so no console window is shown at logon.
+    On Windows, use ``pythonw`` so no console window appears (at logon or when
+    launched detached). On Linux, prefer the installed console script.
     """
+    if sys.platform == "win32":
+        python = sys.executable
+        pythonw = Path(python).with_name("pythonw.exe")
+        exe = str(pythonw) if pythonw.exists() else python
+        return f'"{exe}" -m samwhispers.supervisor'
     exe = shutil.which("samwhispers-supervisor")
     if exe:
         return f'"{exe}"' if " " in exe else exe
-    python = sys.executable
-    if sys.platform == "win32":
-        pythonw = Path(python).with_name("pythonw.exe")
-        if pythonw.exists():
-            python = str(pythonw)
-    return f'"{python}" -m samwhispers.supervisor'
+    return f'"{sys.executable}" -m samwhispers.supervisor'
 
 
 # --- Linux (systemd user service) -----------------------------------------

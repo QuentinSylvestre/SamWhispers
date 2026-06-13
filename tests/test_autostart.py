@@ -25,6 +25,17 @@ def test_supervisor_command_falls_back_to_module() -> None:
     assert "-m samwhispers.supervisor" in cmd
 
 
+def test_supervisor_command_windows_uses_pythonw() -> None:
+    with (
+        patch.object(autostart.sys, "platform", "win32"),
+        patch.object(autostart.sys, "executable", "/py/python.exe"),
+        patch.object(autostart.Path, "exists", return_value=True),
+    ):
+        cmd = autostart.supervisor_command()
+    assert "pythonw.exe" in cmd
+    assert "-m samwhispers.supervisor" in cmd
+
+
 def test_enable_linux_writes_unit_and_enables(tmp_path: object) -> None:
     unit = MagicMock()
     with (
