@@ -229,12 +229,15 @@ A `<div id="view-logs">` with a scrollable container, auto-refreshing every 3 se
 - **Empty state**: "No log entries yet. Logs appear here when the worker starts." (using existing `.empty` CSS class)
 
 **Exit criteria**:
-- [ ] Worker log output appears in the ring buffer
-- [ ] Supervisor log output appears in the ring buffer
-- [ ] `/api/logs` returns recent lines
-- [ ] Web UI "Logs" tab shows log content, auto-refreshes
-- [ ] `python -m pytest tests/test_webserver.py -v` passes
-- [ ] Update README.md "Config UI" section to document the Logs tab
+- [x] Worker log output appears in the ring buffer
+- [x] Supervisor log output appears in the ring buffer
+- [x] `/api/logs` returns recent lines
+- [x] Web UI "Logs" tab shows log content, auto-refreshes
+- [x] `python -m pytest tests/test_webserver.py -v` passes
+- [x] Update README.md "Config UI" section to document the Logs tab
+
+**Implementation (2026-06-13, code: df17335)**
+Added a 200-line ring buffer with a dedicated lock to `WorkerSupervisor` that captures both worker stderr (via a `_read_worker_logs` daemon thread reading from `subprocess.PIPE`) and supervisor logger output (via a `_RingBufferHandler` attached to the `samwhispers.supervisor` logger). Exposed the buffer as a `logs` property and added a `/api/logs` endpoint in the web server. The web UI now has a "Logs" nav item under the Data group with an auto-refreshing (3s polling) log viewer that supports error-only filtering, color-coded severity, auto-scroll, and a "Jump to latest" button. README.md updated to mention the Logs tab.
 
 ### Phase 3: Accurate status reporting + overlay DPI fix [QA]
 
@@ -423,6 +426,13 @@ Implementation health: Green.
 0 findings (0 High, 0 Medium, 0 Low).
 
 No findings. Exit code 78 handling correctly short-circuits before restart_count increment. notify import at module level (no deferred import). All 4 notification paths tested. QA deferred to Step 9b (runtime toast delivery requires actual process failure).
+
+### 2026-06-13 -- Implementation Review (after Phase 2, persona: Reliability engineer)
+
+Implementation health: Green.
+0 findings (0 High, 0 Medium, 0 Low).
+
+Ring buffer uses dedicated lock (no contention with main supervisor RLock). Stderr pipe read in daemon thread prevents deadlock. log_reader.join(2.0) before proc.wait() prevents pipe-buffer deadlock on Windows. _RingBufferHandler attached to supervisor logger only (no duplicate lines). 22 webserver tests pass.
 
 ## 9) Implementation Divergences from Plan
 <Reserved -- filled during implementation>
