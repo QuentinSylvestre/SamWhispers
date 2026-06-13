@@ -26,6 +26,7 @@ from samwhispers.translate import Translator
 
 log = logging.getLogger("samwhispers")
 
+_EX_CONFIG = 78  # sysexits: configuration/startup failure — supervisor won't retry
 _ACCENT_PROMPT_TEMPLATE = "The speaker has a {accent_name} accent."
 
 
@@ -542,7 +543,7 @@ class SamWhispers:
                 log.info("Whisper server (managed): OK")
             except (RuntimeError, TimeoutError, OSError) as e:
                 log.error("Failed to start managed whisper-server: %s", e)
-                raise SystemExit(1) from e
+                raise SystemExit(_EX_CONFIG) from e
         elif self.whisper.health_check():
             log.info("Whisper server: OK")
         else:
@@ -550,7 +551,7 @@ class SamWhispers:
                 "Whisper server at %s is not reachable. Start the server and try again.",
                 self.config.whisper.server_url,
             )
-            raise SystemExit(1)
+            raise SystemExit(_EX_CONFIG)
 
         # Check clipboard
         if self.injector.check_clipboard_available():
@@ -617,7 +618,7 @@ class SamWhispers:
                     int(estimated_tokens),
                     prompt,
                 )
-                raise SystemExit(1)
+                raise SystemExit(_EX_CONFIG)
             elif estimated_tokens > 180:
                 log.warning(
                     "Combined prompt is approaching token limit (~%d/224 tokens). "

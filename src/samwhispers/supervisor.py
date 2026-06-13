@@ -31,12 +31,15 @@ if TYPE_CHECKING:
     from samwhispers.server import WhisperServerManager
     from samwhispers.webserver import WebServerHandle
 
+from samwhispers.notify import notify
+
 log = logging.getLogger("samwhispers.supervisor")
 
 _SHUTDOWN_GRACE = 5.0
 _MAX_RESTARTS = 5
 _RESTART_BACKOFF = 2.0
 _POLL_INTERVAL = 1.0
+_EX_CONFIG = 78  # sysexits: startup/config failure — don't retry
 _CREATE_NO_WINDOW = 0x08000000  # Windows: run a console child without a window
 _DETACHED_PROCESS = 0x00000008  # Windows: detach a child from the console
 _CREATE_NEW_PROCESS_GROUP = 0x00000200  # Windows: new process group (no parent Ctrl+C)
@@ -187,6 +190,10 @@ class WorkerSupervisor:
                     "Failed to start managed whisper-server; "
                     "the worker may be unable to transcribe until this is fixed"
                 )
+                notify(
+                    "SamWhispers",
+                    "Voice transcription unavailable \u2014 the speech engine failed to start",
+                )
 
     def _stop_whisper(self) -> None:
         with self._whisper_lock:
@@ -253,11 +260,30 @@ class WorkerSupervisor:
             # Worker exited unexpectedly -- reap it and decide whether to restart.
             proc.wait()
             code = proc.returncode
+
+            # Startup/config failure — deterministic, don't retry.
+            if code == _EX_CONFIG:
+                log.error(
+                    "Worker startup failed (configuration or setup error). Not retrying."
+                )
+                notify(
+                    "SamWhispers",
+                    "SamWhispers couldn\u2019t start \u2014 open Settings \u2192 Logs for details",
+                )
+                with self._lock:
+                    if self._proc is proc:
+                        self._set_state(WorkerState.STOPPED)
+                return
+
             restart_count += 1
             if restart_count > _MAX_RESTARTS:
                 log.critical(
                     "Worker has crashed %d times; giving up. SamWhispers is not running.",
                     restart_count - 1,
+                )
+                notify(
+                    "SamWhispers",
+                    "SamWhispers stopped after repeated failures \u2014 open Settings \u2192 Logs for details",
                 )
                 with self._lock:
                     if self._proc is proc:

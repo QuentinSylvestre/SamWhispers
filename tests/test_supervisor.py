@@ -279,3 +279,91 @@ def test_monitor_does_not_restart_when_paused() -> None:
             s._monitor_loop()
 
     spawn.assert_not_called()
+
+
+def test_monitor_stops_on_config_exit_code() -> None:
+    """Exit code 78 (EX_CONFIG) stops the retry loop immediately."""
+    dead = MagicMock()
+    dead.poll.return_value = 78
+    dead.returncode = 78
+
+    s = WorkerSupervisor()
+    s._proc = dead
+    s._state = WorkerState.RUNNING
+
+    with (
+        patch.object(sup, "_POLL_INTERVAL", 0.0),
+        patch.object(s, "_spawn") as spawn,
+        patch("samwhispers.supervisor.notify"),
+    ):
+        s._monitor_loop()
+
+    spawn.assert_not_called()
+    assert s.state == WorkerState.STOPPED
+
+
+def test_monitor_notifies_on_config_exit_code() -> None:
+    """Exit code 78 triggers a user notification."""
+    dead = MagicMock()
+    dead.poll.return_value = 78
+    dead.returncode = 78
+
+    s = WorkerSupervisor()
+    s._proc = dead
+    s._state = WorkerState.RUNNING
+
+    with (
+        patch.object(sup, "_POLL_INTERVAL", 0.0),
+        patch.object(s, "_spawn"),
+        patch("samwhispers.supervisor.notify") as mock_notify,
+    ):
+        s._monitor_loop()
+
+    mock_notify.assert_called_once_with(
+        "SamWhispers",
+        "SamWhispers couldn\u2019t start \u2014 open Settings \u2192 Logs for details",
+    )
+
+
+def test_monitor_notifies_on_max_restarts() -> None:
+    """Max-restart exhaustion triggers a user notification."""
+    dead = MagicMock()
+    dead.poll.return_value = 1
+    dead.returncode = 1
+
+    s = WorkerSupervisor()
+    s._proc = dead
+    s._state = WorkerState.RUNNING
+
+    with (
+        patch.object(sup, "_POLL_INTERVAL", 0.0),
+        patch.object(sup, "_RESTART_BACKOFF", 0.0),
+        patch.object(s, "_spawn"),
+        patch("samwhispers.supervisor.notify") as mock_notify,
+    ):
+        s._monitor_loop()
+
+    mock_notify.assert_called_once_with(
+        "SamWhispers",
+        "SamWhispers stopped after repeated failures \u2014 open Settings \u2192 Logs for details",
+    )
+
+
+def test_start_whisper_notifies_on_failure() -> None:
+    """Whisper-server start failure triggers a user notification."""
+    s = WorkerSupervisor()
+    whisper_cfg = MagicMock()
+    whisper_cfg.managed = True
+
+    with (
+        patch.object(s, "_load_whisper_config", return_value=whisper_cfg),
+        patch("samwhispers.server.WhisperServerManager") as mgr_cls,
+        patch("samwhispers.supervisor.notify") as mock_notify,
+    ):
+        mgr_cls.return_value.start.side_effect = RuntimeError("boom")
+        s._start_whisper()
+
+    mock_notify.assert_called_once_with(
+        "SamWhispers",
+        "Voice transcription unavailable \u2014 the speech engine failed to start",
+    )

@@ -649,7 +649,6 @@ These are not needed on Windows.
 - Clipboard is overwritten during text injection
 - The simulated Ctrl+V may not work in all applications (e.g., some terminal emulators use Ctrl+Shift+V)
 - Auto-detect language quality depends on model size; `base` may struggle with short clips or code-switching
-- Desktop notifications require `notify-send` on Linux (install via `sudo apt install libnotify-bin`)
 
 ## License
 
