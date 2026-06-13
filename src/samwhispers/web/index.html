@@ -106,6 +106,17 @@ button.primary:disabled { opacity: .5; cursor: default; }
 .entry .row-actions button { padding: 3px 9px; font-size: 12px; }
 .empty { color: var(--muted); text-align: center; padding: 40px 0; }
 
+/* Model manager */
+.model-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px;
+  border-radius: 8px; background: var(--bg); }
+.model-row .name { flex: 1; font-size: 14px; }
+.model-row .tag { font-size: 11px; color: var(--accent); border: 1px solid var(--accent);
+  border-radius: 999px; padding: 1px 7px; }
+.model-row button { background: none; border: none; cursor: pointer; padding: 4px 8px;
+  border-radius: 6px; font-size: 16px; line-height: 1; color: var(--fg); }
+.model-row button:hover:not(:disabled) { background: var(--surface2); }
+.model-row button:disabled { opacity: 0.2; cursor: default; }
+
 /* Responsive */
 @media (max-width: 768px) {
   body { grid-template-columns: 1fr; }
@@ -206,19 +217,18 @@ button.primary:disabled { opacity: .5; cursor: default; }
     <h3>Model</h3>
     <div class="field"><label>Active model</label>
       <div class="stack">
-        <select data-fill="whisper.model_path" data-models="whisper"></select>
+        <select id="activeModelSelect" data-fill="whisper.model_path"></select>
         <input type="text" data-path="whisper.model_path" placeholder="model path" />
       </div>
     </div>
-    <div class="field"><label>Download model</label>
-      <div class="stack">
-        <div style="display:flex;gap:8px">
-          <select id="dlModel"></select>
-          <button id="btnDownload" type="button">Download</button>
-        </div>
-        <span class="hint" id="dlStatus"></span>
-      </div>
-    </div>
+    <div class="field"><label></label><button id="btnManageModels" type="button">Manage models…</button></div>
+    <span class="hint" id="dlStatus"></span>
+  </div>
+
+  <div class="card" id="modelManagerCard" hidden>
+    <h3>Model manager</h3>
+    <input type="text" id="modelSearch" placeholder="Search models…" style="margin-bottom:12px" />
+    <div id="modelList" style="max-height:340px;overflow-y:auto;display:flex;flex-direction:column;gap:6px"></div>
   </div>
 
   <div class="card">
@@ -454,6 +464,26 @@ function render() {
   applyVisibility();
 }
 
+function populateActiveModelSelect() {
+  const el = document.getElementById("activeModelSelect");
+  if (!el || !state.models) return;
+  const target = document.querySelector('[data-path="whisper.model_path"]');
+  const cur = target ? target.value : "";
+  el.innerHTML = "";
+  const downloaded = state.models.downloaded || [];
+  const whisperFiles = state.models.whisper || [];
+  if (!downloaded.length) el.add(new Option("\u2014 no models downloaded \u2014", ""));
+  for (const name of downloaded) {
+    const filename = `ggml-${name}.bin`;
+    const entry = whisperFiles.find(f => f.label === filename);
+    const path = entry ? entry.path : "";
+    const opt = new Option(name, path);
+    // Select if current config path contains this model filename
+    if (cur && cur.includes(filename)) opt.selected = true;
+    el.add(opt);
+  }
+}
+
 function populateModelSelect(el) {
   const items = (state.models && state.models[el.dataset.models]) || [];
   const target = document.querySelector(`[data-path="${el.dataset.fill}"]`);
@@ -469,55 +499,84 @@ function populateModelSelect(el) {
 
 async function loadModels() {
   try { state.models = await api("GET", "/api/models"); }
-  catch (_) { state.models = { whisper: [], faster_whisper: [], downloadable: [] }; }
+  catch (_) { state.models = { whisper: [], faster_whisper: [], downloadable: [], downloaded: [] }; }
+  // Derive downloaded list from file names if server doesn't provide it
+  if (!state.models.downloaded) {
+    state.models.downloaded = (state.models.downloadable || []).filter(name =>
+      (state.models.whisper || []).some(f => f.label === `ggml-${name}.bin`));
+  }
+  populateActiveModelSelect();
   for (const el of document.querySelectorAll("[data-models]")) populateModelSelect(el);
-  const dl = document.getElementById("dlModel");
-  if (dl) {
-    dl.innerHTML = "";
-    for (const name of state.models.downloadable || []) dl.add(new Option(name, name));
+  renderModelManager();
+}
+
+// --- Model Manager ---
+function renderModelManager() {
+  const list = document.getElementById("modelList");
+  if (!list || !state.models) return;
+  const search = (document.getElementById("modelSearch")?.value || "").toLowerCase();
+  const downloaded = new Set(state.models.downloaded || []);
+  const all = state.models.downloadable || [];
+  const filtered = search ? all.filter(n => n.toLowerCase().includes(search)) : all;
+  list.innerHTML = "";
+  for (const name of filtered) {
+    const isDl = downloaded.has(name);
+    const row = document.createElement("div");
+    row.className = "model-row";
+    row.innerHTML =
+      `<span class="name">${name}</span>` +
+      (isDl ? `<span class="tag">downloaded</span>` : "") +
+      `<button class="dl-btn" title="Download" ${isDl ? "disabled" : ""}>&#x2B07;</button>` +
+      `<button class="del-btn" title="Delete" ${isDl ? "" : "disabled"}>&#x1F5D1;</button>`;
+    row.querySelector(".dl-btn").addEventListener("click", () => startModelDownload(name));
+    row.querySelector(".del-btn").addEventListener("click", () => deleteModel(name));
+    list.appendChild(row);
   }
 }
+
+document.getElementById("btnManageModels").addEventListener("click", () => {
+  const card = document.getElementById("modelManagerCard");
+  card.hidden = !card.hidden;
+  if (!card.hidden) renderModelManager();
+});
+document.getElementById("modelSearch").addEventListener("input", renderModelManager);
 
 // --- Downloads ---
 function fmtMB(n) { return (n / 1048576).toFixed(0) + " MB"; }
 
+async function startModelDownload(name) {
+  const out = document.getElementById("dlStatus");
+  out.textContent = "Starting\u2026";
+  try {
+    await api("POST", "/api/models/download", { name });
+    pollDownload();
+  } catch (e) { out.textContent = "Error: " + e.message; }
+}
+
+async function deleteModel(name) {
+  try {
+    await api("DELETE", "/api/models", { name });
+    toast(`Deleted ${name}.`, "ok");
+    await loadModels();
+  } catch (e) { toast("Delete failed: " + e.message, "err"); }
+}
+
 async function pollDownload() {
   const out = document.getElementById("dlStatus");
   const s = await api("GET", "/api/models/download");
-  if (s.error) {
-    out.textContent = "Download failed: " + s.error;
-    document.getElementById("btnDownload").disabled = false;
-    return;
-  }
+  if (s.error) { out.textContent = "Download failed: " + s.error; return; }
   if (s.downloading) {
     const pct = s.total ? ` (${Math.floor(100 * s.downloaded / s.total)}%)` : "";
     out.textContent = `Downloading ${s.name}: ${fmtMB(s.downloaded)}${s.total ? " / " + fmtMB(s.total) : ""}${pct}`;
     setTimeout(pollDownload, 1000);
     return;
   }
-  document.getElementById("btnDownload").disabled = false;
-  if (s.done && s.path) {
+  if (s.done) {
     out.textContent = `Downloaded ${s.name}.`;
     await loadModels();
-    const target = document.querySelector('[data-path="whisper.model_path"]');
-    if (target) target.value = s.path;
-    toast("Model downloaded \u2014 remember to Save.", "ok");
+    toast("Model downloaded.", "ok");
   }
 }
-
-document.getElementById("btnDownload").addEventListener("click", async () => {
-  const name = document.getElementById("dlModel").value;
-  if (!name) return;
-  document.getElementById("btnDownload").disabled = true;
-  document.getElementById("dlStatus").textContent = "Starting\u2026";
-  try {
-    await api("POST", "/api/models/download", { name });
-    pollDownload();
-  } catch (e) {
-    document.getElementById("dlStatus").textContent = "Error: " + e.message;
-    document.getElementById("btnDownload").disabled = false;
-  }
-});
 
 // --- Model select sync ---
 document.querySelector(".content").addEventListener("change", (e) => {
@@ -525,6 +584,10 @@ document.querySelector(".content").addEventListener("change", (e) => {
   const sel = e.target;
   if (sel.dataset && sel.dataset.fill && sel.value) {
     const target = document.querySelector(`[data-path="${sel.dataset.fill}"]`);
+    if (target) target.value = sel.value;
+  }
+  if (sel.id === "activeModelSelect" && sel.value) {
+    const target = document.querySelector('[data-path="whisper.model_path"]');
     if (target) target.value = sel.value;
   }
 });

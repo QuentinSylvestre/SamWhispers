@@ -27,6 +27,8 @@ WHISPER_CPP_MODELS = [
     "small",
     "medium.en",
     "medium",
+    "large-v1",
+    "large-v2",
     "large-v3",
     "large-v3-turbo",
 ]
@@ -107,3 +109,15 @@ class ModelDownloader:
 
 # Module-level singleton used by the web server.
 downloader = ModelDownloader()
+
+
+def delete_model(name: str, models_dir: Path | str) -> Path:
+    """Delete a downloaded model file. Returns the deleted path."""
+    if name not in WHISPER_CPP_MODELS:
+        raise ValueError(f"Unknown model: {name!r}")
+    path = Path(models_dir) / f"ggml-{name}.bin"
+    if not path.is_file():
+        raise FileNotFoundError(f"Model not found: {path}")
+    path.unlink()
+    log.info("Deleted model %s at %s", name, path)
+    return path

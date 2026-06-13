@@ -75,10 +75,18 @@ def create_app(
     def models() -> dict[str, Any]:
         from samwhispers.models import WHISPER_CPP_MODELS
 
+        whisper_list = list_whisper_models(config_path)
+        # Derive which known models are already on disk
+        downloaded_names: list[str] = []
+        for m in WHISPER_CPP_MODELS:
+            filename = f"ggml-{m}.bin"
+            if any(item["label"] == filename for item in whisper_list):
+                downloaded_names.append(m)
         return {
-            "whisper": list_whisper_models(config_path),
+            "whisper": whisper_list,
             "faster_whisper": FASTER_WHISPER_MODELS,
             "downloadable": WHISPER_CPP_MODELS,
+            "downloaded": downloaded_names,
         }
 
     @app.post("/api/models/download")
@@ -101,6 +109,21 @@ def create_app(
         from samwhispers.models import downloader
 
         return downloader.status()
+
+    @app.delete("/api/models")
+    async def delete_model_endpoint(request: Request) -> dict[str, Any]:
+        from samwhispers.models import delete_model
+
+        body: dict[str, Any] = await request.json()
+        name = str(body.get("name", ""))
+        dest_dir = Path(current_app_config(config_path).whisper.model_path).parent
+        try:
+            deleted = delete_model(name, dest_dir)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        return {"deleted": True, "path": str(deleted)}
 
     @app.get("/api/status")
     def status() -> dict[str, Any]:
