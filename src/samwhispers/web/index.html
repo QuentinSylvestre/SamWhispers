@@ -45,7 +45,7 @@ aside { background: var(--surface); border-right: 1px solid var(--border);
 .nav-icon { width: 18px; text-align: center; flex-shrink: 0; }
 
 /* Content */
-.content { padding: 28px 36px; overflow-y: auto; max-width: 780px; }
+.content { padding: 28px 36px; overflow-y: auto; max-width: 960px; }
 .page { display: none; }
 .page.active { display: block; }
 .page-title { font-size: 20px; font-weight: 600; margin-bottom: 4px; }
@@ -107,24 +107,16 @@ button.primary:disabled { opacity: .5; cursor: default; }
 .empty { color: var(--muted); text-align: center; padding: 40px 0; }
 
 /* Model manager */
-.model-panel { position: fixed; top: 0; right: -380px; width: 380px; height: 100vh;
-  background: var(--surface); border-left: 1px solid var(--border); z-index: 50;
-  display: flex; flex-direction: column; transition: right .25s ease; }
-.model-panel.open { right: 0; }
-.model-panel-header { display: flex; align-items: center; padding: 16px 18px;
-  border-bottom: 1px solid var(--border); gap: 10px; }
-.model-panel-header h3 { flex: 1; font-size: 15px; font-weight: 600; }
-.model-panel-close { background: none; border: none; color: var(--muted); font-size: 20px;
-  cursor: pointer; padding: 4px 8px; border-radius: 6px; }
-.model-panel-close:hover { background: var(--surface2); color: var(--fg); }
-.model-panel-body { flex: 1; overflow-y: auto; padding: 14px 18px; display: flex;
-  flex-direction: column; gap: 6px; }
-.model-panel input[type=text] { margin-bottom: 10px; }
-.model-row { display: flex; align-items: center; gap: 8px; padding: 8px 10px;
+.model-row-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 16px;
+  margin-bottom: 16px; }
+.model-manager-card { display: flex; flex-direction: column; }
+.model-list-scroll { flex: 1; overflow-y: auto; max-height: 360px;
+  display: flex; flex-direction: column; gap: 6px; }
+.model-row { display: flex; align-items: center; gap: 8px; padding: 7px 10px;
   border-radius: 8px; background: var(--bg); }
-.model-row .name { font-size: 14px; white-space: nowrap; }
-.model-row .star { color: var(--amber); font-size: 14px; }
-.model-row .info-icon { color: var(--muted); font-size: 13px; cursor: help;
+.model-row .name { font-size: 13px; white-space: nowrap; }
+.model-row .star { color: var(--amber); font-size: 13px; }
+.model-row .info-icon { color: var(--muted); font-size: 12px; cursor: help;
   position: relative; }
 .model-row .info-icon:hover .info-tip { display: block; }
 .info-tip { display: none; position: absolute; bottom: 100%; left: 50%;
@@ -132,15 +124,13 @@ button.primary:disabled { opacity: .5; cursor: default; }
   border-radius: 8px; padding: 8px 10px; font-size: 12px; color: var(--fg);
   white-space: nowrap; z-index: 60; pointer-events: none; margin-bottom: 6px; }
 .model-row .spacer { flex: 1; }
-.model-row .tag { font-size: 11px; color: var(--accent); border: 1px solid var(--accent);
-  border-radius: 999px; padding: 1px 7px; }
-.model-row button { background: none; border: none; cursor: pointer; padding: 4px 8px;
-  border-radius: 6px; font-size: 16px; line-height: 1; color: var(--fg); }
+.model-row .tag { font-size: 10px; color: var(--accent); border: 1px solid var(--accent);
+  border-radius: 999px; padding: 1px 6px; }
+.model-row button { background: none; border: none; cursor: pointer; padding: 3px 6px;
+  border-radius: 6px; font-size: 14px; line-height: 1; color: var(--fg); }
 .model-row button:hover:not(:disabled) { background: var(--surface2); }
 .model-row button:disabled { opacity: 0.2; cursor: default; }
-.model-panel-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.3);
-  z-index: 49; display: none; }
-.model-panel-overlay.open { display: block; }
+@media (max-width: 900px) { .model-row-layout { grid-template-columns: 1fr; } }
 
 /* Responsive */
 @media (max-width: 768px) {
@@ -238,16 +228,22 @@ button.primary:disabled { opacity: .5; cursor: default; }
     <div class="field" data-show-when="whisper.managed=true"><label>Server binary</label><input type="text" data-path="whisper.server_bin" /></div>
   </div>
 
-  <div class="card">
-    <h3>Model</h3>
-    <div class="field"><label>Active model</label>
-      <div class="stack">
-        <select id="activeModelSelect" data-fill="whisper.model_path"></select>
-        <input type="text" data-path="whisper.model_path" placeholder="model path" />
+  <div class="model-row-layout">
+    <div class="card">
+      <h3>Model</h3>
+      <div class="field"><label>Active model</label>
+        <div class="stack">
+          <select id="activeModelSelect" data-fill="whisper.model_path"></select>
+          <input type="text" data-path="whisper.model_path" placeholder="model path" />
+        </div>
       </div>
+      <span class="hint" id="dlStatus"></span>
     </div>
-    <div class="field"><label></label><button id="btnManageModels" type="button">Manage models…</button></div>
-    <span class="hint" id="dlStatus"></span>
+    <div class="card model-manager-card">
+      <h3>Model manager</h3>
+      <input type="text" id="modelSearch" placeholder="Search models…" style="margin-bottom:10px" />
+      <div id="modelList" class="model-list-scroll"></div>
+    </div>
   </div>
 
   <div class="card">
@@ -391,19 +387,6 @@ button.primary:disabled { opacity: .5; cursor: default; }
 </div>
 
 </div><!-- /content -->
-
-<div class="model-panel-overlay" id="modelOverlay"></div>
-<div class="model-panel" id="modelPanel">
-  <div class="model-panel-header">
-    <h3>Model manager</h3>
-    <button class="model-panel-close" id="btnClosePanel">&times;</button>
-  </div>
-  <div class="model-panel-body">
-    <input type="text" id="modelSearch" placeholder="Search models…" />
-    <div id="modelList"></div>
-    <span class="hint" id="dlStatus"></span>
-  </div>
-</div>
 
 <div class="toast" id="toast"></div>
 
@@ -585,18 +568,6 @@ function renderModelManager() {
   }
 }
 
-function openModelPanel() {
-  document.getElementById("modelPanel").classList.add("open");
-  document.getElementById("modelOverlay").classList.add("open");
-  renderModelManager();
-}
-function closeModelPanel() {
-  document.getElementById("modelPanel").classList.remove("open");
-  document.getElementById("modelOverlay").classList.remove("open");
-}
-document.getElementById("btnManageModels").addEventListener("click", openModelPanel);
-document.getElementById("btnClosePanel").addEventListener("click", closeModelPanel);
-document.getElementById("modelOverlay").addEventListener("click", closeModelPanel);
 document.getElementById("modelSearch").addEventListener("input", renderModelManager);
 
 // --- Downloads ---
