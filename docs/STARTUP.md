@@ -26,6 +26,20 @@ The tray needs `pystray` and `Pillow` (installed automatically with the
 package). On a host with no display the supervisor logs a warning and runs
 headless.
 
+## Easiest: the autostart command
+
+On Linux and Windows, one command sets up login autostart for you:
+
+```bash
+samwhispers-autostart enable     # install + start at login
+samwhispers-autostart status     # check it
+samwhispers-autostart disable    # remove it
+```
+
+It installs a systemd *user* service on Linux and a Task Scheduler "at logon"
+task on Windows, pointing at your installed `samwhispers-supervisor`. The manual
+instructions below are the fallback / for customization (and macOS).
+
 ## Linux (systemd user service)
 
 A user service starts on login and has access to your graphical session

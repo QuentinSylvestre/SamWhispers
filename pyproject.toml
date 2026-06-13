@@ -26,6 +26,8 @@ faster-whisper = ["faster-whisper>=1.0"]
 [project.scripts]
 samwhispers = "samwhispers.__main__:main"
 samwhispers-supervisor = "samwhispers.supervisor:main"
+samwhispers-setup = "samwhispers.bootstrap:main"
+samwhispers-autostart = "samwhispers.autostart:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

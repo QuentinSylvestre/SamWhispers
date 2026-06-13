@@ -13,6 +13,29 @@ Uses [whisper.cpp](https://github.com/ggerganov/whisper.cpp) for local transcrip
 5. Text is (optionally) cleaned up by an AI model
 6. Result is pasted into the active application via clipboard
 
+## Quick start
+
+```bash
+# 1. install (from the cloned repo)
+make setup                         # or: pip install -e .
+source .venv/bin/activate          # if you used make setup
+
+# 2. one-command setup: builds/downloads whisper-server, fetches a model,
+#    and writes a starter config
+samwhispers-setup                  # add --model small for multilingual
+
+# 3. run it (tray icon + web UI at http://127.0.0.1:7891)
+samwhispers-supervisor
+
+# 4. (optional) start automatically at login
+samwhispers-autostart enable
+```
+
+`samwhispers-setup` builds whisper.cpp from source on Linux/macOS (needs `git`,
+`cmake`, a C++ compiler) and downloads a prebuilt binary on Windows (no Visual
+Studio needed). Everything lands in your user data dir. The manual steps below
+are the fallback / advanced path.
+
 ## Prerequisites
 
 - Python 3.11+
