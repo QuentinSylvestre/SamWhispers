@@ -23,6 +23,8 @@ import threading
 import time
 from typing import TYPE_CHECKING, Any
 
+from PIL import Image, ImageDraw
+
 if TYPE_CHECKING:
     import tkinter as tk
 
@@ -204,6 +206,8 @@ class OverlayApp:
         self._sh = root.winfo_screenheight()
 
         self._bg = _TRANSPARENT_KEY if sys.platform == "win32" else _PILL
+        self._spinner_img_id = 0
+        self._spinner_photo: Any = None
         if sys.platform == "win32":
             try:
                 root.attributes("-transparentcolor", _TRANSPARENT_KEY)
@@ -236,6 +240,7 @@ class OverlayApp:
         self.root.geometry(f"{w}x{h}+{x}+{y}")
         if self.canvas is not None:
             self.canvas.destroy()
+        self._spinner_img_id = 0
         self.canvas = tk.Canvas(self.root, width=w, height=h, bg=self._bg, highlightthickness=0)
         self.canvas.pack()
         self._draw_pill(w, h, self._bg != _PILL)
@@ -345,6 +350,8 @@ class OverlayApp:
 
     def _animate_bars(self, level: float) -> None:
         self.canvas.itemconfigure(self._arc, state="hidden")
+        if self._spinner_img_id:
+            self.canvas.itemconfigure(self._spinner_img_id, state="hidden")
         self._display_level += (level - self._display_level) * 0.35
         targets = bar_targets(self._display_level)
         cy = self._cy
@@ -363,7 +370,39 @@ class OverlayApp:
         for item, _ in self._bars:
             self.canvas.itemconfigure(item, state="hidden")
         self._spin = (self._spin - 12) % 360
-        self.canvas.itemconfigure(self._arc, state="normal", start=self._spin)
+        self._render_spinner()
+
+    def _render_spinner(self) -> None:
+        import tkinter as tk
+
+        s = self._scale
+        size = int(26 * s)
+        ss = 4  # supersampling factor
+        big = size * ss
+        img = Image.new("RGBA", (big, big), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(img)
+        # Faint track ring
+        lw = int(3 * s) * ss
+        pad = lw // 2 + 1
+        bbox = (pad, pad, big - pad, big - pad)
+        draw.ellipse(bbox, outline=(255, 255, 255, 38), width=lw)
+        # Main arc (~270 degrees)
+        draw.arc(bbox, self._spin, self._spin + 270, fill=(255, 255, 255, 255), width=lw)
+        # Downsample for anti-aliasing
+        img = img.resize((size, size), Image.LANCZOS)
+        # Composite onto pill background for Tk
+        bg = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+        bg.paste(img, (0, 0), img)
+        from PIL import ImageTk
+
+        self._spinner_photo = ImageTk.PhotoImage(bg)
+        if not hasattr(self, "_spinner_img_id") or self._spinner_img_id == 0:
+            cx = self.canvas.winfo_width() // 2
+            self._spinner_img_id = self.canvas.create_image(
+                cx, self._cy, image=self._spinner_photo, anchor="center"
+            )
+        else:
+            self.canvas.itemconfigure(self._spinner_img_id, image=self._spinner_photo, state="normal")
 
 
 def main() -> None:
