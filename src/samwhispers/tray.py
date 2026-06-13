@@ -16,8 +16,9 @@ from samwhispers.supervisor import WorkerState, WorkerSupervisor
 
 log = logging.getLogger("samwhispers.tray")
 
-# Icon dot colour per state: green=running, amber=paused, grey=stopped.
+# Icon dot colour per state: blue=starting, green=running, amber=paused, grey=stopped.
 _COLORS: dict[WorkerState, tuple[int, int, int]] = {
+    WorkerState.STARTING: (45, 108, 223),
     WorkerState.RUNNING: (0, 220, 0),
     WorkerState.PAUSED: (255, 193, 7),
     WorkerState.STOPPED: (158, 158, 158),

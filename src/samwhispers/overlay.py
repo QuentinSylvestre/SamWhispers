@@ -90,12 +90,14 @@ class OverlayController:
             log.info("No display detected; overlay disabled")
             return
         try:
+            flags = 0x08000000 if sys.platform == "win32" else 0
             self._proc = subprocess.Popen(
                 [sys.executable, "-m", "samwhispers.overlay"],
                 stdin=subprocess.PIPE,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 text=True,
+                creationflags=flags,
             )
         except Exception:
             log.exception("Failed to start overlay process")
@@ -188,6 +190,8 @@ class OverlayApp:
         self._t = 0
         self._visible = False
 
+        self._scale = max(1.0, root.winfo_fpixels("1i") / 96.0)
+
         root.overrideredirect(True)
         root.attributes("-topmost", True)
         try:
@@ -212,8 +216,10 @@ class OverlayApp:
         self._bars: list[tuple[int, int]] = []
         self._arc = 0
         self._text_item = 0
-        self._cy = _H // 2
-        self._build_canvas(_W, _H)
+        w = int(_W * self._scale)
+        h = int(_H * self._scale)
+        self._cy = h // 2
+        self._build_canvas(w, h)
 
         root.withdraw()
         reader = threading.Thread(target=self._read_stdin, daemon=True, name="overlay-reader")
@@ -224,7 +230,9 @@ class OverlayApp:
         """(Re)create the canvas and its items for the given window size."""
         import tkinter as tk
 
-        x, y = bottom_center_geometry(self._sw, self._sh, w, h)
+        s = self._scale
+        margin = int(_MARGIN * s)
+        x, y = bottom_center_geometry(self._sw, self._sh, w, h, margin)
         self.root.geometry(f"{w}x{h}+{x}+{y}")
         if self.canvas is not None:
             self.canvas.destroy()
@@ -232,37 +240,41 @@ class OverlayApp:
         self.canvas.pack()
         self._draw_pill(w, h, self._bg != _PILL)
 
+        bar_w = int(_BAR_W * s)
+        bar_gap = int(_BAR_GAP * s)
+
         cx = w // 2
-        cy = 16 if self._wide else h // 2  # leave room for the text line when wide
+        cy = int(16 * s) if self._wide else h // 2
         self._cy = cy
-        group_w = _N_BARS * _BAR_W + (_N_BARS - 1) * _BAR_GAP
+        group_w = _N_BARS * bar_w + (_N_BARS - 1) * bar_gap
         x0 = cx - group_w // 2
         self._bars = []
         for i in range(_N_BARS):
-            bx = x0 + i * (_BAR_W + _BAR_GAP)
+            bx = x0 + i * (bar_w + bar_gap)
             item = self.canvas.create_rectangle(
-                bx, cy - 4, bx + _BAR_W, cy + 4, fill="#ffffff", outline=""
+                bx, cy - 4, bx + bar_w, cy + 4, fill="#ffffff", outline=""
             )
             self._bars.append((item, bx))
+        r = int(12 * s)
         self._arc = self.canvas.create_arc(
-            cx - 12,
-            cy - 12,
-            cx + 12,
-            cy + 12,
+            cx - r,
+            cy - r,
+            cx + r,
+            cy + r,
             start=0,
             extent=270,
             style=tk.ARC,
             outline="#ffffff",
-            width=3,
+            width=max(2, int(3 * s)),
             state="hidden",
         )
         self._text_item = self.canvas.create_text(
             w // 2,
-            h - 16,
+            h - int(16 * s),
             text="",
             fill="#e6e9ef",
             width=w - 24,
-            font=("TkDefaultFont", 10),
+            font=("TkDefaultFont", max(8, int(10 * s))),
             justify="center",
         )
 
@@ -310,7 +322,11 @@ class OverlayApp:
         want_wide = bool(text)
         if want_wide != self._wide:
             self._wide = want_wide
-            self._build_canvas(440, 64) if want_wide else self._build_canvas(_W, _H)
+            s = self._scale
+            if want_wide:
+                self._build_canvas(int(440 * s), int(64 * s))
+            else:
+                self._build_canvas(int(_W * s), int(_H * s))
 
         if not self._visible:
             self.root.deiconify()
@@ -332,12 +348,16 @@ class OverlayApp:
         self._display_level += (level - self._display_level) * 0.35
         targets = bar_targets(self._display_level)
         cy = self._cy
+        s = self._scale
+        bar_w = int(_BAR_W * s)
+        bar_min = int(_BAR_MIN * s)
+        bar_max = int(_BAR_MAX * s)
         for i, (item, bx) in enumerate(self._bars):
             osc = 0.12 * math.sin(self._t * 0.4 + i) * self._display_level
             frac = min(1.0, max(0.0, targets[i] + osc))
-            h = _BAR_MIN + frac * (_BAR_MAX - _BAR_MIN)
+            h = bar_min + frac * (bar_max - bar_min)
             self.canvas.itemconfigure(item, state="normal")
-            self.canvas.coords(item, bx, cy - h / 2, bx + _BAR_W, cy + h / 2)
+            self.canvas.coords(item, bx, cy - h / 2, bx + bar_w, cy + h / 2)
 
     def _animate_spinner(self) -> None:
         for item, _ in self._bars:
@@ -348,10 +368,18 @@ class OverlayApp:
 
 def main() -> None:
     """Run the overlay window. Exits quietly if no display is available."""
+    if sys.platform == "win32":
+        try:
+            import ctypes
+
+            ctypes.windll.shcore.SetProcessDpiAwareness(1)
+        except Exception:
+            pass
     try:
         import tkinter as tk
 
         root = tk.Tk()
+        root.update_idletasks()
     except Exception as exc:  # pragma: no cover - needs a display
         log.info("Overlay unavailable: %s", exc)
         return

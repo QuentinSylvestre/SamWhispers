@@ -7,7 +7,7 @@ with a system tray icon showing whether it's running.
 
 `samwhispers-supervisor` is a small parent process that:
 
-- shows a **tray icon** (green = running, amber = paused, grey = stopped) with a
+- shows a **tray icon** (blue = starting, green = running, amber = paused, grey = stopped) with a
   menu to **Pause/Resume**, **Restart worker**, and **Quit**;
 - spawns the actual voice-to-text daemon (`samwhispers worker`) as a child
   and restarts it automatically if it crashes;

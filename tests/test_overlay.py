@@ -99,3 +99,19 @@ def test_set_state_idle_resets_level() -> None:
 
 def test_stop_is_safe_without_start() -> None:
     OverlayController().stop()  # must not raise
+
+
+def test_start_passes_create_no_window_on_windows() -> None:
+    c = OverlayController()
+    proc = _fake_proc()
+    with (
+        patch.object(ov, "_display_available", return_value=True),
+        patch.object(ov.subprocess, "Popen", return_value=proc) as popen,
+        patch.object(ov.sys, "platform", "win32"),
+    ):
+        c.start()
+        try:
+            kwargs = popen.call_args.kwargs
+            assert kwargs.get("creationflags") == 0x08000000
+        finally:
+            c.stop()

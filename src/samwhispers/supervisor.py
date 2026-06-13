@@ -50,6 +50,7 @@ class WorkerState(enum.Enum):
     """Coarse worker lifecycle state surfaced to the tray icon."""
 
     STOPPED = "stopped"
+    STARTING = "starting"  # spawned, not yet confirmed healthy
     RUNNING = "running"
     PAUSED = "paused"
 
@@ -238,7 +239,7 @@ class WorkerSupervisor:
             target=self._read_worker_logs, daemon=True, name="worker-log-reader"
         )
         self._log_reader.start()
-        self._set_state(WorkerState.RUNNING)
+        self._set_state(WorkerState.STARTING)
 
     def _terminate_proc(self) -> None:
         """Terminate the current worker if running. Caller holds the lock."""
@@ -277,6 +278,7 @@ class WorkerSupervisor:
     def _monitor_loop(self) -> None:
         """Watch the worker; auto-restart on unexpected exit with capped backoff."""
         restart_count = 0
+        startup_ticks = 0
         while not self._stop_event.wait(timeout=_POLL_INTERVAL):
             with self._lock:
                 proc = self._proc
@@ -284,7 +286,12 @@ class WorkerSupervisor:
                     restart_count = 0
                     continue
             if proc.poll() is None:
-                restart_count = 0  # worker is healthy
+                if self._state == WorkerState.STARTING:
+                    startup_ticks += 1
+                    if startup_ticks >= 3:
+                        with self._lock:
+                            self._set_state(WorkerState.RUNNING)
+                restart_count = 0
                 continue
 
             # Worker exited unexpectedly -- reap it and decide whether to restart.
