@@ -11,8 +11,9 @@ with a system tray icon showing whether it's running.
   menu to **Pause/Resume**, **Restart worker**, and **Quit**;
 - spawns the actual voice-to-text daemon (`python -m samwhispers`) as a child
   and restarts it automatically if it crashes;
-- lets the worker be restarted (e.g. after a future config change) without
-  tearing down the tray.
+- owns the managed `whisper-server` (when `whisper.managed = true`), so the
+  worker can be restarted after a config change without reloading the whisper
+  model. The model is only reloaded when `[whisper]` settings themselves change.
 
 Run it manually to try it out:
 

@@ -1,10 +1,16 @@
-"""Supervisor process: owns the tray icon and a restartable worker child.
+"""Supervisor process: owns the tray icon, whisper-server, and a worker child.
 
 The worker is the existing daemon (``python -m samwhispers``), spawned as a
 subprocess. The supervisor keeps it alive, restarts it on crash, and exposes
-pause/resume/restart controls for the tray icon and (later) the web UI. Running
-the worker as a child means a config-save restart can swap the worker without
+pause/resume/restart controls for the tray icon and the web UI. Running the
+worker as a child means a config-save restart can swap the worker without
 tearing down the tray or the web server that serve the UI.
+
+The supervisor also owns the managed whisper-server (instead of the worker), so
+restarting the worker for an unrelated config change (hotkey, vocabulary,
+cleanup, ...) does not reload the whisper model. The worker is always launched
+with ``--unmanaged-server`` and simply connects to the server the supervisor
+manages (or an external one when ``whisper.managed = false``).
 """
 
 from __future__ import annotations
@@ -17,9 +23,10 @@ import sys
 import threading
 from collections.abc import Callable
 from types import FrameType
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from samwhispers.server import WhisperServerManager
     from samwhispers.webserver import WebServerHandle
 
 log = logging.getLogger("samwhispers.supervisor")
@@ -58,6 +65,10 @@ class WorkerSupervisor:
         self._paused = False
         self._state = WorkerState.STOPPED
 
+        # Managed whisper-server is owned here, not by the worker.
+        self._whisper_manager: WhisperServerManager | None = None
+        self._whisper_lock = threading.Lock()
+
     # --- public API -----------------------------------------------------
 
     @property
@@ -71,8 +82,9 @@ class WorkerSupervisor:
             self._on_state_change = callback
 
     def start(self) -> None:
-        """Start the worker and the monitor thread."""
+        """Start whisper-server (if managed), then the worker and monitor thread."""
         self._stop_event.clear()
+        self._start_whisper()
         with self._lock:
             self._paused = False
             self._spawn()
@@ -89,6 +101,23 @@ class WorkerSupervisor:
             self._terminate_proc()
             if not self._paused and not self._stop_event.is_set():
                 self._spawn()
+
+    def restart_whisper(self) -> None:
+        """Stop and restart the managed whisper-server, reloading whisper config."""
+        log.info("Restarting managed whisper-server...")
+        self._stop_whisper()
+        self._start_whisper()
+
+    def apply_config_change(self, restart_whisper: bool) -> None:
+        """Apply a saved config change: bounce whisper-server only if needed.
+
+        Whisper-server is reloaded only when ``[whisper]`` settings changed
+        (the slow part -- model reload); the worker is always restarted to pick
+        up the new config.
+        """
+        if restart_whisper:
+            self.restart_whisper()
+        self.restart()
 
     def pause(self) -> None:
         """Stop the worker so it releases the hotkey/mic, without exiting the supervisor."""
@@ -111,24 +140,64 @@ class WorkerSupervisor:
         log.info("Worker resumed")
 
     def shutdown(self) -> None:
-        """Stop the worker and the monitor; the supervisor is exiting."""
+        """Stop the worker, whisper-server, and the monitor; the supervisor exits."""
         self._stop_event.set()
         if self._monitor_thread and self._monitor_thread.is_alive():
             self._monitor_thread.join(timeout=3.0)
         with self._lock:
             self._terminate_proc()
             self._set_state(WorkerState.STOPPED)
+        self._stop_whisper()
         log.info("Supervisor shutdown complete")
 
     # --- internals ------------------------------------------------------
 
     def _build_cmd(self) -> list[str]:
-        cmd = [sys.executable, "-m", "samwhispers"]
+        # The supervisor owns the managed whisper-server, so the worker always
+        # runs unmanaged and just connects to it.
+        cmd = [sys.executable, "-m", "samwhispers", "--unmanaged-server"]
         if self._config_path:
             cmd += ["--config", self._config_path]
         if self._verbose:
             cmd.append("--verbose")
         return cmd
+
+    def _start_whisper(self) -> None:
+        """Start the managed whisper-server if ``whisper.managed`` is set."""
+        with self._whisper_lock:
+            if self._stop_event.is_set() or self._whisper_manager is not None:
+                return
+            whisper_cfg = self._load_whisper_config()
+            if whisper_cfg is None or not whisper_cfg.managed:
+                return
+            try:
+                from samwhispers.server import WhisperServerManager
+
+                manager = WhisperServerManager(whisper_cfg)
+                manager.start()
+                self._whisper_manager = manager
+                log.info("Managed whisper-server started")
+            except Exception:
+                log.exception(
+                    "Failed to start managed whisper-server; "
+                    "the worker may be unable to transcribe until this is fixed"
+                )
+
+    def _stop_whisper(self) -> None:
+        with self._whisper_lock:
+            manager, self._whisper_manager = self._whisper_manager, None
+        if manager is not None:
+            manager.stop()
+
+    def _load_whisper_config(self) -> Any:
+        """Load whisper config from disk without strict validation, or None on error."""
+        try:
+            from samwhispers.webconfig import current_app_config
+
+            return current_app_config(self._config_path).whisper
+        except Exception:
+            log.exception("Failed to load config for whisper-server")
+            return None
 
     def _spawn(self) -> None:
         """Launch a fresh worker process. Caller holds the lock."""

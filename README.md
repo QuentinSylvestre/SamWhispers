@@ -270,6 +270,9 @@ When the supervisor runs, it serves a local config UI at
 Edit any setting in the browser and click **Save** — the config is validated,
 written to `config.toml`, and the worker restarts automatically when a change
 requires it. The UI also shows worker status and offers Pause/Resume/Restart.
+The supervisor owns the managed `whisper-server`, so most changes restart only
+the lightweight worker; the whisper model is reloaded only when `[whisper]`
+settings change.
 
 ```bash
 samwhispers-supervisor --web-port 9000  # use a different port

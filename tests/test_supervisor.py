@@ -5,8 +5,19 @@ from __future__ import annotations
 import sys
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from samwhispers import supervisor as sup
 from samwhispers.supervisor import WorkerState, WorkerSupervisor
+
+
+@pytest.fixture(autouse=True)
+def _no_managed_whisper(monkeypatch: pytest.MonkeyPatch) -> None:
+    """By default, supervisors in tests don't start a real whisper-server.
+
+    Tests that exercise whisper management override _load_whisper_config locally.
+    """
+    monkeypatch.setattr(WorkerSupervisor, "_load_whisper_config", lambda self: None)
 
 
 def _running_proc() -> MagicMock:
@@ -19,7 +30,7 @@ def _running_proc() -> MagicMock:
 
 def test_build_cmd_minimal() -> None:
     s = WorkerSupervisor()
-    assert s._build_cmd() == [sys.executable, "-m", "samwhispers"]
+    assert s._build_cmd() == [sys.executable, "-m", "samwhispers", "--unmanaged-server"]
 
 
 def test_build_cmd_with_config_and_verbose() -> None:
@@ -28,10 +39,65 @@ def test_build_cmd_with_config_and_verbose() -> None:
         sys.executable,
         "-m",
         "samwhispers",
+        "--unmanaged-server",
         "--config",
         "/tmp/c.toml",
         "--verbose",
     ]
+
+
+def test_apply_config_change_without_whisper_restart() -> None:
+    s = WorkerSupervisor()
+    with (
+        patch.object(s, "restart_whisper") as rw,
+        patch.object(s, "restart") as rworker,
+    ):
+        s.apply_config_change(restart_whisper=False)
+    rw.assert_not_called()
+    rworker.assert_called_once()
+
+
+def test_apply_config_change_with_whisper_restart() -> None:
+    s = WorkerSupervisor()
+    with (
+        patch.object(s, "restart_whisper") as rw,
+        patch.object(s, "restart") as rworker,
+    ):
+        s.apply_config_change(restart_whisper=True)
+    rw.assert_called_once()
+    rworker.assert_called_once()
+
+
+def test_start_whisper_skips_when_not_managed() -> None:
+    s = WorkerSupervisor()
+    whisper_cfg = MagicMock()
+    whisper_cfg.managed = False
+    with (
+        patch.object(s, "_load_whisper_config", return_value=whisper_cfg),
+        patch("samwhispers.server.WhisperServerManager") as mgr_cls,
+    ):
+        s._start_whisper()
+    mgr_cls.assert_not_called()
+    assert s._whisper_manager is None
+
+
+def test_start_whisper_starts_manager_when_managed() -> None:
+    s = WorkerSupervisor()
+    whisper_cfg = MagicMock()
+    whisper_cfg.managed = True
+    manager = MagicMock()
+    with (
+        patch.object(s, "_load_whisper_config", return_value=whisper_cfg),
+        patch("samwhispers.server.WhisperServerManager", return_value=manager) as mgr_cls,
+    ):
+        s._start_whisper()
+    mgr_cls.assert_called_once_with(whisper_cfg)
+    manager.start.assert_called_once()
+    assert s._whisper_manager is manager
+    # stop_whisper tears it down
+    s._stop_whisper()
+    manager.stop.assert_called_once()
+    assert s._whisper_manager is None
 
 
 def test_start_spawns_and_runs_monitor() -> None:

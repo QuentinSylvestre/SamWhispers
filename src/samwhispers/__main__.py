@@ -17,6 +17,12 @@ def main() -> None:
     )
     parser.add_argument("-c", "--config", help="Path to config.toml", default=None)
     parser.add_argument("-v", "--verbose", action="store_true", help="Enable debug logging")
+    parser.add_argument(
+        "--unmanaged-server",
+        action="store_true",
+        help="Do not manage whisper-server; connect to an externally managed one "
+        "(used when launched by samwhispers-supervisor, which owns the server)",
+    )
     parser.add_argument("--version", action="version", version=f"samwhispers {__version__}")
     args = parser.parse_args()
 
@@ -30,7 +36,7 @@ def main() -> None:
     from samwhispers.config import load_config
 
     config = load_config(args.config)
-    app = SamWhispers(config)
+    app = SamWhispers(config, manage_server=not args.unmanaged_server)
 
     try:
         app.run()

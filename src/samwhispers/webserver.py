@@ -83,10 +83,12 @@ def create_app(
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
         restarted = False
+        whisper_restarted = False
         if supervisor is not None and requires_restart(old_cfg, new_cfg):
-            supervisor.restart()
+            whisper_restarted = old_cfg.whisper != new_cfg.whisper
+            supervisor.apply_config_change(restart_whisper=whisper_restarted)
             restarted = True
-        return {"saved": True, "restarted": restarted}
+        return {"saved": True, "restarted": restarted, "whisper_restarted": whisper_restarted}
 
     @app.get("/api/history")
     def get_history(limit: int = 50, offset: int = 0, q: str | None = None) -> dict[str, Any]:

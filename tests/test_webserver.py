@@ -34,6 +34,9 @@ class FakeSupervisor:
     def restart(self) -> None:
         self.calls.append("restart")
 
+    def apply_config_change(self, restart_whisper: bool) -> None:
+        self.calls.append(f"apply(whisper={restart_whisper})")
+
 
 @pytest.fixture
 def client_and_sup(tmp_path: Path) -> tuple[TestClient, FakeSupervisor, Path]:
@@ -73,15 +76,31 @@ def test_put_config_saves_and_restarts(
     client_and_sup: tuple[TestClient, FakeSupervisor, Path],
 ) -> None:
     client, sup, path = client_and_sup
+    # Establish on-disk state with managed=False so a later hotkey edit leaves
+    # whisper settings unchanged.
     cfg = client.get("/api/config").json()
     cfg["whisper"]["managed"] = False
+    client.put("/api/config", json=cfg)
+    sup.calls.clear()
+
     cfg["hotkey"]["key"] = "ctrl+alt+s"
-    res = client.put("/api/config", json=cfg)
-    assert res.status_code == 200
-    body = res.json()
+    body = client.put("/api/config", json=cfg).json()
     assert body["saved"] is True and body["restarted"] is True
-    assert "restart" in sup.calls
+    # Hotkey-only change must not bounce whisper-server.
+    assert body["whisper_restarted"] is False
+    assert sup.calls == ["apply(whisper=False)"]
     assert path.is_file()
+
+
+def test_put_config_whisper_change_restarts_whisper(
+    client_and_sup: tuple[TestClient, FakeSupervisor, Path],
+) -> None:
+    client, sup, _ = client_and_sup
+    cfg = client.get("/api/config").json()
+    cfg["whisper"]["managed"] = False  # changes whisper settings from the default
+    body = client.put("/api/config", json=cfg).json()
+    assert body["restarted"] is True and body["whisper_restarted"] is True
+    assert sup.calls == ["apply(whisper=True)"]
 
 
 def test_put_config_no_change_does_not_restart(

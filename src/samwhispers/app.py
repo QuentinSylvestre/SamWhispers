@@ -46,7 +46,7 @@ class State(enum.Enum):
 class SamWhispers:
     """State-machine-driven voice-to-text daemon."""
 
-    def __init__(self, config: AppConfig) -> None:
+    def __init__(self, config: AppConfig, manage_server: bool = True) -> None:
         self.config = config
         self._state = State.IDLE
         self._lock = threading.Lock()
@@ -95,8 +95,10 @@ class SamWhispers:
             except Exception:
                 log.exception("Failed to open history store; history disabled")
 
+        # When launched by the supervisor (manage_server=False), the supervisor
+        # owns whisper-server and the worker only connects to it.
         self._server_manager: WhisperServerManager | None = None
-        if config.whisper.managed:
+        if config.whisper.managed and manage_server:
             self._server_manager = WhisperServerManager(config.whisper)
 
         # Language cycle params (only when multiple languages configured)
