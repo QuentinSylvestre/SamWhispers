@@ -113,13 +113,7 @@ button.primary:disabled { opacity: .5; cursor: default; }
   border-radius: 8px; background: var(--bg); }
 .model-row .name { font-size: 13px; white-space: nowrap; }
 .model-row .star { color: var(--amber); font-size: 13px; }
-.model-row .info-icon { color: var(--muted); font-size: 12px; cursor: help;
-  position: relative; }
-.model-row .info-icon:hover .info-tip { display: block; }
-.info-tip { display: none; position: absolute; bottom: 100%; left: 50%;
-  transform: translateX(-50%); background: var(--bg); border: 1px solid var(--border);
-  border-radius: 8px; padding: 8px 10px; font-size: 12px; color: var(--fg);
-  white-space: nowrap; z-index: 60; pointer-events: none; margin-bottom: 6px; }
+.model-row .info-icon { color: var(--muted); font-size: 12px; cursor: help; }
 .model-row .spacer { flex: 1; }
 .model-row .tag { font-size: 10px; color: var(--accent); border: 1px solid var(--accent);
   border-radius: 999px; padding: 1px 6px; }
@@ -550,7 +544,7 @@ function renderModelManager() {
     row.innerHTML =
       (meta.rec ? `<span class="star" title="Recommended">&#9733;</span>` : "") +
       `<span class="name">${name}</span>` +
-      `<span class="info-icon" title="${meta.size || ""} | ${meta.speed || ""} | ${meta.lang || ""}">&#9432;<span class="info-tip">${meta.size || "?"} &middot; ${meta.speed || "?"} &middot; ${meta.lang || "?"}</span></span>` +
+      `<span class="info-icon" title="${meta.size || "?"} · ${meta.speed || "?"} · ${meta.lang || "?"}">&#9432;</span>` +
       `<span class="spacer"></span>` +
       (isDl ? `<span class="tag">downloaded</span>` : "") +
       `<button class="dl-btn" title="Download" ${isDl ? "disabled" : ""}>&#x2B07;</button>` +
