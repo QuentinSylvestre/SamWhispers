@@ -2,6 +2,7 @@
 
 > **Date**: 2026-06-13
 > **Status**: Complete  <!-- Status lifecycle: Exploring → Draft → In Progress → Complete -->
+> **Last Updated**: 2026-06-13 19:11
 > **Scope**: Make SamWhispers' infrastructure layer (supervisor, tray, web UI, overlay) production-grade — visible errors, accurate status, smart restarts, crisp overlay
 > **Estimated effort**: 2-3 days
 
