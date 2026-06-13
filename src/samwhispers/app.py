@@ -310,7 +310,7 @@ class SamWhispers:
             self._stream_engine,
             self.config.audio.sample_rate,
             on_commit=self._inject_committed if mode == "progressive" else None,
-            on_preview=self._preview_text,
+            on_preview=self._preview_text if mode == "preview" else None,
         )
         self._stream_thread = threading.Thread(
             target=self._stream_loop, daemon=True, name="stream-loop"

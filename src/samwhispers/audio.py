@@ -25,14 +25,18 @@ def wav_to_float32(wav_bytes: bytes) -> np.ndarray:
     return np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32767.0
 
 
-def compute_level(samples: np.ndarray, gain: float = 12.0) -> float:
-    """Normalized 0..1 loudness (RMS * gain) for the on-screen meter."""
+def compute_level(samples: np.ndarray, gain: float = 2.5) -> float:
+    """Normalized 0..1 loudness for the on-screen meter.
+
+    Uses a square-root (perceptual) curve so normal speech spans a useful range
+    instead of pegging the bars at maximum.
+    """
     if samples.size == 0:
         return 0.0
     rms = float(np.sqrt(np.mean(np.square(samples, dtype=np.float64))))
     if not math.isfinite(rms):
         return 0.0
-    return min(1.0, rms * gain)
+    return min(1.0, math.sqrt(rms) * gain)
 
 
 def numpy_to_wav(audio: np.ndarray, sample_rate: int) -> bytes:

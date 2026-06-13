@@ -158,11 +158,11 @@
   <section>
     <h2>Streaming transcription</h2>
     <div class="field"><label>Enabled</label><input type="checkbox" data-path="streaming.enabled" data-type="bool" /><span class="hint">continuous instead of batch-at-the-end</span></div>
-    <div class="field"><label>Engine</label><select data-path="streaming.engine" data-meta="stream_engines"></select></div>
-    <div class="field"><label>Output mode</label><select data-path="streaming.output_mode" data-meta="stream_modes"></select><span class="hint">preview = live panel, inject final · progressive = type as you speak</span></div>
-    <div class="field"><label>Re-decode interval (s)</label><input type="number" step="any" data-path="streaming.interval_seconds" data-type="number" /></div>
-    <div class="field"><label>faster-whisper model</label><input type="text" data-path="streaming.model" /><span class="hint">only for the faster-whisper engine (e.g. base, small)</span></div>
-    <div class="field"><label>faster-whisper compute</label><input type="text" data-path="streaming.compute_type" /><span class="hint">e.g. int8, int8_float16, float16</span></div>
+    <div class="field" data-show-when="streaming.enabled=true"><label>Engine</label><select data-path="streaming.engine" data-meta="stream_engines"></select></div>
+    <div class="field" data-show-when="streaming.enabled=true"><label>Output mode</label><select data-path="streaming.output_mode" data-meta="stream_modes"></select><span class="hint">preview = live panel, inject final · progressive = type as you speak</span></div>
+    <div class="field" data-show-when="streaming.enabled=true"><label>Re-decode interval (s)</label><input type="number" step="any" data-path="streaming.interval_seconds" data-type="number" /></div>
+    <div class="field" data-show-when="streaming.enabled=true&streaming.engine=faster_whisper"><label>faster-whisper model</label><input type="text" data-path="streaming.model" /><span class="hint">e.g. base, small, or a model path</span></div>
+    <div class="field" data-show-when="streaming.enabled=true&streaming.engine=faster_whisper"><label>faster-whisper compute</label><input type="text" data-path="streaming.compute_type" /><span class="hint">e.g. int8, int8_float16, float16</span></div>
   </section>
 
   <div class="savebar">
@@ -222,6 +222,22 @@ function fillSelect(el) {
   }
 }
 
+function inputValue(path) {
+  const el = document.querySelector(`[data-path="${path}"]`);
+  if (!el) return "";
+  return el.type === "checkbox" ? String(el.checked) : el.value;
+}
+
+function applyVisibility() {
+  for (const el of document.querySelectorAll("[data-show-when]")) {
+    const ok = el.dataset.showWhen.split("&").every(cond => {
+      const [path, want] = cond.split("=");
+      return inputValue(path) === want;
+    });
+    el.style.display = ok ? "" : "none";
+  }
+}
+
 function render() {
   for (const el of document.querySelectorAll("[data-path]")) {
     if (el.tagName === "SELECT" && el.dataset.meta) fillSelect(el);
@@ -231,7 +247,10 @@ function render() {
     else if (type === "list") el.value = Array.isArray(val) ? val.join(", ") : "";
     else el.value = val == null ? "" : val;
   }
+  applyVisibility();
 }
+
+document.querySelector("main").addEventListener("change", applyVisibility);
 
 function collect() {
   for (const el of document.querySelectorAll("[data-path]")) {

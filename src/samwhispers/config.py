@@ -349,7 +349,6 @@ class StreamingConfig:
     engine: str = "chunked"
     output_mode: str = "preview"
     interval_seconds: float = 0.8  # how often to re-decode while speaking
-    window_seconds: float = 0.0  # max recent audio to decode (0 = whole buffer)
     model: str = "base"  # faster-whisper model name or path
     compute_type: str = "int8"  # faster-whisper compute type
 
@@ -484,8 +483,6 @@ def _validate(config: AppConfig) -> None:
         )
     if config.streaming.interval_seconds <= 0:
         raise ValueError("streaming.interval_seconds must be > 0")
-    if config.streaming.window_seconds < 0:
-        raise ValueError("streaming.window_seconds must be >= 0 (0 = whole buffer)")
     if config.streaming.enabled and config.streaming.engine == "faster_whisper":
         import importlib.util
 
