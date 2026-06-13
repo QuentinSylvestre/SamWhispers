@@ -362,8 +362,11 @@ def test_relaunch_detached_builds_foreground_cmd(...):
 ```
 
 **Exit criteria**:
-- [ ] `python -m pytest tests/test_autostart.py tests/test_supervisor.py -v` passes on Windows
-- [ ] Tests still pass on Linux (if available)
+- [x] `python -m pytest tests/test_autostart.py tests/test_supervisor.py -v` passes on Windows
+- [x] Tests still pass on Linux (if available)
+
+**Implementation (2026-06-13, code: 7018d00)**
+Fixed 6 test assertions: (1) `test_supervisor_command_prefers_installed_script` now mocks `sys.platform` to `"linux"` so the Linux code path runs on Windows; (2) `test_relaunch_detached_builds_foreground_cmd` updated to verify `-c` style command with embedded args and platform-conditional creationflags; (3) `test_relaunch_detached_passes_through_args` checks tokens inside the `-c` script string; (4-6) three tests updated from asserting `WorkerState.RUNNING` to `WorkerState.STARTING` after `_spawn` (aligned with Phase 3's STARTING state change). 70 tests pass across all 4 test files.
 
 ## 6) Risk Assessment
 
@@ -443,6 +446,8 @@ Implementation health: Green.
 0 findings (0 High, 0 Medium, 0 Low).
 
 STARTING state transitions correctly via startup_ticks counter. DPI awareness wrapped in try/except (graceful fallback). CREATE_NO_WINDOW flag added to overlay spawn. 11 overlay tests pass including new creation-flag test.
+
+Per-phase review deferred to Step 9: Phase 4 is test-only fixes (no new executable code), mechanical alignment with Phases 1-3 changes.
 
 ## 9) Implementation Divergences from Plan
 <Reserved -- filled during implementation>
