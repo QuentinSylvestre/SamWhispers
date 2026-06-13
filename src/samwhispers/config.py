@@ -323,6 +323,14 @@ class HistoryConfig:
 
 
 @dataclass
+class TranslationConfig:
+    # Translates the dictated text into target_language before injecting it,
+    # using the AI provider/keys configured in [cleanup].
+    enabled: bool = False
+    target_language: str = "en"
+
+
+@dataclass
 class AppConfig:
     hotkey: HotkeyConfig = field(default_factory=HotkeyConfig)
     whisper: WhisperConfig = field(default_factory=WhisperConfig)
@@ -333,6 +341,7 @@ class AppConfig:
     vocabulary: VocabularyConfig = field(default_factory=VocabularyConfig)
     filler: FillerConfig = field(default_factory=FillerConfig)
     history: HistoryConfig = field(default_factory=HistoryConfig)
+    translation: TranslationConfig = field(default_factory=TranslationConfig)
 
 
 def find_config() -> Path | None:
@@ -436,6 +445,26 @@ def _validate(config: AppConfig) -> None:
         raise ValueError(
             f"Invalid history.max_entries {config.history.max_entries}, must be >= 0 (0 = unlimited)"
         )
+
+    if config.translation.target_language not in WHISPER_LANGUAGES or (
+        config.translation.target_language == "auto"
+    ):
+        raise ValueError(
+            f"Invalid translation.target_language {config.translation.target_language!r}, "
+            "must be a language code (not 'auto')"
+        )
+    if config.translation.enabled:
+        key = (
+            config.cleanup.openai.api_key
+            if config.cleanup.provider == "openai"
+            else config.cleanup.anthropic.api_key
+        )
+        if not key:
+            warnings.warn(
+                f"Translation enabled but {config.cleanup.provider} API key is empty",
+                UserWarning,
+                stacklevel=3,
+            )
 
     # Validate vocabulary language codes
     for lang in config.vocabulary.languages:
@@ -547,6 +576,7 @@ def build_config(raw: dict[str, Any], validate: bool = True) -> AppConfig:
         vocabulary=VocabularyConfig(words=vocab_words, languages=vocab_langs),
         filler=filler_cfg,
         history=HistoryConfig(**d.get("history", {})),
+        translation=TranslationConfig(**d.get("translation", {})),
     )
     if validate:
         _validate(config)

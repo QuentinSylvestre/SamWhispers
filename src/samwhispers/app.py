@@ -18,6 +18,7 @@ from samwhispers.history import HistoryStore
 from samwhispers.postprocess import TextPostprocessor
 from samwhispers.server import WhisperServerManager
 from samwhispers.transcribe import WhisperClient
+from samwhispers.translate import Translator
 
 log = logging.getLogger("samwhispers")
 
@@ -66,6 +67,7 @@ class SamWhispers:
             shutdown_event=self._shutdown_event,
         )
         self.cleanup = CleanupProvider(config.cleanup)
+        self.translator = Translator(config.translation, config.cleanup)
 
         # Build filler word list from config
         filler_words: list[str] | None = None
@@ -289,9 +291,19 @@ class SamWhispers:
         if self.config.cleanup.enabled:
             log.info("Cleanup took %.0fms", cleanup_ms)
 
-        text = self.postprocessor.finalize(text)
+        # Optional translation: the original (post-cleanup) text is kept for
+        # history; the translation is what gets injected.
+        translated: str | None = None
+        inject_source = text
+        if self.config.translation.enabled:
+            t0 = time.monotonic()
+            translated = self.translator.translate(text)
+            log.info("Translation took %.0fms", (time.monotonic() - t0) * 1000)
+            inject_source = translated
 
-        log.info("Result: %s", text)
+        final = self.postprocessor.finalize(inject_source)
+
+        log.info("Result: %s", final)
 
         if self.history is not None:
             try:
@@ -300,13 +312,14 @@ class SamWhispers:
                     language=self.whisper.language,
                     duration_ms=int(duration * 1000),
                     cleanup_used=self.config.cleanup.enabled,
+                    translated_text=translated,
                 )
             except Exception:
                 log.exception("Failed to write transcription history")
 
         self.hotkey_listener.suppress()
         try:
-            self.injector.inject(text)
+            self.injector.inject(final)
         finally:
             self.hotkey_listener.resume()
         log.info(
@@ -450,4 +463,5 @@ class SamWhispers:
             self._server_manager.stop()
         self.whisper.close()
         self.cleanup.close()
+        self.translator.close()
         log.info("Shutdown complete")

@@ -287,6 +287,14 @@ delete entries from the **History** tab in the config UI. Set
 `history.max_entries` to cap retention (`0` = unlimited); the oldest entries are
 pruned automatically. History never leaves your machine.
 
+### Translation
+
+Enable `translation.enabled` and pick a `translation.target_language` to have
+dictated text translated before it's injected. Translation uses the AI provider
+and API keys configured in `[cleanup]` (so set those up first). The History tab
+shows both the original transcription and its translation. As with cleanup, if
+the API call fails the original text is used.
+
 ## AI Cleanup Setup
 
 AI cleanup is optional and disabled by default. When enabled, transcribed text is sent to an AI model to fix grammar, punctuation, and capitalization before pasting.

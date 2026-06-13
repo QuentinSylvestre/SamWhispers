@@ -37,6 +37,27 @@ def test_history_settings_roundtrip(tmp_path: Path) -> None:
     assert reloaded["history"]["max_entries"] == 50
 
 
+def test_translation_settings_roundtrip(tmp_path: Path) -> None:
+    path = tmp_path / "config.toml"
+    data = load_config_dict(path)
+    data["whisper"]["managed"] = False
+    data["translation"]["enabled"] = True
+    data["translation"]["target_language"] = "fr"
+    save_config_dict(data, path)
+    reloaded = load_config_dict(path)
+    assert reloaded["translation"]["enabled"] is True
+    assert reloaded["translation"]["target_language"] == "fr"
+
+
+def test_translation_rejects_auto_target(tmp_path: Path) -> None:
+    path = tmp_path / "config.toml"
+    data = load_config_dict(path)
+    data["whisper"]["managed"] = False
+    data["translation"]["target_language"] = "auto"
+    with pytest.raises(ValueError):
+        save_config_dict(data, path)
+
+
 def test_save_then_load_roundtrip(tmp_path: Path) -> None:
     path = tmp_path / "config.toml"
     data = load_config_dict(path)

@@ -122,6 +122,12 @@
   </section>
 
   <section>
+    <h2>Translation</h2>
+    <div class="field"><label>Enabled</label><input type="checkbox" data-path="translation.enabled" data-type="bool" /></div>
+    <div class="field"><label>Target language</label><select data-path="translation.target_language" data-meta="languages" data-exclude-auto="1"></select><span class="hint">uses the AI provider configured above</span></div>
+  </section>
+
+  <section>
     <h2>Post-processing</h2>
     <div class="field"><label>Collapse newlines</label><input type="checkbox" data-path="postprocess.collapse_newlines" data-type="bool" /></div>
     <div class="field"><label>Collapse spaces</label><input type="checkbox" data-path="postprocess.collapse_spaces" data-type="bool" /></div>
@@ -196,7 +202,8 @@ function fillSelect(el) {
   if (el.dataset.allowEmpty) el.add(new Option("(none)", ""));
   for (const it of items) {
     if (typeof it === "string") el.add(new Option(it, it));
-    else el.add(new Option(`${it.name} (${it.code})`, it.code));
+    else if (!(el.dataset.excludeAuto && it.code === "auto"))
+      el.add(new Option(`${it.name} (${it.code})`, it.code));
   }
 }
 

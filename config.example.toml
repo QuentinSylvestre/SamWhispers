@@ -77,3 +77,9 @@ enabled = true          # Save each transcription to a local SQLite history
 max_entries = 1000      # Retention cap; oldest entries are pruned (0 = unlimited)
 # History is stored at <data-dir>/samwhispers/history.db and is viewable in the
 # config web UI's History tab (see docs/STARTUP.md).
+
+[translation]
+enabled = false         # Translate dictated text before injecting it
+target_language = "en"  # Target language code (e.g. en, fr, es, ja)
+# Translation uses the AI provider/keys configured in [cleanup]. The History tab
+# shows both the original transcription and its translation.
