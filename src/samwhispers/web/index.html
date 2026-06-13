@@ -5,108 +5,204 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>SamWhispers</title>
 <style>
-  :root {
-    --bg: #0f1115; --panel: #181b22; --border: #2a2f3a; --fg: #e6e9ef;
-    --muted: #9aa3b2; --accent: #4caf50; --accent2: #2d6cdf; --danger: #e25555;
-    --amber: #ffc107;
-  }
-  * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--fg);
-    font: 15px/1.5 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
-  header { display: flex; align-items: center; gap: 12px; padding: 16px 24px;
-    border-bottom: 1px solid var(--border); position: sticky; top: 0;
-    background: var(--bg); z-index: 5; }
-  header h1 { font-size: 18px; margin: 0; font-weight: 600; }
-  .pill { display: inline-flex; align-items: center; gap: 6px; font-size: 13px;
-    color: var(--muted); margin-left: auto; }
-  .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); }
-  .dot.running { background: var(--accent); } .dot.paused { background: var(--amber); }
-  .dot.stopped { background: var(--danger); }
-  main { max-width: 820px; margin: 0 auto; padding: 24px; }
-  .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; }
-  button { font: inherit; cursor: pointer; border: 1px solid var(--border);
-    background: var(--panel); color: var(--fg); padding: 8px 14px; border-radius: 8px; }
-  button:hover { border-color: #3a4150; }
-  button.primary { background: var(--accent2); border-color: var(--accent2); }
-  button.primary:disabled { opacity: .5; cursor: default; }
-  section { background: var(--panel); border: 1px solid var(--border);
-    border-radius: 12px; padding: 18px 20px; margin-bottom: 16px; }
-  section h2 { font-size: 14px; text-transform: uppercase; letter-spacing: .04em;
-    color: var(--muted); margin: 0 0 14px; }
-  .field { display: grid; grid-template-columns: 220px 1fr; gap: 12px;
-    align-items: center; padding: 7px 0; }
-  .field label { color: var(--fg); }
-  .field .hint { color: var(--muted); font-size: 12px; }
-  .stack { display: flex; flex-direction: column; gap: 8px; }
-  input[type=text], input[type=password], input[type=number], select, textarea {
-    width: 100%; background: var(--bg); color: var(--fg); border: 1px solid var(--border);
-    border-radius: 8px; padding: 8px 10px; font: inherit; }
-  textarea { min-height: 64px; resize: vertical; }
-  input[type=checkbox] { width: 18px; height: 18px; }
-  .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
-    background: var(--panel); border: 1px solid var(--border); padding: 12px 18px;
-    border-radius: 10px; opacity: 0; transition: opacity .2s; pointer-events: none;
-    max-width: 90%; }
-  .toast.show { opacity: 1; }
-  .toast.ok { border-color: var(--accent); } .toast.err { border-color: var(--danger); }
-  .savebar { position: sticky; bottom: 0; background: var(--bg);
-    padding: 14px 0; border-top: 1px solid var(--border); display: flex; gap: 10px;
-    align-items: center; }
-  .savebar .hint { color: var(--muted); font-size: 13px; }
-  .tabs { display: flex; gap: 4px; margin-bottom: 18px; }
-  .tab { background: transparent; border: none; border-bottom: 2px solid transparent;
-    border-radius: 0; padding: 8px 14px; color: var(--muted); }
-  .tab.active { color: var(--fg); border-bottom-color: var(--accent2); }
-  .histbar { display: flex; gap: 8px; margin-bottom: 14px; }
-  .histbar input { flex: 1; }
-  .entry { background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
-    padding: 12px 14px; margin-bottom: 10px; }
-  .entry .meta { display: flex; gap: 10px; align-items: center; color: var(--muted);
-    font-size: 12px; margin-bottom: 6px; flex-wrap: wrap; }
-  .entry .meta .tag { border: 1px solid var(--border); border-radius: 999px; padding: 1px 8px; }
-  .entry .text { white-space: pre-wrap; word-break: break-word; }
-  .entry .row-actions { margin-left: auto; display: flex; gap: 6px; }
-  .entry .row-actions button { padding: 3px 9px; font-size: 12px; }
-  .empty { color: var(--muted); text-align: center; padding: 40px 0; }
+:root {
+  --bg: #0f1115; --surface: #181b22; --surface2: #1e222b; --border: #2a2f3a;
+  --fg: #e6e9ef; --muted: #9aa3b2; --accent: #4caf50; --accent2: #2d6cdf;
+  --danger: #e25555; --amber: #ffc107; --radius: 10px; --sidebar-w: 220px;
+}
+* { box-sizing: border-box; margin: 0; }
+body { background: var(--bg); color: var(--fg);
+  font: 15px/1.5 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  display: grid; grid-template-columns: var(--sidebar-w) 1fr;
+  grid-template-rows: auto 1fr; min-height: 100vh; }
+
+/* Header */
+header { grid-column: 1 / -1; display: flex; align-items: center; gap: 12px;
+  padding: 14px 24px; border-bottom: 1px solid var(--border);
+  background: var(--bg); position: sticky; top: 0; z-index: 10; }
+header h1 { font-size: 18px; font-weight: 600; }
+.status-pill { display: inline-flex; align-items: center; gap: 6px;
+  font-size: 13px; color: var(--muted); margin-left: auto; }
+.dot { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); }
+.dot.running { background: var(--accent); }
+.dot.paused { background: var(--amber); }
+.dot.stopped { background: var(--danger); }
+
+/* Sidebar */
+aside { background: var(--surface); border-right: 1px solid var(--border);
+  padding: 16px 0; overflow-y: auto; position: sticky; top: 53px;
+  height: calc(100vh - 53px); }
+.nav-group { padding: 0 12px; margin-bottom: 16px; }
+.nav-group-label { font-size: 11px; text-transform: uppercase;
+  letter-spacing: .06em; color: var(--muted); padding: 0 8px; margin-bottom: 6px; }
+.nav-item { display: flex; align-items: center; gap: 8px; padding: 8px 12px;
+  border-radius: 8px; cursor: pointer; color: var(--muted); font-size: 14px;
+  transition: background .1s, color .1s; text-decoration: none; }
+.nav-item:hover { background: var(--surface2); color: var(--fg); }
+.nav-item.active { background: color-mix(in srgb, var(--accent2) 15%, transparent);
+  color: var(--fg); font-weight: 500; }
+.nav-icon { width: 18px; text-align: center; flex-shrink: 0; }
+
+/* Content */
+.content { padding: 28px 36px; overflow-y: auto; max-width: 780px; }
+.page { display: none; }
+.page.active { display: block; }
+.page-title { font-size: 20px; font-weight: 600; margin-bottom: 4px; }
+.page-desc { color: var(--muted); font-size: 14px; margin-bottom: 24px; }
+
+/* Cards */
+.card { background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 18px 20px; margin-bottom: 16px; }
+.card h3 { font-size: 14px; font-weight: 500; margin-bottom: 14px; }
+
+/* Fields */
+.field { display: grid; grid-template-columns: 200px 1fr; gap: 10px;
+  align-items: center; padding: 8px 0; }
+.field label { font-size: 14px; color: var(--fg); }
+.hint { color: var(--muted); font-size: 12px; margin-top: 2px; }
+input[type=text], input[type=password], input[type=number], select, textarea {
+  width: 100%; background: var(--bg); color: var(--fg); border: 1px solid var(--border);
+  border-radius: 8px; padding: 8px 10px; font: inherit; }
+input:focus, select:focus, textarea:focus { outline: none;
+  border-color: var(--accent2); }
+textarea { min-height: 64px; resize: vertical; }
+input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--accent2); }
+.stack { display: flex; flex-direction: column; gap: 6px; }
+
+/* Actions */
+.actions { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; }
+button { font: inherit; cursor: pointer; border: 1px solid var(--border);
+  background: var(--surface); color: var(--fg); padding: 8px 14px; border-radius: 8px; }
+button:hover { border-color: #3a4150; background: var(--surface2); }
+button.primary { background: var(--accent2); border-color: var(--accent2); }
+button.primary:hover { background: color-mix(in srgb, var(--accent2) 85%, white); }
+button.primary:disabled { opacity: .5; cursor: default; }
+
+/* Save bar */
+.savebar { position: sticky; bottom: 0; background: var(--bg);
+  padding: 14px 0; border-top: 1px solid var(--border);
+  display: flex; gap: 10px; align-items: center; }
+
+/* Toast */
+.toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+  background: var(--surface); border: 1px solid var(--border); padding: 12px 18px;
+  border-radius: var(--radius); opacity: 0; transition: opacity .2s;
+  pointer-events: none; max-width: 90%; z-index: 100; }
+.toast.show { opacity: 1; }
+.toast.ok { border-color: var(--accent); }
+.toast.err { border-color: var(--danger); }
+
+/* History */
+.histbar { display: flex; gap: 8px; margin-bottom: 14px; }
+.histbar input { flex: 1; }
+.entry { background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 12px 14px; margin-bottom: 10px; }
+.entry .meta { display: flex; gap: 10px; align-items: center; color: var(--muted);
+  font-size: 12px; margin-bottom: 6px; flex-wrap: wrap; }
+.entry .tag { border: 1px solid var(--border); border-radius: 999px; padding: 1px 8px; }
+.entry .text { white-space: pre-wrap; word-break: break-word; }
+.entry .row-actions { margin-left: auto; display: flex; gap: 6px; }
+.entry .row-actions button { padding: 3px 9px; font-size: 12px; }
+.empty { color: var(--muted); text-align: center; padding: 40px 0; }
+
+/* Responsive */
+@media (max-width: 768px) {
+  body { grid-template-columns: 1fr; }
+  aside { position: fixed; left: -100%; width: 260px; top: 53px; height: calc(100vh - 53px);
+    z-index: 20; transition: left .2s; }
+  aside.open { left: 0; }
+  .menu-toggle { display: block; }
+  .content { padding: 20px 16px; }
+  .field { grid-template-columns: 1fr; }
+}
+@media (min-width: 769px) { .menu-toggle { display: none; } }
 </style>
 </head>
 <body>
-<header>
-  <h1>SamWhispers</h1>
-  <span class="pill"><span class="dot" id="statusDot"></span><span id="statusText">…</span></span>
-</header>
-<main>
-  <nav class="tabs">
-    <button class="tab active" data-view="settings">Settings</button>
-    <button class="tab" data-view="history">History</button>
-  </nav>
 
-  <div id="view-settings">
+<header>
+  <button class="menu-toggle" id="menuToggle" aria-label="Toggle menu">&#9776;</button>
+  <h1>SamWhispers</h1>
+  <span class="status-pill"><span class="dot" id="statusDot"></span><span id="statusText">…</span></span>
+</header>
+
+<aside id="sidebar">
+  <nav>
+    <div class="nav-group">
+      <div class="nav-group-label">Configuration</div>
+      <a class="nav-item active" data-page="general"><span class="nav-icon">⚙</span>General</a>
+      <a class="nav-item" data-page="whisper"><span class="nav-icon">🎙</span>Whisper engine</a>
+      <a class="nav-item" data-page="ai"><span class="nav-icon">✦</span>AI processing</a>
+      <a class="nav-item" data-page="output"><span class="nav-icon">⎘</span>Output &amp; text</a>
+      <a class="nav-item" data-page="streaming"><span class="nav-icon">⟳</span>Streaming</a>
+    </div>
+    <div class="nav-group">
+      <div class="nav-group-label">Data</div>
+      <a class="nav-item" data-page="history"><span class="nav-icon">⏱</span>History</a>
+    </div>
+  </nav>
+</aside>
+
+<div class="content">
+
+<!-- General -->
+<div class="page active" id="page-general">
+  <h2 class="page-title">General</h2>
+  <p class="page-desc">Hotkeys, startup behavior, and display settings.</p>
+
   <div class="actions">
     <button id="btnPause">Pause</button>
     <button id="btnRestart">Restart worker</button>
     <button id="btnReload">Reload from disk</button>
   </div>
 
-  <section id="autostartSection" hidden>
-    <h2>Startup</h2>
-    <div class="field"><label>Start at login</label><input type="checkbox" id="autostartToggle" /><span class="hint">launches SamWhispers automatically when you log in (applies immediately, not part of Save)</span></div>
-  </section>
+  <div class="card" id="autostartSection" hidden>
+    <h3>Startup</h3>
+    <div class="field"><label>Start at login</label><input type="checkbox" id="autostartToggle" /></div>
+    <div class="hint">Launches SamWhispers automatically when you log in (applies immediately)</div>
+  </div>
 
-  <section>
-    <h2>Hotkey</h2>
-    <div class="field"><label>Hotkey</label><input type="text" data-path="hotkey.key" /></div>
+  <div class="card">
+    <h3>Hotkey</h3>
+    <div class="field"><label>Trigger key</label><input type="text" data-path="hotkey.key" /></div>
     <div class="field"><label>Mode</label><select data-path="hotkey.mode" data-meta="modes"></select></div>
     <div class="field"><label>Language switch key</label><input type="text" data-path="hotkey.language_key" /></div>
-  </section>
+  </div>
 
-  <section>
-    <h2>Whisper</h2>
+  <div class="card">
+    <h3>On-screen indicator</h3>
+    <div class="field"><label>Show overlay</label><input type="checkbox" data-path="overlay.enabled" data-type="bool" /></div>
+    <div class="hint">Animated bars while recording, spinner while transcribing</div>
+  </div>
+
+  <div class="card">
+    <h3>Audio capture</h3>
+    <div class="field"><label>Sample rate</label><input type="number" data-path="audio.sample_rate" data-type="number" /></div>
+    <div class="field"><label>Max duration (s)</label><input type="number" step="any" data-path="audio.max_duration" data-type="number" /></div>
+  </div>
+
+  <div class="savebar">
+    <button class="primary" id="btnSave">Save</button>
+    <span class="hint" id="saveHint">The worker restarts automatically when a change requires it.</span>
+  </div>
+</div>
+
+<!-- Whisper Engine -->
+<div class="page" id="page-whisper">
+  <h2 class="page-title">Whisper engine</h2>
+  <p class="page-desc">Local transcription server, model selection, and language settings.</p>
+
+  <div class="card">
+    <h3>Server</h3>
     <div class="field"><label>Server URL</label><input type="text" data-path="whisper.server_url" /></div>
-    <div class="field"><label>Languages</label><input type="text" data-path="whisper.languages" data-type="list" /><span class="hint">comma-separated, e.g. auto, en, fr</span></div>
     <div class="field"><label>Manage server</label><input type="checkbox" data-path="whisper.managed" data-type="bool" /></div>
-    <div class="field"><label>Server binary</label><input type="text" data-path="whisper.server_bin" /></div>
-    <div class="field"><label>Model</label>
+    <div class="hint">When enabled, SamWhispers starts and stops whisper-server for you</div>
+    <div class="field" data-show-when="whisper.managed=true"><label>Server binary</label><input type="text" data-path="whisper.server_bin" /></div>
+  </div>
+
+  <div class="card">
+    <h3>Model</h3>
+    <div class="field"><label>Active model</label>
       <div class="stack">
         <select data-fill="whisper.model_path" data-models="whisper"></select>
         <input type="text" data-path="whisper.model_path" placeholder="model path" />
@@ -114,101 +210,144 @@
     </div>
     <div class="field"><label>Download model</label>
       <div class="stack">
-        <div style="display:flex; gap:8px">
+        <div style="display:flex;gap:8px">
           <select id="dlModel"></select>
           <button id="btnDownload" type="button">Download</button>
         </div>
         <span class="hint" id="dlStatus"></span>
       </div>
     </div>
-    <div class="field"><label>Accent</label><select data-path="whisper.accent" data-meta="languages" data-allow-empty="1"></select></div>
-    <div class="field"><label>Accent prompt</label><input type="text" data-path="whisper.accent_prompt" /></div>
-  </section>
+  </div>
 
-  <section>
-    <h2>Audio</h2>
-    <div class="field"><label>Sample rate</label><input type="number" data-path="audio.sample_rate" data-type="number" /></div>
-    <div class="field"><label>Max duration (s)</label><input type="number" step="any" data-path="audio.max_duration" data-type="number" /></div>
-  </section>
+  <div class="card">
+    <h3>Language</h3>
+    <div class="field"><label>Languages</label><input type="text" data-path="whisper.languages" data-type="list" /></div>
+    <div class="hint">Comma-separated cycle order, e.g. auto, en, fr</div>
+    <div class="field"><label>Accent bias</label><select data-path="whisper.accent" data-meta="languages" data-allow-empty="1"></select></div>
+    <div class="field" data-show-when="whisper.accent=!empty"><label>Accent prompt</label><input type="text" data-path="whisper.accent_prompt" /></div>
+    <div class="hint">Custom override for the accent conditioning prompt</div>
+  </div>
 
-  <section>
-    <h2>AI Cleanup</h2>
+  <div class="savebar">
+    <button class="primary" id="btnSave2">Save</button>
+    <span class="hint">The worker restarts automatically when a change requires it.</span>
+  </div>
+</div>
+
+<!-- AI Processing -->
+<div class="page" id="page-ai">
+  <h2 class="page-title">AI processing</h2>
+  <p class="page-desc">Text cleanup and translation powered by cloud AI models.</p>
+
+  <div class="card">
+    <h3>AI Cleanup</h3>
     <div class="field"><label>Enabled</label><input type="checkbox" data-path="cleanup.enabled" data-type="bool" /></div>
-    <div class="field"><label>Provider</label><select data-path="cleanup.provider" data-meta="providers"></select></div>
-    <div class="field"><label>OpenAI API key</label><input type="password" data-path="cleanup.openai.api_key" /></div>
-    <div class="field"><label>OpenAI model</label><input type="text" data-path="cleanup.openai.model" /></div>
-    <div class="field"><label>Anthropic API key</label><input type="password" data-path="cleanup.anthropic.api_key" /></div>
-    <div class="field"><label>Anthropic model</label><input type="text" data-path="cleanup.anthropic.model" /></div>
-  </section>
+    <div class="field" data-show-when="cleanup.enabled=true"><label>Provider</label><select data-path="cleanup.provider" data-meta="providers"></select></div>
+    <div class="field" data-show-when="cleanup.enabled=true&cleanup.provider=openai"><label>OpenAI API key</label><input type="password" data-path="cleanup.openai.api_key" /></div>
+    <div class="field" data-show-when="cleanup.enabled=true&cleanup.provider=openai"><label>OpenAI model</label><input type="text" data-path="cleanup.openai.model" /></div>
+    <div class="field" data-show-when="cleanup.enabled=true&cleanup.provider=anthropic"><label>Anthropic API key</label><input type="password" data-path="cleanup.anthropic.api_key" /></div>
+    <div class="field" data-show-when="cleanup.enabled=true&cleanup.provider=anthropic"><label>Anthropic model</label><input type="text" data-path="cleanup.anthropic.model" /></div>
+  </div>
 
-  <section>
-    <h2>Translation</h2>
+  <div class="card">
+    <h3>Translation</h3>
     <div class="field"><label>Enabled</label><input type="checkbox" data-path="translation.enabled" data-type="bool" /></div>
-    <div class="field"><label>Target language</label><select data-path="translation.target_language" data-meta="languages" data-exclude-auto="1"></select><span class="hint">uses the AI provider configured above</span></div>
-  </section>
+    <div class="field" data-show-when="translation.enabled=true"><label>Target language</label><select data-path="translation.target_language" data-meta="languages" data-exclude-auto="1"></select></div>
+    <div class="hint">Uses the AI provider and keys configured above</div>
+  </div>
 
-  <section>
-    <h2>Post-processing</h2>
+  <div class="savebar">
+    <button class="primary" id="btnSave3">Save</button>
+    <span class="hint">The worker restarts automatically when a change requires it.</span>
+  </div>
+</div>
+
+<!-- Output & Text -->
+<div class="page" id="page-output">
+  <h2 class="page-title">Output &amp; text</h2>
+  <p class="page-desc">Post-processing, vocabulary biasing, and filler word removal.</p>
+
+  <div class="card">
+    <h3>Post-processing</h3>
     <div class="field"><label>Collapse newlines</label><input type="checkbox" data-path="postprocess.collapse_newlines" data-type="bool" /></div>
     <div class="field"><label>Collapse spaces</label><input type="checkbox" data-path="postprocess.collapse_spaces" data-type="bool" /></div>
-    <div class="field"><label>Trim</label><input type="checkbox" data-path="postprocess.trim" data-type="bool" /></div>
+    <div class="field"><label>Trim whitespace</label><input type="checkbox" data-path="postprocess.trim" data-type="bool" /></div>
     <div class="field"><label>Trailing</label><select data-path="postprocess.trailing" data-meta="trailing"></select></div>
     <div class="field"><label>Paste delay (s)</label><input type="number" step="any" data-path="inject.paste_delay" data-type="number" /></div>
-  </section>
+  </div>
 
-  <section>
-    <h2>Vocabulary &amp; Fillers</h2>
-    <div class="field"><label>Global vocabulary</label><textarea data-path="vocabulary.words" data-type="list"></textarea><span class="hint">comma or newline separated</span></div>
-    <div class="field"><label>Filler removal</label><input type="checkbox" data-path="filler.enabled" data-type="bool" /></div>
-    <div class="field"><label>Use built-in fillers</label><input type="checkbox" data-path="filler.use_builtins" data-type="bool" /></div>
-    <div class="field"><label>Custom fillers</label><textarea data-path="filler.words" data-type="list"></textarea></div>
-  </section>
+  <div class="card">
+    <h3>Vocabulary</h3>
+    <div class="field"><label>Global words</label><textarea data-path="vocabulary.words" data-type="list"></textarea></div>
+    <div class="hint">Comma or newline separated — biases Whisper toward these terms</div>
+  </div>
 
-  <section>
-    <h2>History</h2>
-    <div class="field"><label>Save transcriptions</label><input type="checkbox" data-path="history.enabled" data-type="bool" /></div>
-    <div class="field"><label>Max entries</label><input type="number" data-path="history.max_entries" data-type="number" /><span class="hint">0 = unlimited</span></div>
-  </section>
+  <div class="card">
+    <h3>Filler word removal</h3>
+    <div class="field"><label>Enabled</label><input type="checkbox" data-path="filler.enabled" data-type="bool" /></div>
+    <div class="field" data-show-when="filler.enabled=true"><label>Use built-in fillers</label><input type="checkbox" data-path="filler.use_builtins" data-type="bool" /></div>
+    <div class="field" data-show-when="filler.enabled=true"><label>Custom fillers</label><textarea data-path="filler.words" data-type="list"></textarea></div>
+  </div>
 
-  <section>
-    <h2>On-screen indicator</h2>
-    <div class="field"><label>Show overlay</label><input type="checkbox" data-path="overlay.enabled" data-type="bool" /><span class="hint">animated bars while recording, spinner while transcribing</span></div>
-  </section>
+  <div class="savebar">
+    <button class="primary" id="btnSave4">Save</button>
+    <span class="hint">The worker restarts automatically when a change requires it.</span>
+  </div>
+</div>
 
-  <section>
-    <h2>Streaming transcription</h2>
-    <div class="field"><label>Enabled</label><input type="checkbox" data-path="streaming.enabled" data-type="bool" /><span class="hint">continuous instead of batch-at-the-end</span></div>
+<!-- Streaming -->
+<div class="page" id="page-streaming">
+  <h2 class="page-title">Streaming</h2>
+  <p class="page-desc">Continuous transcription that updates while you speak.</p>
+
+  <div class="card">
+    <h3>Streaming transcription</h3>
+    <div class="field"><label>Enabled</label><input type="checkbox" data-path="streaming.enabled" data-type="bool" /></div>
+    <div class="hint">Transcribes continuously instead of batch-at-the-end</div>
     <div class="field" data-show-when="streaming.enabled=true"><label>Engine</label><select data-path="streaming.engine" data-meta="stream_engines"></select></div>
-    <div class="field" data-show-when="streaming.enabled=true"><label>Output mode</label><select data-path="streaming.output_mode" data-meta="stream_modes"></select><span class="hint">preview = live panel, inject final · progressive = type as you speak</span></div>
+    <div class="field" data-show-when="streaming.enabled=true"><label>Output mode</label><select data-path="streaming.output_mode" data-meta="stream_modes"></select></div>
+    <div class="hint">Preview = live overlay, inject final. Progressive = type as you speak.</div>
     <div class="field" data-show-when="streaming.enabled=true"><label>Re-decode interval (s)</label><input type="number" step="any" data-path="streaming.interval_seconds" data-type="number" /></div>
     <div class="field" data-show-when="streaming.enabled=true&streaming.engine=faster_whisper"><label>faster-whisper model</label>
       <div class="stack">
         <select data-fill="streaming.model" data-models="faster_whisper"></select>
         <input type="text" data-path="streaming.model" placeholder="model name or path" />
-        <span class="hint">faster-whisper downloads the model automatically on first use</span>
       </div>
     </div>
-    <div class="field" data-show-when="streaming.enabled=true&streaming.engine=faster_whisper"><label>faster-whisper compute</label><input type="text" data-path="streaming.compute_type" /><span class="hint">e.g. int8, int8_float16, float16</span></div>
-  </section>
+    <div class="field" data-show-when="streaming.enabled=true&streaming.engine=faster_whisper"><label>Compute type</label><input type="text" data-path="streaming.compute_type" /></div>
+    <div class="hint">e.g. int8, int8_float16, float16</div>
+  </div>
+
+  <div class="card">
+    <h3>History retention</h3>
+    <div class="field"><label>Save transcriptions</label><input type="checkbox" data-path="history.enabled" data-type="bool" /></div>
+    <div class="field"><label>Max entries</label><input type="number" data-path="history.max_entries" data-type="number" /></div>
+    <div class="hint">0 = unlimited</div>
+  </div>
 
   <div class="savebar">
-    <button class="primary" id="btnSave">Save</button>
-    <span class="hint" id="saveHint">The worker restarts automatically when a change requires it.</span>
+    <button class="primary" id="btnSave5">Save</button>
+    <span class="hint">The worker restarts automatically when a change requires it.</span>
   </div>
-  </div><!-- /view-settings -->
+</div>
 
-  <div id="view-history" hidden>
-    <div class="histbar">
-      <input type="text" id="histSearch" placeholder="Search transcriptions…" />
-      <button id="btnHistRefresh">Refresh</button>
-      <button id="btnHistClear">Clear all</button>
-    </div>
-    <div id="histList"></div>
-    <div style="text-align:center">
-      <button id="btnHistMore" hidden>Load more</button>
-    </div>
+<!-- History -->
+<div class="page" id="page-history">
+  <h2 class="page-title">History</h2>
+  <p class="page-desc">Browse and search your transcription history.</p>
+  <div class="histbar">
+    <input type="text" id="histSearch" placeholder="Search transcriptions…" />
+    <button id="btnHistRefresh">Refresh</button>
+    <button id="btnHistClear">Clear all</button>
   </div>
-</main>
+  <div id="histList"></div>
+  <div style="text-align:center">
+    <button id="btnHistMore" hidden>Load more</button>
+  </div>
+</div>
+
+</div><!-- /content -->
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -236,9 +375,31 @@ async function api(method, url, body) {
   return data;
 }
 
+function toast(msg, kind) {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.className = `toast show ${kind || ""}`;
+  setTimeout(() => (t.className = "toast"), 3500);
+}
+
+// --- Navigation ---
+for (const item of document.querySelectorAll(".nav-item[data-page]")) {
+  item.addEventListener("click", () => {
+    document.querySelectorAll(".nav-item").forEach(n => n.classList.remove("active"));
+    item.classList.add("active");
+    document.querySelectorAll(".page").forEach(p => p.classList.remove("active"));
+    document.getElementById("page-" + item.dataset.page).classList.add("active");
+    document.getElementById("sidebar").classList.remove("open");
+    if (item.dataset.page === "history") loadHistory(true);
+  });
+}
+document.getElementById("menuToggle").addEventListener("click", () => {
+  document.getElementById("sidebar").classList.toggle("open");
+});
+
+// --- Config rendering ---
 function fillSelect(el) {
-  const metaKey = el.dataset.meta;
-  const items = state.meta[metaKey] || [];
+  const items = state.meta[el.dataset.meta] || [];
   el.innerHTML = "";
   if (el.dataset.allowEmpty) el.add(new Option("(none)", ""));
   for (const it of items) {
@@ -258,6 +419,7 @@ function applyVisibility() {
   for (const el of document.querySelectorAll("[data-show-when]")) {
     const ok = el.dataset.showWhen.split("&").every(cond => {
       const [path, want] = cond.split("=");
+      if (want === "!empty") return inputValue(path) !== "";
       return inputValue(path) === want;
     });
     el.style.display = ok ? "" : "none";
@@ -281,20 +443,17 @@ function populateModelSelect(el) {
   const target = document.querySelector(`[data-path="${el.dataset.fill}"]`);
   const cur = target ? target.value : "";
   el.innerHTML = "";
-  el.add(new Option("— detected models —", ""));
+  el.add(new Option("\u2014 detected models \u2014", ""));
   for (const it of items) {
     if (typeof it === "string") el.add(new Option(it, it));
     else el.add(new Option(it.label, it.path));
   }
-  el.value = cur;  // reflect current value if it matches a listed option
+  el.value = cur;
 }
 
 async function loadModels() {
-  try {
-    state.models = await api("GET", "/api/models");
-  } catch (_) {
-    state.models = { whisper: [], faster_whisper: [], downloadable: [] };
-  }
+  try { state.models = await api("GET", "/api/models"); }
+  catch (_) { state.models = { whisper: [], faster_whisper: [], downloadable: [] }; }
   for (const el of document.querySelectorAll("[data-models]")) populateModelSelect(el);
   const dl = document.getElementById("dlModel");
   if (dl) {
@@ -303,6 +462,7 @@ async function loadModels() {
   }
 }
 
+// --- Downloads ---
 function fmtMB(n) { return (n / 1048576).toFixed(0) + " MB"; }
 
 async function pollDownload() {
@@ -325,8 +485,7 @@ async function pollDownload() {
     await loadModels();
     const target = document.querySelector('[data-path="whisper.model_path"]');
     if (target) target.value = s.path;
-    for (const el of document.querySelectorAll('[data-models="whisper"]')) populateModelSelect(el);
-    toast("Model downloaded — remember to Save.", "ok");
+    toast("Model downloaded \u2014 remember to Save.", "ok");
   }
 }
 
@@ -334,7 +493,7 @@ document.getElementById("btnDownload").addEventListener("click", async () => {
   const name = document.getElementById("dlModel").value;
   if (!name) return;
   document.getElementById("btnDownload").disabled = true;
-  document.getElementById("dlStatus").textContent = "Starting…";
+  document.getElementById("dlStatus").textContent = "Starting\u2026";
   try {
     await api("POST", "/api/models/download", { name });
     pollDownload();
@@ -344,7 +503,8 @@ document.getElementById("btnDownload").addEventListener("click", async () => {
   }
 });
 
-document.querySelector("main").addEventListener("change", (e) => {
+// --- Model select sync ---
+document.querySelector(".content").addEventListener("change", (e) => {
   applyVisibility();
   const sel = e.target;
   if (sel.dataset && sel.dataset.fill && sel.value) {
@@ -353,6 +513,7 @@ document.querySelector("main").addEventListener("change", (e) => {
   }
 });
 
+// --- Autostart ---
 async function loadAutostart() {
   try {
     const a = await api("GET", "/api/autostart");
@@ -369,15 +530,14 @@ document.getElementById("autostartToggle").addEventListener("change", async (e) 
   try {
     const r = await api("PUT", "/api/autostart", { enabled });
     e.target.checked = r.enabled;
-    toast(r.enabled ? "Will start at login." : "Won't start at login.", "ok");
+    toast(r.enabled ? "Will start at login." : "Won\u2019t start at login.", "ok");
   } catch (err) {
-    e.target.checked = !enabled;  // revert on failure
+    e.target.checked = !enabled;
     toast("Autostart error: " + err.message, "err");
-  } finally {
-    e.target.disabled = false;
-  }
+  } finally { e.target.disabled = false; }
 });
 
+// --- Save/Load ---
 function collect() {
   for (const el of document.querySelectorAll("[data-path]")) {
     const type = el.dataset.type;
@@ -391,42 +551,18 @@ function collect() {
   }
 }
 
-function toast(msg, kind) {
-  const t = document.getElementById("toast");
-  t.textContent = msg;
-  t.className = `toast show ${kind || ""}`;
-  setTimeout(() => (t.className = "toast"), 3500);
-}
-
-async function loadStatus() {
-  try {
-    const { state: s } = await api("GET", "/api/status");
-    document.getElementById("statusDot").className = `dot ${s}`;
-    document.getElementById("statusText").textContent = s;
-    document.getElementById("btnPause").textContent = s === "paused" ? "Resume" : "Pause";
-  } catch (_) {}
-}
-
-async function loadAll() {
-  [state.meta, state.config] = await Promise.all([
-    api("GET", "/api/meta"),
-    api("GET", "/api/config"),
-  ]);
-  render();
-  await loadModels();
-  await loadAutostart();
-}
-
-document.getElementById("btnSave").addEventListener("click", async () => {
+async function save() {
   collect();
   try {
     const r = await api("PUT", "/api/config", state.config);
-    toast(r.restarted ? "Saved — worker restarting…" : "Saved.", "ok");
+    toast(r.restarted ? "Saved \u2014 worker restarting\u2026" : "Saved.", "ok");
     loadStatus();
-  } catch (e) {
-    toast("Error: " + e.message, "err");
-  }
-});
+  } catch (e) { toast("Error: " + e.message, "err"); }
+}
+
+for (const btn of document.querySelectorAll('[id^="btnSave"]')) {
+  btn.addEventListener("click", save);
+}
 
 document.getElementById("btnReload").addEventListener("click", async () => {
   await loadAll();
@@ -441,26 +577,32 @@ document.getElementById("btnPause").addEventListener("click", async () => {
 
 document.getElementById("btnRestart").addEventListener("click", async () => {
   await api("POST", "/api/worker/restart");
-  toast("Worker restarting…", "ok");
+  toast("Worker restarting\u2026", "ok");
   loadStatus();
 });
 
-// --- Tabs ---
-for (const tab of document.querySelectorAll(".tab")) {
-  tab.addEventListener("click", () => {
-    document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
-    tab.classList.add("active");
-    const view = tab.dataset.view;
-    document.getElementById("view-settings").hidden = view !== "settings";
-    document.getElementById("view-history").hidden = view !== "history";
-    if (view === "history") loadHistory(true);
-  });
+// --- Status ---
+async function loadStatus() {
+  try {
+    const { state: s } = await api("GET", "/api/status");
+    document.getElementById("statusDot").className = `dot ${s}`;
+    document.getElementById("statusText").textContent = s;
+    document.getElementById("btnPause").textContent = s === "paused" ? "Resume" : "Pause";
+  } catch (_) {}
+}
+
+async function loadAll() {
+  [state.meta, state.config] = await Promise.all([
+    api("GET", "/api/meta"), api("GET", "/api/config"),
+  ]);
+  render();
+  await loadModels();
+  await loadAutostart();
 }
 
 // --- History ---
 const HIST_PAGE = 50;
-let histOffset = 0;
-let histTotal = 0;
+let histOffset = 0, histTotal = 0;
 
 function fmtTime(iso) {
   const d = new Date(iso);
@@ -477,12 +619,10 @@ function renderEntry(e) {
   const clean = e.cleanup_used ? `<span class="tag">cleaned</span>` : "";
   const dur = e.duration_ms ? `<span>${(e.duration_ms / 1000).toFixed(1)}s</span>` : "";
   const translated = e.translated_text
-    ? `<div class="text" style="color:var(--muted);margin-top:6px">↳ ${esc(e.translated_text)}</div>`
-    : "";
+    ? `<div class="text" style="color:var(--muted);margin-top:6px">\u21b3 ${esc(e.translated_text)}</div>` : "";
   div.innerHTML =
     `<div class="meta"><span>${fmtTime(e.created_at)}</span>${lang}${clean}${dur}` +
-    `<span class="row-actions">` +
-    `<button data-copy>Copy</button><button data-del>Delete</button></span></div>` +
+    `<span class="row-actions"><button data-copy>Copy</button><button data-del>Delete</button></span></div>` +
     `<div class="text">${esc(e.text)}</div>${translated}`;
   div.querySelector("[data-copy]").addEventListener("click", () =>
     navigator.clipboard.writeText(e.text).then(() => toast("Copied.", "ok")));
@@ -501,9 +641,7 @@ async function loadHistory(reset) {
   const { items, total } = await api("GET", url);
   histTotal = total;
   const list = document.getElementById("histList");
-  if (reset && items.length === 0) {
-    list.innerHTML = `<div class="empty">No transcriptions yet.</div>`;
-  }
+  if (reset && items.length === 0) list.innerHTML = `<div class="empty">No transcriptions yet.</div>`;
   for (const e of items) list.appendChild(renderEntry(e));
   histOffset += items.length;
   document.getElementById("btnHistMore").hidden = histOffset >= histTotal;
@@ -523,6 +661,7 @@ document.getElementById("btnHistClear").addEventListener("click", async () => {
   toast("History cleared.", "ok");
 });
 
+// --- Boot ---
 loadAll().catch(e => toast("Failed to load config: " + e.message, "err"));
 loadStatus();
 setInterval(loadStatus, 3000);
