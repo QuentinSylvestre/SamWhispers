@@ -1,7 +1,7 @@
 # Production Stabilization: Error Visibility & Polish
 
 > **Date**: 2026-06-13
-> **Status**: In Progress  <!-- Status lifecycle: Exploring → Draft → In Progress → Complete -->
+> **Status**: Complete  <!-- Status lifecycle: Exploring → Draft → In Progress → Complete -->
 > **Scope**: Make SamWhispers' infrastructure layer (supervisor, tray, web UI, overlay) production-grade — visible errors, accurate status, smart restarts, crisp overlay
 > **Estimated effort**: 2-3 days
 
@@ -448,6 +448,21 @@ Implementation health: Green.
 STARTING state transitions correctly via startup_ticks counter. DPI awareness wrapped in try/except (graceful fallback). CREATE_NO_WINDOW flag added to overlay spawn. 11 overlay tests pass including new creation-flag test.
 
 Per-phase review deferred to Step 9: Phase 4 is test-only fixes (no new executable code), mechanical alignment with Phases 1-3 changes.
+
+### 2026-06-13 -- Post-Implementation Review
+
+Overall implementation health: Green (after auto-fixes).
+Personas: Senior engineer, Reliability engineer.
+5 findings (0 High, 2 Medium, 3 Low).
+QA verification: SKIP — no runtime environment available for toast/overlay verification.
+
+| # | Severity | Finding | Resolution |
+|---|---|---|---|
+| 1 | Medium | `startup_ticks` not reset on crash-restart; STARTING→RUNNING transitions instantly | Fixed — reset before `_spawn()` in restart path |
+| 2 | Medium | `_terminate_proc` doesn't join `_log_reader`; orphaned thread may conflict | Fixed — join with 2s timeout added |
+| 3 | Low | `_read_worker_logs` appends empty lines to buffer | Fixed — added content guard |
+| 4 | Low | No notification on transient single crash (only on final give-up) | User: accepted — out of scope for this plan |
+| 5 | Low | Web UI Logs tab polls all 200 lines every 3s (no delta) | User: accepted — acceptable for v1 loopback-only |
 
 ## 9) Implementation Divergences from Plan
 <Reserved -- filled during implementation>
