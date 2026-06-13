@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>SamWhispers</title>
+<style>
+  :root {
+    --bg: #0f1115; --panel: #181b22; --border: #2a2f3a; --fg: #e6e9ef;
+    --muted: #9aa3b2; --accent: #4caf50; --accent2: #2d6cdf; --danger: #e25555;
+    --amber: #ffc107;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg);
+    font: 15px/1.5 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+  header { display: flex; align-items: center; gap: 12px; padding: 16px 24px;
+    border-bottom: 1px solid var(--border); position: sticky; top: 0;
+    background: var(--bg); z-index: 5; }
+  header h1 { font-size: 18px; margin: 0; font-weight: 600; }
+  .pill { display: inline-flex; align-items: center; gap: 6px; font-size: 13px;
+    color: var(--muted); margin-left: auto; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); }
+  .dot.running { background: var(--accent); } .dot.paused { background: var(--amber); }
+  .dot.stopped { background: var(--danger); }
+  main { max-width: 820px; margin: 0 auto; padding: 24px; }
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; }
+  button { font: inherit; cursor: pointer; border: 1px solid var(--border);
+    background: var(--panel); color: var(--fg); padding: 8px 14px; border-radius: 8px; }
+  button:hover { border-color: #3a4150; }
+  button.primary { background: var(--accent2); border-color: var(--accent2); }
+  button.primary:disabled { opacity: .5; cursor: default; }
+  section { background: var(--panel); border: 1px solid var(--border);
+    border-radius: 12px; padding: 18px 20px; margin-bottom: 16px; }
+  section h2 { font-size: 14px; text-transform: uppercase; letter-spacing: .04em;
+    color: var(--muted); margin: 0 0 14px; }
+  .field { display: grid; grid-template-columns: 220px 1fr; gap: 12px;
+    align-items: center; padding: 7px 0; }
+  .field label { color: var(--fg); }
+  .field .hint { color: var(--muted); font-size: 12px; }
+  input[type=text], input[type=password], input[type=number], select, textarea {
+    width: 100%; background: var(--bg); color: var(--fg); border: 1px solid var(--border);
+    border-radius: 8px; padding: 8px 10px; font: inherit; }
+  textarea { min-height: 64px; resize: vertical; }
+  input[type=checkbox] { width: 18px; height: 18px; }
+  .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+    background: var(--panel); border: 1px solid var(--border); padding: 12px 18px;
+    border-radius: 10px; opacity: 0; transition: opacity .2s; pointer-events: none;
+    max-width: 90%; }
+  .toast.show { opacity: 1; }
+  .toast.ok { border-color: var(--accent); } .toast.err { border-color: var(--danger); }
+  .savebar { position: sticky; bottom: 0; background: var(--bg);
+    padding: 14px 0; border-top: 1px solid var(--border); display: flex; gap: 10px;
+    align-items: center; }
+  .savebar .hint { color: var(--muted); font-size: 13px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>SamWhispers</h1>
+  <span class="pill"><span class="dot" id="statusDot"></span><span id="statusText">…</span></span>
+</header>
+<main>
+  <div class="actions">
+    <button id="btnPause">Pause</button>
+    <button id="btnRestart">Restart worker</button>
+    <button id="btnReload">Reload from disk</button>
+  </div>
+
+  <section>
+    <h2>Hotkey</h2>
+    <div class="field"><label>Hotkey</label><input type="text" data-path="hotkey.key" /></div>
+    <div class="field"><label>Mode</label><select data-path="hotkey.mode" data-meta="modes"></select></div>
+    <div class="field"><label>Language switch key</label><input type="text" data-path="hotkey.language_key" /></div>
+  </section>
+
+  <section>
+    <h2>Whisper</h2>
+    <div class="field"><label>Server URL</label><input type="text" data-path="whisper.server_url" /></div>
+    <div class="field"><label>Languages</label><input type="text" data-path="whisper.languages" data-type="list" /><span class="hint">comma-separated, e.g. auto, en, fr</span></div>
+    <div class="field"><label>Manage server</label><input type="checkbox" data-path="whisper.managed" data-type="bool" /></div>
+    <div class="field"><label>Server binary</label><input type="text" data-path="whisper.server_bin" /></div>
+    <div class="field"><label>Model path</label><input type="text" data-path="whisper.model_path" /></div>
+    <div class="field"><label>Accent</label><select data-path="whisper.accent" data-meta="languages" data-allow-empty="1"></select></div>
+    <div class="field"><label>Accent prompt</label><input type="text" data-path="whisper.accent_prompt" /></div>
+  </section>
+
+  <section>
+    <h2>Audio</h2>
+    <div class="field"><label>Sample rate</label><input type="number" data-path="audio.sample_rate" data-type="number" /></div>
+    <div class="field"><label>Max duration (s)</label><input type="number" step="any" data-path="audio.max_duration" data-type="number" /></div>
+  </section>
+
+  <section>
+    <h2>AI Cleanup</h2>
+    <div class="field"><label>Enabled</label><input type="checkbox" data-path="cleanup.enabled" data-type="bool" /></div>
+    <div class="field"><label>Provider</label><select data-path="cleanup.provider" data-meta="providers"></select></div>
+    <div class="field"><label>OpenAI API key</label><input type="password" data-path="cleanup.openai.api_key" /></div>
+    <div class="field"><label>OpenAI model</label><input type="text" data-path="cleanup.openai.model" /></div>
+    <div class="field"><label>Anthropic API key</label><input type="password" data-path="cleanup.anthropic.api_key" /></div>
+    <div class="field"><label>Anthropic model</label><input type="text" data-path="cleanup.anthropic.model" /></div>
+  </section>
+
+  <section>
+    <h2>Post-processing</h2>
+    <div class="field"><label>Collapse newlines</label><input type="checkbox" data-path="postprocess.collapse_newlines" data-type="bool" /></div>
+    <div class="field"><label>Collapse spaces</label><input type="checkbox" data-path="postprocess.collapse_spaces" data-type="bool" /></div>
+    <div class="field"><label>Trim</label><input type="checkbox" data-path="postprocess.trim" data-type="bool" /></div>
+    <div class="field"><label>Trailing</label><select data-path="postprocess.trailing" data-meta="trailing"></select></div>
+    <div class="field"><label>Paste delay (s)</label><input type="number" step="any" data-path="inject.paste_delay" data-type="number" /></div>
+  </section>
+
+  <section>
+    <h2>Vocabulary &amp; Fillers</h2>
+    <div class="field"><label>Global vocabulary</label><textarea data-path="vocabulary.words" data-type="list"></textarea><span class="hint">comma or newline separated</span></div>
+    <div class="field"><label>Filler removal</label><input type="checkbox" data-path="filler.enabled" data-type="bool" /></div>
+    <div class="field"><label>Use built-in fillers</label><input type="checkbox" data-path="filler.use_builtins" data-type="bool" /></div>
+    <div class="field"><label>Custom fillers</label><textarea data-path="filler.words" data-type="list"></textarea></div>
+  </section>
+
+  <div class="savebar">
+    <button class="primary" id="btnSave">Save</button>
+    <span class="hint" id="saveHint">The worker restarts automatically when a change requires it.</span>
+  </div>
+</main>
+<div class="toast" id="toast"></div>
+
+<script>
+const state = { config: null, meta: null };
+
+function getPath(obj, path) {
+  return path.split(".").reduce((o, k) => (o == null ? undefined : o[k]), obj);
+}
+function setPath(obj, path, value) {
+  const keys = path.split(".");
+  let o = obj;
+  for (let i = 0; i < keys.length - 1; i++) {
+    if (o[keys[i]] == null || typeof o[keys[i]] !== "object") o[keys[i]] = {};
+    o = o[keys[i]];
+  }
+  o[keys[keys.length - 1]] = value;
+}
+
+async function api(method, url, body) {
+  const opts = { method, headers: { "Content-Type": "application/json" } };
+  if (body !== undefined) opts.body = JSON.stringify(body);
+  const res = await fetch(url, opts);
+  const data = res.headers.get("content-type")?.includes("json") ? await res.json() : null;
+  if (!res.ok) throw new Error(data?.detail || `${res.status} ${res.statusText}`);
+  return data;
+}
+
+function fillSelect(el) {
+  const metaKey = el.dataset.meta;
+  const items = state.meta[metaKey] || [];
+  el.innerHTML = "";
+  if (el.dataset.allowEmpty) el.add(new Option("(none)", ""));
+  for (const it of items) {
+    if (typeof it === "string") el.add(new Option(it, it));
+    else el.add(new Option(`${it.name} (${it.code})`, it.code));
+  }
+}
+
+function render() {
+  for (const el of document.querySelectorAll("[data-path]")) {
+    if (el.tagName === "SELECT" && el.dataset.meta) fillSelect(el);
+    const val = getPath(state.config, el.dataset.path);
+    const type = el.dataset.type;
+    if (el.type === "checkbox") el.checked = !!val;
+    else if (type === "list") el.value = Array.isArray(val) ? val.join(", ") : "";
+    else el.value = val == null ? "" : val;
+  }
+}
+
+function collect() {
+  for (const el of document.querySelectorAll("[data-path]")) {
+    const type = el.dataset.type;
+    let val;
+    if (el.type === "checkbox") val = el.checked;
+    else if (type === "number") val = el.value === "" ? null : Number(el.value);
+    else if (type === "list")
+      val = el.value.split(/[,\n]/).map(s => s.trim()).filter(Boolean);
+    else val = el.value;
+    if (val !== null) setPath(state.config, el.dataset.path, val);
+  }
+}
+
+function toast(msg, kind) {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.className = `toast show ${kind || ""}`;
+  setTimeout(() => (t.className = "toast"), 3500);
+}
+
+async function loadStatus() {
+  try {
+    const { state: s } = await api("GET", "/api/status");
+    document.getElementById("statusDot").className = `dot ${s}`;
+    document.getElementById("statusText").textContent = s;
+    document.getElementById("btnPause").textContent = s === "paused" ? "Resume" : "Pause";
+  } catch (_) {}
+}
+
+async function loadAll() {
+  [state.meta, state.config] = await Promise.all([
+    api("GET", "/api/meta"),
+    api("GET", "/api/config"),
+  ]);
+  render();
+}
+
+document.getElementById("btnSave").addEventListener("click", async () => {
+  collect();
+  try {
+    const r = await api("PUT", "/api/config", state.config);
+    toast(r.restarted ? "Saved — worker restarting…" : "Saved.", "ok");
+    loadStatus();
+  } catch (e) {
+    toast("Error: " + e.message, "err");
+  }
+});
+
+document.getElementById("btnReload").addEventListener("click", async () => {
+  await loadAll();
+  toast("Reloaded from disk.", "ok");
+});
+
+document.getElementById("btnPause").addEventListener("click", async () => {
+  const paused = document.getElementById("statusText").textContent === "paused";
+  await api("POST", `/api/worker/${paused ? "resume" : "pause"}`);
+  loadStatus();
+});
+
+document.getElementById("btnRestart").addEventListener("click", async () => {
+  await api("POST", "/api/worker/restart");
+  toast("Worker restarting…", "ok");
+  loadStatus();
+});
+
+loadAll().catch(e => toast("Failed to load config: " + e.message, "err"));
+loadStatus();
+setInterval(loadStatus, 3000);
+</script>
+</body>
+</html>

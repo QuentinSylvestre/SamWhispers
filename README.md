@@ -258,10 +258,26 @@ samwhispers-supervisor            # tray icon + managed worker
 samwhispers-supervisor --no-tray  # headless (no display)
 ```
 
-The tray icon shows status (running / paused / stopped) and offers
-Pause/Resume, Restart, and Quit. See [docs/STARTUP.md](docs/STARTUP.md) for
-start-on-login setup (systemd user service on Linux, launchd on macOS, Task
+The tray icon shows status (running / paused / stopped) and offers Open
+settings, Pause/Resume, Restart, and Quit. See [docs/STARTUP.md](docs/STARTUP.md)
+for start-on-login setup (systemd user service on Linux, launchd on macOS, Task
 Scheduler on Windows).
+
+### Config UI (browser)
+
+When the supervisor runs, it serves a local config UI at
+**http://127.0.0.1:7891/** (also reachable via the tray's *Open settings*).
+Edit any setting in the browser and click **Save** — the config is validated,
+written to `config.toml`, and the worker restarts automatically when a change
+requires it. The UI also shows worker status and offers Pause/Resume/Restart.
+
+```bash
+samwhispers-supervisor --web-port 9000  # use a different port
+samwhispers-supervisor --no-web         # disable the UI
+```
+
+The server binds to loopback only and has no authentication, so don't expose
+the port beyond `127.0.0.1`.
 
 ## AI Cleanup Setup
 

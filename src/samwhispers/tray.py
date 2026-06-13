@@ -51,12 +51,15 @@ def _make_image(state: WorkerState, size: int = 64) -> Any:
     return image
 
 
-def run_tray(supervisor: WorkerSupervisor) -> None:
+def run_tray(supervisor: WorkerSupervisor, settings_url: str | None = None) -> None:
     """Run the tray icon loop on the calling (main) thread; blocks until Quit.
 
     Installs SIGINT/SIGTERM handlers that stop the icon so the supervisor exits
-    cleanly when the login session ends or systemd stops the service.
+    cleanly when the login session ends or systemd stops the service. If
+    ``settings_url`` is given, an "Open settings" item opens it in the browser.
     """
+    import webbrowser
+
     import pystray
 
     def status_text(_item: Any) -> str:
@@ -75,17 +78,26 @@ def run_tray(supervisor: WorkerSupervisor) -> None:
     def on_restart(_icon: Any, _item: Any) -> None:
         supervisor.restart()
 
+    def on_open_settings(_icon: Any, _item: Any) -> None:
+        if settings_url:
+            webbrowser.open(settings_url)
+
     def on_quit(icon: Any, _item: Any) -> None:
         icon.stop()
 
-    menu = pystray.Menu(
+    items = [
         pystray.MenuItem(status_text, None, enabled=False),
         pystray.Menu.SEPARATOR,
+    ]
+    if settings_url:
+        items.append(pystray.MenuItem("Open settings", on_open_settings, default=True))
+    items += [
         pystray.MenuItem("Pause", on_toggle_pause, checked=is_paused),
         pystray.MenuItem("Restart worker", on_restart),
         pystray.Menu.SEPARATOR,
         pystray.MenuItem("Quit", on_quit),
-    )
+    ]
+    menu = pystray.Menu(*items)
 
     icon = pystray.Icon(
         "samwhispers",

@@ -17,6 +17,10 @@ import sys
 import threading
 from collections.abc import Callable
 from types import FrameType
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from samwhispers.webserver import WebServerHandle
 
 log = logging.getLogger("samwhispers.supervisor")
 
@@ -215,6 +219,17 @@ def main() -> None:
         action="store_true",
         help="Run headless without a tray icon (block until terminated)",
     )
+    parser.add_argument(
+        "--no-web",
+        action="store_true",
+        help="Do not start the config web UI",
+    )
+    parser.add_argument(
+        "--web-port",
+        type=int,
+        default=None,
+        help="Port for the config web UI (default 7891)",
+    )
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -225,6 +240,9 @@ def main() -> None:
 
     supervisor = WorkerSupervisor(config_path=args.config, verbose=args.verbose)
     supervisor.start()
+
+    web_handle = _start_web(supervisor, args.config, args.no_web, args.web_port)
+    settings_url = web_handle.url if web_handle else None
 
     use_tray = not args.no_tray
     if use_tray:
@@ -237,33 +255,61 @@ def main() -> None:
             )
             use_tray = False
 
-    if use_tray:
-        from samwhispers.tray import run_tray
-
-        try:
-            run_tray(supervisor)  # installs signal handlers, blocks until Quit
-        except Exception:
-            log.exception("Tray failed to start; falling back to headless mode")
-            use_tray = False
-        finally:
-            supervisor.shutdown()
-        if use_tray:
-            return
-
-    # Headless: block until a termination signal arrives.
-    stop = threading.Event()
-
-    def _handle_signal(signum: int, frame: FrameType | None) -> None:
-        log.info("Received signal %d, shutting down", signum)
-        stop.set()
-
-    signal.signal(signal.SIGTERM, _handle_signal)
-    signal.signal(signal.SIGINT, _handle_signal)
     try:
+        if use_tray:
+            from samwhispers.tray import run_tray
+
+            try:
+                run_tray(supervisor, settings_url)  # installs signals, blocks until Quit
+                return
+            except Exception:
+                log.exception("Tray failed to start; falling back to headless mode")
+
+        # Headless: block until a termination signal arrives.
+        stop = threading.Event()
+
+        def _handle_signal(signum: int, frame: FrameType | None) -> None:
+            log.info("Received signal %d, shutting down", signum)
+            stop.set()
+
+        signal.signal(signal.SIGTERM, _handle_signal)
+        signal.signal(signal.SIGINT, _handle_signal)
         while not stop.wait(timeout=0.5):
             pass
     finally:
         supervisor.shutdown()
+        if web_handle is not None:
+            web_handle.shutdown()
+
+
+def _start_web(
+    supervisor: WorkerSupervisor,
+    config_path: str | None,
+    no_web: bool,
+    port: int | None,
+) -> WebServerHandle | None:
+    """Start the config web UI in a background thread, or return None."""
+    if no_web:
+        return None
+    try:
+        import fastapi  # noqa: F401
+        import uvicorn  # noqa: F401
+    except ImportError:
+        log.warning(
+            "FastAPI/uvicorn not available; config UI disabled. "
+            "Install with 'pip install fastapi uvicorn' to enable it."
+        )
+        return None
+    try:
+        from samwhispers.webserver import DEFAULT_PORT, create_app, serve
+
+        app = create_app(supervisor, config_path=config_path)
+        handle = serve(app, port=port or DEFAULT_PORT)
+        log.info("Config UI available at %s", handle.url)
+        return handle
+    except Exception:
+        log.exception("Failed to start config web UI")
+        return None
 
 
 if __name__ == "__main__":

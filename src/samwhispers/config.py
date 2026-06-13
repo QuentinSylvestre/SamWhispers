@@ -479,6 +479,17 @@ def load_config(path: Path | str | None = None) -> AppConfig:
         else:
             log.info("No config file found, using defaults")
 
+    return build_config(raw)
+
+
+def build_config(raw: dict[str, Any], validate: bool = True) -> AppConfig:
+    """Merge a raw config mapping over defaults and construct an AppConfig.
+
+    Shared by ``load_config`` (file-based) and the web UI (which validates a
+    posted config mapping through exactly the same path). Pass ``validate=False``
+    to skip filesystem/value checks -- the UI uses this to *display* a config
+    even when, e.g., the whisper binary hasn't been built yet.
+    """
     # Build config from defaults merged with file values
     defaults = AppConfig()
 
@@ -524,7 +535,8 @@ def load_config(path: Path | str | None = None) -> AppConfig:
         vocabulary=VocabularyConfig(words=vocab_words, languages=vocab_langs),
         filler=filler_cfg,
     )
-    _validate(config)
+    if validate:
+        _validate(config)
     return config
 
 

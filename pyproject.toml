@@ -14,6 +14,9 @@ dependencies = [
     "pyperclip>=1.8",
     "pystray>=0.19",
     "Pillow>=10.0",
+    "fastapi>=0.110",
+    "uvicorn>=0.27",
+    "tomli-w>=1.0",
 ]
 
 [project.optional-dependencies]
@@ -25,6 +28,9 @@ samwhispers-supervisor = "samwhispers.supervisor:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+samwhispers = ["web/*.html"]
 
 [tool.ruff]
 target-version = "py311"
