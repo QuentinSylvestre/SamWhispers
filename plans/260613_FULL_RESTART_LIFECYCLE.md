@@ -110,13 +110,16 @@ Added `write_pid()` and `read_pid()` to `singleinstance.py` for PID file managem
 - All subcommands show `--help` text
 
 **Exit criteria**:
-- [ ] `samwhispers stop` prints feedback and stops a running instance
-- [ ] `samwhispers stop` prints "not running" when nothing to stop
-- [ ] `samwhispers restart` prints feedback and performs full restart
-- [ ] `samwhispers restart` when not running just starts it
-- [ ] `samwhispers` and `samwhispers start` both launch normally with all existing flags
-- [ ] Works when web server is disabled (PID fallback with force-kill)
-- [ ] `--help` shows start/stop/restart subcommands
+- [x] `samwhispers stop` prints feedback and stops a running instance
+- [x] `samwhispers stop` prints "not running" when nothing to stop
+- [x] `samwhispers restart` prints feedback and performs full restart
+- [x] `samwhispers restart` when not running just starts it
+- [x] `samwhispers` and `samwhispers start` both launch normally with all existing flags
+- [x] Works when web server is disabled (PID fallback with force-kill)
+- [x] `--help` shows start/stop/restart subcommands
+
+Implementation (2026-06-13, code: d5c276e)
+Rewrote `__main__.py` to use argparse subparsers exposing `start` (default, all supervisor flags), `stop` (HTTP graceful shutdown with PID force-kill fallback, user feedback messages), and `restart` (HTTP restart endpoint with stop+start fallback). Bare `samwhispers` invocation remains backward-compatible by dispatching to supervisor_main() when no subcommand is given. The `worker` internal subcommand is preserved.
 
 ### Phase 3: Tray and web UI [QA] [P:2]
 
@@ -129,9 +132,12 @@ Added `write_pid()` and `read_pid()` to `singleinstance.py` for PID file managem
 - `web/index.html`: Add "Restart SamWhispers" button in the General page actions bar, hitting `POST /api/supervisor/restart`. Show a banner "Restarting SamWhispers..." and poll `/api/status` until the new instance responds, then reload.
 
 **Exit criteria**:
-- [ ] Tray menu shows "Restart SamWhispers" and clicking it restarts with notification
-- [ ] Web UI button triggers full restart with visual feedback during the gap
-- [ ] Update README.md Usage section with start/stop/restart commands
+- [x] Tray menu shows "Restart SamWhispers" and clicking it restarts with notification
+- [x] Web UI button triggers full restart with visual feedback during the gap
+- [x] Update README.md Usage section with start/stop/restart commands
+
+Implementation (2026-06-13, code: 831df54)
+Added "Restart SamWhispers" menu item to tray.py that calls request_relaunch() with a desktop notification before stopping the icon, added a "Restart SamWhispers" button to the web UI General page that POSTs to /api/supervisor/restart and polls until the new instance responds then reloads, and documented start/stop/restart subcommands in the README Usage section.
 
 ## 6) Risk Assessment
 
