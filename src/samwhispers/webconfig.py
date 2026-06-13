@@ -19,6 +19,46 @@ log = logging.getLogger("samwhispers.web")
 
 _DEFAULT_CONFIG_PATH = Path.home() / ".config" / "samwhispers" / "config.toml"
 
+# Standard faster-whisper model names (downloaded on first use).
+FASTER_WHISPER_MODELS = [
+    "tiny.en",
+    "tiny",
+    "base.en",
+    "base",
+    "small.en",
+    "small",
+    "medium.en",
+    "medium",
+    "large-v3",
+    "distil-small.en",
+    "distil-medium.en",
+    "distil-large-v3",
+]
+
+
+def list_whisper_models(config_path: Path | str | None = None) -> list[dict[str, str]]:
+    """Discover whisper.cpp ``*.bin`` model files near the configured model path.
+
+    Scans the directory of the current ``whisper.model_path`` plus the default
+    ``tools/whisper.cpp/models`` dir, and always includes the currently
+    configured path so it round-trips even if not on disk.
+    """
+    cfg = current_app_config(config_path)
+    model_path = Path(cfg.whisper.model_path)
+    found: dict[str, str] = {}
+    for directory in (model_path.parent, Path("tools/whisper.cpp/models")):
+        try:
+            if directory.is_dir():
+                for f in sorted(directory.glob("*.bin")):
+                    found[str(f.resolve())] = f.name
+        except OSError:
+            continue
+    # Ensure the current selection is present even if missing on disk.
+    configured = str(model_path)
+    if configured and str(model_path.resolve()) not in found:
+        found.setdefault(configured, f"{model_path.name} (configured)")
+    return [{"path": p, "label": label} for p, label in found.items()]
+
 
 def resolve_config_path() -> Path:
     """Where the UI reads/writes config: an existing file, else the default."""

@@ -37,6 +37,7 @@
     align-items: center; padding: 7px 0; }
   .field label { color: var(--fg); }
   .field .hint { color: var(--muted); font-size: 12px; }
+  .stack { display: flex; flex-direction: column; gap: 8px; }
   input[type=text], input[type=password], input[type=number], select, textarea {
     width: 100%; background: var(--bg); color: var(--fg); border: 1px solid var(--border);
     border-radius: 8px; padding: 8px 10px; font: inherit; }
@@ -100,7 +101,21 @@
     <div class="field"><label>Languages</label><input type="text" data-path="whisper.languages" data-type="list" /><span class="hint">comma-separated, e.g. auto, en, fr</span></div>
     <div class="field"><label>Manage server</label><input type="checkbox" data-path="whisper.managed" data-type="bool" /></div>
     <div class="field"><label>Server binary</label><input type="text" data-path="whisper.server_bin" /></div>
-    <div class="field"><label>Model path</label><input type="text" data-path="whisper.model_path" /></div>
+    <div class="field"><label>Model</label>
+      <div class="stack">
+        <select data-fill="whisper.model_path" data-models="whisper"></select>
+        <input type="text" data-path="whisper.model_path" placeholder="model path" />
+      </div>
+    </div>
+    <div class="field"><label>Download model</label>
+      <div class="stack">
+        <div style="display:flex; gap:8px">
+          <select id="dlModel"></select>
+          <button id="btnDownload" type="button">Download</button>
+        </div>
+        <span class="hint" id="dlStatus"></span>
+      </div>
+    </div>
     <div class="field"><label>Accent</label><select data-path="whisper.accent" data-meta="languages" data-allow-empty="1"></select></div>
     <div class="field"><label>Accent prompt</label><input type="text" data-path="whisper.accent_prompt" /></div>
   </section>
@@ -161,7 +176,13 @@
     <div class="field" data-show-when="streaming.enabled=true"><label>Engine</label><select data-path="streaming.engine" data-meta="stream_engines"></select></div>
     <div class="field" data-show-when="streaming.enabled=true"><label>Output mode</label><select data-path="streaming.output_mode" data-meta="stream_modes"></select><span class="hint">preview = live panel, inject final · progressive = type as you speak</span></div>
     <div class="field" data-show-when="streaming.enabled=true"><label>Re-decode interval (s)</label><input type="number" step="any" data-path="streaming.interval_seconds" data-type="number" /></div>
-    <div class="field" data-show-when="streaming.enabled=true&streaming.engine=faster_whisper"><label>faster-whisper model</label><input type="text" data-path="streaming.model" /><span class="hint">e.g. base, small, or a model path</span></div>
+    <div class="field" data-show-when="streaming.enabled=true&streaming.engine=faster_whisper"><label>faster-whisper model</label>
+      <div class="stack">
+        <select data-fill="streaming.model" data-models="faster_whisper"></select>
+        <input type="text" data-path="streaming.model" placeholder="model name or path" />
+        <span class="hint">faster-whisper downloads the model automatically on first use</span>
+      </div>
+    </div>
     <div class="field" data-show-when="streaming.enabled=true&streaming.engine=faster_whisper"><label>faster-whisper compute</label><input type="text" data-path="streaming.compute_type" /><span class="hint">e.g. int8, int8_float16, float16</span></div>
   </section>
 
@@ -186,7 +207,7 @@
 <div class="toast" id="toast"></div>
 
 <script>
-const state = { config: null, meta: null };
+const state = { config: null, meta: null, models: null };
 
 function getPath(obj, path) {
   return path.split(".").reduce((o, k) => (o == null ? undefined : o[k]), obj);
@@ -250,7 +271,82 @@ function render() {
   applyVisibility();
 }
 
-document.querySelector("main").addEventListener("change", applyVisibility);
+function populateModelSelect(el) {
+  const items = (state.models && state.models[el.dataset.models]) || [];
+  const target = document.querySelector(`[data-path="${el.dataset.fill}"]`);
+  const cur = target ? target.value : "";
+  el.innerHTML = "";
+  el.add(new Option("— detected models —", ""));
+  for (const it of items) {
+    if (typeof it === "string") el.add(new Option(it, it));
+    else el.add(new Option(it.label, it.path));
+  }
+  el.value = cur;  // reflect current value if it matches a listed option
+}
+
+async function loadModels() {
+  try {
+    state.models = await api("GET", "/api/models");
+  } catch (_) {
+    state.models = { whisper: [], faster_whisper: [], downloadable: [] };
+  }
+  for (const el of document.querySelectorAll("[data-models]")) populateModelSelect(el);
+  const dl = document.getElementById("dlModel");
+  if (dl) {
+    dl.innerHTML = "";
+    for (const name of state.models.downloadable || []) dl.add(new Option(name, name));
+  }
+}
+
+function fmtMB(n) { return (n / 1048576).toFixed(0) + " MB"; }
+
+async function pollDownload() {
+  const out = document.getElementById("dlStatus");
+  const s = await api("GET", "/api/models/download");
+  if (s.error) {
+    out.textContent = "Download failed: " + s.error;
+    document.getElementById("btnDownload").disabled = false;
+    return;
+  }
+  if (s.downloading) {
+    const pct = s.total ? ` (${Math.floor(100 * s.downloaded / s.total)}%)` : "";
+    out.textContent = `Downloading ${s.name}: ${fmtMB(s.downloaded)}${s.total ? " / " + fmtMB(s.total) : ""}${pct}`;
+    setTimeout(pollDownload, 1000);
+    return;
+  }
+  document.getElementById("btnDownload").disabled = false;
+  if (s.done && s.path) {
+    out.textContent = `Downloaded ${s.name}.`;
+    await loadModels();
+    const target = document.querySelector('[data-path="whisper.model_path"]');
+    if (target) target.value = s.path;
+    for (const el of document.querySelectorAll('[data-models="whisper"]')) populateModelSelect(el);
+    toast("Model downloaded — remember to Save.", "ok");
+  }
+}
+
+document.getElementById("btnDownload").addEventListener("click", async () => {
+  const name = document.getElementById("dlModel").value;
+  if (!name) return;
+  document.getElementById("btnDownload").disabled = true;
+  document.getElementById("dlStatus").textContent = "Starting…";
+  try {
+    await api("POST", "/api/models/download", { name });
+    pollDownload();
+  } catch (e) {
+    document.getElementById("dlStatus").textContent = "Error: " + e.message;
+    document.getElementById("btnDownload").disabled = false;
+  }
+});
+
+document.querySelector("main").addEventListener("change", (e) => {
+  applyVisibility();
+  const sel = e.target;
+  if (sel.dataset && sel.dataset.fill && sel.value) {
+    const target = document.querySelector(`[data-path="${sel.dataset.fill}"]`);
+    if (target) target.value = sel.value;
+  }
+});
 
 function collect() {
   for (const el of document.querySelectorAll("[data-path]")) {
@@ -287,6 +383,7 @@ async function loadAll() {
     api("GET", "/api/config"),
   ]);
   render();
+  await loadModels();
 }
 
 document.getElementById("btnSave").addEventListener("click", async () => {

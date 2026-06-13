@@ -18,7 +18,9 @@ from fastapi.responses import HTMLResponse
 
 from samwhispers.history import HistoryStore, default_db_path
 from samwhispers.webconfig import (
+    FASTER_WHISPER_MODELS,
     current_app_config,
+    list_whisper_models,
     load_config_dict,
     requires_restart,
     save_config_dict,
@@ -68,6 +70,37 @@ def create_app(
             "stream_engines": list(_VALID_STREAM_ENGINES),
             "stream_modes": list(_VALID_STREAM_MODES),
         }
+
+    @app.get("/api/models")
+    def models() -> dict[str, Any]:
+        from samwhispers.models import WHISPER_CPP_MODELS
+
+        return {
+            "whisper": list_whisper_models(config_path),
+            "faster_whisper": FASTER_WHISPER_MODELS,
+            "downloadable": WHISPER_CPP_MODELS,
+        }
+
+    @app.post("/api/models/download")
+    async def start_download(request: Request) -> dict[str, Any]:
+        from samwhispers.models import downloader
+
+        body: dict[str, Any] = await request.json()
+        name = str(body.get("name", ""))
+        dest_dir = Path(current_app_config(config_path).whisper.model_path).parent
+        try:
+            downloader.start(name, dest_dir)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except RuntimeError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return {"started": True}
+
+    @app.get("/api/models/download")
+    def download_status() -> dict[str, Any]:
+        from samwhispers.models import downloader
+
+        return downloader.status()
 
     @app.get("/api/status")
     def status() -> dict[str, Any]:

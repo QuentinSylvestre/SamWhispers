@@ -288,6 +288,10 @@ samwhispers-supervisor --web-port 9000  # use a different port
 samwhispers-supervisor --no-web         # disable the UI
 ```
 
+The Whisper section lets you pick a model from the ones detected on disk (or
+enter a custom path), and **download** any standard whisper.cpp model on demand
+with a progress indicator — handy for grabbing a model you don't have yet.
+
 The server binds to loopback only and has no authentication, so don't expose
 the port beyond `127.0.0.1`.
 

@@ -68,6 +68,20 @@ def test_status(client_and_sup: tuple[TestClient, FakeSupervisor, Path]) -> None
     assert client.get("/api/status").json()["state"] == "running"
 
 
+def test_models_endpoint(client_and_sup: tuple[TestClient, FakeSupervisor, Path]) -> None:
+    client, _, _ = client_and_sup
+    body = client.get("/api/models").json()
+    assert "whisper" in body and "faster_whisper" in body
+    assert "base.en" in body["downloadable"]
+
+
+def test_models_download_rejects_unknown(
+    client_and_sup: tuple[TestClient, FakeSupervisor, Path],
+) -> None:
+    client, _, _ = client_and_sup
+    assert client.post("/api/models/download", json={"name": "bogus"}).status_code == 400
+
+
 def test_get_config_defaults(client_and_sup: tuple[TestClient, FakeSupervisor, Path]) -> None:
     client, _, _ = client_and_sup
     cfg = client.get("/api/config").json()

@@ -1,0 +1,78 @@
+"""Tests for model discovery and on-demand download."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import httpx
+import pytest
+import respx
+
+from samwhispers.models import WHISPER_CPP_MODELS, ModelDownloader, _HF_BASE
+from samwhispers.webconfig import list_whisper_models, save_config_dict
+
+
+def test_downloadable_list_nonempty() -> None:
+    assert "base.en" in WHISPER_CPP_MODELS
+
+
+def test_status_defaults() -> None:
+    s = ModelDownloader().status()
+    assert s["downloading"] is False and s["done"] is False and s["error"] is None
+
+
+def test_start_rejects_unknown_model(tmp_path: Path) -> None:
+    with pytest.raises(ValueError):
+        ModelDownloader().start("not-a-model", tmp_path)
+
+
+def test_start_rejects_concurrent_download(tmp_path: Path) -> None:
+    d = ModelDownloader()
+    d._state["downloading"] = True  # pretend one is running
+    with pytest.raises(RuntimeError):
+        d.start("base.en", tmp_path)
+
+
+@respx.mock
+def test_download_writes_file_and_tracks_progress(tmp_path: Path) -> None:
+    data = b"ggml-model-bytes" * 500
+    respx.get(f"{_HF_BASE}/ggml-base.en.bin").mock(
+        return_value=httpx.Response(200, content=data, headers={"content-length": str(len(data))})
+    )
+    d = ModelDownloader()
+    d._state["downloading"] = True
+    d._download("base.en", tmp_path)  # run synchronously
+    st = d.status()
+    assert st["done"] is True and st["downloading"] is False
+    assert st["downloaded"] == len(data)
+    out = tmp_path / "ggml-base.en.bin"
+    assert out.read_bytes() == data
+    assert st["path"] == str(out)
+    assert not (tmp_path / "ggml-base.en.bin.part").exists()
+
+
+@respx.mock
+def test_download_error_sets_state_and_cleans_up(tmp_path: Path) -> None:
+    respx.get(f"{_HF_BASE}/ggml-base.en.bin").mock(return_value=httpx.Response(404))
+    d = ModelDownloader()
+    d._state["downloading"] = True
+    d._download("base.en", tmp_path)
+    st = d.status()
+    assert st["error"] is not None and st["downloading"] is False and st["done"] is False
+    assert not (tmp_path / "ggml-base.en.bin").exists()
+
+
+def test_list_whisper_models_finds_bin_files(tmp_path: Path) -> None:
+    models_dir = tmp_path / "models"
+    models_dir.mkdir()
+    (models_dir / "ggml-base.en.bin").write_bytes(b"x")
+    (models_dir / "ggml-small.bin").write_bytes(b"x")
+
+    config = tmp_path / "config.toml"
+    save_config_dict(
+        {"whisper": {"managed": False, "model_path": str(models_dir / "ggml-base.en.bin")}},
+        config,
+    )
+    found = {m["label"] for m in list_whisper_models(config)}
+    assert "ggml-base.en.bin" in found
+    assert "ggml-small.bin" in found
