@@ -164,14 +164,18 @@ def main() -> None:
     sp_worker.add_argument("--version", action="version", version=f"samwhispers {__version__}")
     sp_worker.set_defaults(func=lambda args: _run_worker(args))
 
-    args = parser.parse_args()
+    args, remaining = parser.parse_known_args()
 
-    # Bare invocation (no subcommand) = start
+    # Bare invocation (no subcommand) = start — pass all args to supervisor
     if args.command is None:
         from samwhispers.supervisor import main as supervisor_main
 
         supervisor_main()
         return
+
+    # If there are remaining args and a subcommand was matched, error
+    if remaining:
+        parser.error(f"unrecognized arguments: {' '.join(remaining)}")
 
     args.func(args)
 
