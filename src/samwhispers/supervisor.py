@@ -244,6 +244,7 @@ class WorkerSupervisor:
     def _terminate_proc(self) -> None:
         """Terminate the current worker if running. Caller holds the lock."""
         proc, self._proc = self._proc, None
+        reader, self._log_reader = self._log_reader, None
         if proc and proc.poll() is None:
             log.info("Stopping worker (pid %d)...", proc.pid)
             proc.terminate()
@@ -253,6 +254,8 @@ class WorkerSupervisor:
                 log.warning("Worker did not exit gracefully, killing")
                 proc.kill()
                 proc.wait()
+        if reader is not None:
+            reader.join(timeout=2.0)
 
     def _read_worker_logs(self) -> None:
         """Read lines from worker stderr and append to the ring buffer."""
@@ -260,8 +263,10 @@ class WorkerSupervisor:
         if proc is None or proc.stderr is None:
             return
         for line in proc.stderr:
-            with self._log_lock:
-                self._log_buffer.append(line.rstrip("\n"))
+            line = line.rstrip("\n")
+            if line:
+                with self._log_lock:
+                    self._log_buffer.append(line)
 
     def _set_state(self, state: WorkerState) -> None:
         """Update state and notify the listener. Caller holds the lock."""
@@ -341,6 +346,7 @@ class WorkerSupervisor:
                 # while we were backing off.
                 if self._stop_event.is_set() or self._paused or self._proc is not proc:
                     continue
+                startup_ticks = 0
                 self._spawn()
 
 
