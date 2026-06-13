@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import logging
+import math
 import threading
 import time
 import wave
@@ -13,6 +14,16 @@ from typing import Any
 import numpy as np
 
 log = logging.getLogger("samwhispers")
+
+
+def compute_level(samples: np.ndarray, gain: float = 12.0) -> float:
+    """Normalized 0..1 loudness (RMS * gain) for the on-screen meter."""
+    if samples.size == 0:
+        return 0.0
+    rms = float(np.sqrt(np.mean(np.square(samples, dtype=np.float64))))
+    if not math.isfinite(rms):
+        return 0.0
+    return min(1.0, rms * gain)
 
 
 def numpy_to_wav(audio: np.ndarray, sample_rate: int) -> bytes:
@@ -36,10 +47,12 @@ class AudioRecorder:
         sample_rate: int = 16000,
         max_duration: float = 300.0,
         on_auto_stop: Callable[[bytes], None] | None = None,
+        on_level: Callable[[float], None] | None = None,
     ) -> None:
         self._sample_rate = sample_rate
         self._max_duration = max_duration
         self._on_auto_stop = on_auto_stop
+        self._on_level = on_level
         self._lock = threading.Lock()
         self._recording = False
         self._frames: list[np.ndarray] = []
@@ -52,8 +65,16 @@ class AudioRecorder:
             log.warning("Audio stream status: %s", status)
             self._error = True
         with self._lock:
-            if self._recording:
+            recording = self._recording
+            if recording:
                 self._frames.append(indata[:, 0].copy())
+        # Emit the audio level for the on-screen meter outside the lock; never
+        # let a callback failure disrupt recording.
+        if recording and self._on_level is not None:
+            try:
+                self._on_level(compute_level(indata[:, 0]))
+            except Exception:
+                log.debug("Level callback failed", exc_info=True)
 
     def start(self) -> None:
         """Open audio stream and begin recording."""

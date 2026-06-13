@@ -15,6 +15,7 @@ from samwhispers.cleanup import CleanupProvider
 from samwhispers.config import AppConfig, LANGUAGE_NAMES
 from samwhispers.exceptions import ShutdownRequested
 from samwhispers.history import HistoryStore
+from samwhispers.overlay import OverlayController
 from samwhispers.postprocess import TextPostprocessor
 from samwhispers.server import WhisperServerManager
 from samwhispers.transcribe import WhisperClient
@@ -56,10 +57,15 @@ class SamWhispers:
         self._languages = config.whisper.languages
         self._lang_index = 0
 
+        self.overlay: OverlayController | None = (
+            OverlayController() if config.overlay.enabled else None
+        )
+
         self.recorder = AudioRecorder(
             sample_rate=config.audio.sample_rate,
             max_duration=config.audio.max_duration,
             on_auto_stop=self._on_auto_stop,
+            on_level=self._emit_level,
         )
         self.whisper = WhisperClient(
             server_url=config.whisper.server_url,
@@ -173,6 +179,9 @@ class SamWhispers:
         """Start daemon: checks, worker thread, hotkey listener, block until shutdown."""
         self._startup_checks()
 
+        if self.overlay is not None:
+            self.overlay.start()
+
         worker = threading.Thread(target=self._process_loop, daemon=True)
         worker.start()
 
@@ -213,6 +222,14 @@ class SamWhispers:
 
         notify("SamWhispers", f"Language: {label}")
 
+    def _emit_level(self, level: float) -> None:
+        if self.overlay is not None:
+            self.overlay.set_level(level)
+
+    def _set_overlay(self, state: str) -> None:
+        if self.overlay is not None:
+            self.overlay.set_state(state)
+
     def _on_record_start(self) -> None:
         with self._lock:
             if self._state != State.IDLE:
@@ -226,6 +243,7 @@ class SamWhispers:
             with self._lock:
                 self._state = State.IDLE
             return
+        self._set_overlay("recording")
         log.info("Recording...")
 
     def _on_record_stop(self) -> None:
@@ -233,6 +251,7 @@ class SamWhispers:
             if self._state != State.RECORDING:
                 return
             self._state = State.PROCESSING
+        self._set_overlay("processing")
         wav_bytes = self.recorder.stop()
         self._work_queue.put(wav_bytes)
 
@@ -242,6 +261,7 @@ class SamWhispers:
             if self._state != State.RECORDING:
                 return
             self._state = State.PROCESSING
+        self._set_overlay("processing")
         log.info("Auto-stop triggered, processing recorded audio")
         self._work_queue.put(wav_bytes)
 
@@ -261,6 +281,7 @@ class SamWhispers:
             finally:
                 with self._lock:
                     self._state = State.IDLE
+                self._set_overlay("idle")
 
     def _process_recording(self, wav_bytes: bytes) -> None:
         import time
@@ -466,4 +487,6 @@ class SamWhispers:
         self.whisper.close()
         self.cleanup.close()
         self.translator.close()
+        if self.overlay is not None:
+            self.overlay.stop()
         log.info("Shutdown complete")

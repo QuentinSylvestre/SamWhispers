@@ -331,6 +331,13 @@ class TranslationConfig:
 
 
 @dataclass
+class OverlayConfig:
+    # Floating on-screen indicator: animated bars while recording, a spinner
+    # while transcribing. Needs a display; silently disabled without one.
+    enabled: bool = True
+
+
+@dataclass
 class AppConfig:
     hotkey: HotkeyConfig = field(default_factory=HotkeyConfig)
     whisper: WhisperConfig = field(default_factory=WhisperConfig)
@@ -342,6 +349,7 @@ class AppConfig:
     filler: FillerConfig = field(default_factory=FillerConfig)
     history: HistoryConfig = field(default_factory=HistoryConfig)
     translation: TranslationConfig = field(default_factory=TranslationConfig)
+    overlay: OverlayConfig = field(default_factory=OverlayConfig)
 
 
 def find_config() -> Path | None:
@@ -577,6 +585,7 @@ def build_config(raw: dict[str, Any], validate: bool = True) -> AppConfig:
         filler=filler_cfg,
         history=HistoryConfig(**d.get("history", {})),
         translation=TranslationConfig(**d.get("translation", {})),
+        overlay=OverlayConfig(**d.get("overlay", {})),
     )
     if validate:
         _validate(config)

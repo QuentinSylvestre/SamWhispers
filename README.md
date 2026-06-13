@@ -247,6 +247,15 @@ Once running, open any text editor or input field, hold the hotkey, speak, and r
 
 Stop with `Ctrl+C` or `SIGTERM`.
 
+### On-screen indicator
+
+While recording, a small translucent pill appears near the bottom-center of the
+screen with a few white bars that react to your microphone level; it turns into
+a spinner while waiting for transcription, then disappears. Toggle it with
+`overlay.enabled` (or from the config UI). It needs a graphical display and is
+silently skipped without one (e.g. over SSH). On Linux it targets X11, like the
+rest of the app.
+
 ### Run in the background with a tray icon
 
 To run SamWhispers in the background with a system tray icon (and start it

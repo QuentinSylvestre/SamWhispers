@@ -83,3 +83,8 @@ enabled = false         # Translate dictated text before injecting it
 target_language = "en"  # Target language code (e.g. en, fr, es, ja)
 # Translation uses the AI provider/keys configured in [cleanup]. The History tab
 # shows both the original transcription and its translation.
+
+[overlay]
+enabled = true          # Floating on-screen indicator while recording/transcribing
+# Shows a few animated bars (driven by mic level) while recording and a spinner
+# while waiting for transcription. Needs a display; silently off without one.

@@ -78,6 +78,7 @@ def to_toml_dict(config: AppConfig) -> dict[str, Any]:
         "filler": asdict(config.filler),
         "history": asdict(config.history),
         "translation": asdict(config.translation),
+        "overlay": asdict(config.overlay),
     }
 
     vocab: dict[str, Any] = {"words": list(config.vocabulary.words)}
