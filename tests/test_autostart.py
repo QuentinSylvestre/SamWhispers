@@ -16,7 +16,9 @@ def test_systemd_unit_text_has_execstart_and_targets() -> None:
 
 def test_supervisor_command_prefers_installed_script() -> None:
     with patch.object(autostart.shutil, "which", return_value="/usr/bin/samwhispers-supervisor"):
-        assert autostart.supervisor_command() == "/usr/bin/samwhispers-supervisor"
+        cmd = autostart.supervisor_command()
+    assert cmd.startswith("/usr/bin/samwhispers-supervisor")
+    assert "--foreground" in cmd  # autostart runs the supervisor in foreground
 
 
 def test_supervisor_command_falls_back_to_module() -> None:
@@ -130,4 +132,4 @@ def test_windows_target_anchors_on_script_dir() -> None:
     ):
         target, args = autostart._windows_target_and_args()
     assert target.replace("\\", "/").endswith("/venv/Scripts/pythonw.exe")
-    assert args == "-m samwhispers.supervisor"
+    assert args == "-m samwhispers.supervisor --foreground"

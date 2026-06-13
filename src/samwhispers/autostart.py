@@ -29,11 +29,12 @@ def supervisor_command() -> str:
         python = sys.executable
         pythonw = Path(python).with_name("pythonw.exe")
         exe = str(pythonw) if pythonw.exists() else python
-        return f'"{exe}" -m samwhispers.supervisor'
+        return f'"{exe}" -m samwhispers.supervisor --foreground'
     exe = shutil.which("samwhispers-supervisor")
     if exe:
-        return f'"{exe}"' if " " in exe else exe
-    return f'"{sys.executable}" -m samwhispers.supervisor'
+        quoted = f'"{exe}"' if " " in exe else exe
+        return f"{quoted} --foreground"
+    return f'"{sys.executable}" -m samwhispers.supervisor --foreground'
 
 
 # --- Linux (systemd user service) -----------------------------------------
@@ -123,11 +124,11 @@ def _windows_target_and_args() -> tuple[str, str]:
     candidates.append(Path(sys.executable).with_name("pythonw.exe"))
     for pythonw in candidates:
         if pythonw.exists():
-            return str(pythonw), "-m samwhispers.supervisor"
+            return str(pythonw), "-m samwhispers.supervisor --foreground"
     # No pythonw found -> use the console script directly (shows a brief window).
     if script:
-        return script, ""
-    return sys.executable, "-m samwhispers.supervisor"
+        return script, "--foreground"
+    return sys.executable, "-m samwhispers.supervisor --foreground"
 
 
 def _startup_shortcut() -> Path:

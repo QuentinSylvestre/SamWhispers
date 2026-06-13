@@ -17,11 +17,13 @@ from __future__ import annotations
 
 import enum
 import logging
+import shutil
 import signal
 import subprocess
 import sys
 import threading
 from collections.abc import Callable
+from pathlib import Path
 from types import FrameType
 from typing import TYPE_CHECKING, Any
 
@@ -36,6 +38,7 @@ _MAX_RESTARTS = 5
 _RESTART_BACKOFF = 2.0
 _POLL_INTERVAL = 1.0
 _CREATE_NO_WINDOW = 0x08000000  # Windows: run a console child without a window
+_DETACHED_PROCESS = 0x00000008  # Windows: detach a child from the console
 
 
 class WorkerState(enum.Enum):
@@ -275,6 +278,50 @@ class WorkerSupervisor:
                 self._spawn()
 
 
+def _python_launcher() -> str:
+    """Interpreter to relaunch ourselves with (pythonw on Windows -> no window).
+
+    Anchored on the installed console script so we use the venv interpreter.
+    """
+    if sys.platform == "win32":
+        script = shutil.which("samwhispers-supervisor")
+        candidates = [Path(script).with_name("pythonw.exe")] if script else []
+        candidates.append(Path(sys.executable).with_name("pythonw.exe"))
+        for cand in candidates:
+            if cand.exists():
+                return str(cand)
+    return sys.executable
+
+
+def _relaunch_detached(args: Any) -> None:
+    """Start the supervisor as a detached background process, then return."""
+    cmd = [_python_launcher(), "-m", "samwhispers.supervisor", "--foreground"]
+    if args.config:
+        cmd += ["--config", args.config]
+    if args.verbose:
+        cmd.append("--verbose")
+    if args.no_tray:
+        cmd.append("--no-tray")
+    if args.no_web:
+        cmd.append("--no-web")
+    if args.web_port is not None:
+        cmd += ["--web-port", str(args.web_port)]
+
+    popen_kwargs: dict[str, Any] = {
+        "stdin": subprocess.DEVNULL,
+        "stdout": subprocess.DEVNULL,
+        "stderr": subprocess.DEVNULL,
+        "close_fds": True,
+    }
+    if sys.platform == "win32":
+        popen_kwargs["creationflags"] = _DETACHED_PROCESS | _CREATE_NO_WINDOW
+    else:
+        popen_kwargs["start_new_session"] = True
+    subprocess.Popen(cmd, **popen_kwargs)
+    print("SamWhispers started in the background. Quit it from the tray icon.")
+    print("Run with --foreground (-f) to keep it attached to this terminal.")
+
+
 def main() -> None:
     """Entry point: supervise the worker and (optionally) show a tray icon."""
     import argparse
@@ -301,7 +348,20 @@ def main() -> None:
         default=None,
         help="Port for the config web UI (default 7891)",
     )
+    parser.add_argument(
+        "-f",
+        "--foreground",
+        action="store_true",
+        help="Run in this terminal instead of detaching to the background",
+    )
     args = parser.parse_args()
+
+    # By default, detach to the background so the terminal is freed and closing
+    # it doesn't kill SamWhispers. --foreground keeps it attached (and is what
+    # the autostart service uses, since it manages the process itself).
+    if not args.foreground:
+        _relaunch_detached(args)
+        return
 
     logging.basicConfig(
         level=logging.DEBUG if args.verbose else logging.INFO,

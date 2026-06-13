@@ -47,6 +47,42 @@ def test_build_cmd_with_config_and_verbose() -> None:
     ]
 
 
+def test_main_detaches_by_default() -> None:
+    with (
+        patch.object(sup.sys, "argv", ["samwhispers-supervisor"]),
+        patch.object(sup, "_relaunch_detached") as relaunch,
+    ):
+        sup.main()
+    relaunch.assert_called_once()
+
+
+def test_relaunch_detached_builds_foreground_cmd() -> None:
+    args = MagicMock(config=None, verbose=False, no_tray=False, no_web=False, web_port=None)
+    with (
+        patch.object(sup, "_python_launcher", return_value="py"),
+        patch.object(sup.subprocess, "Popen") as popen,
+    ):
+        sup._relaunch_detached(args)
+    cmd = popen.call_args.args[0]
+    assert cmd == ["py", "-m", "samwhispers.supervisor", "--foreground"]
+    kwargs = popen.call_args.kwargs
+    assert kwargs["stdout"] == sup.subprocess.DEVNULL
+    assert kwargs.get("start_new_session") is True  # POSIX detach (test host)
+
+
+def test_relaunch_detached_passes_through_args() -> None:
+    args = MagicMock(config="/c.toml", verbose=True, no_tray=True, no_web=True, web_port=9000)
+    with (
+        patch.object(sup, "_python_launcher", return_value="py"),
+        patch.object(sup.subprocess, "Popen") as popen,
+    ):
+        sup._relaunch_detached(args)
+    cmd = popen.call_args.args[0]
+    for token in ("--foreground", "--no-tray", "--no-web", "--verbose", "--config", "/c.toml"):
+        assert token in cmd
+    assert cmd[cmd.index("--web-port") + 1] == "9000"
+
+
 def test_apply_config_change_without_whisper_restart() -> None:
     s = WorkerSupervisor()
     with (
