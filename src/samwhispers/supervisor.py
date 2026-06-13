@@ -35,6 +35,7 @@ _SHUTDOWN_GRACE = 5.0
 _MAX_RESTARTS = 5
 _RESTART_BACKOFF = 2.0
 _POLL_INTERVAL = 1.0
+_CREATE_NO_WINDOW = 0x08000000  # Windows: run a console child without a window
 
 
 class WorkerState(enum.Enum):
@@ -155,7 +156,7 @@ class WorkerSupervisor:
     def _build_cmd(self) -> list[str]:
         # The supervisor owns the managed whisper-server, so the worker always
         # runs unmanaged and just connects to it.
-        cmd = [sys.executable, "-m", "samwhispers", "--unmanaged-server"]
+        cmd = [sys.executable, "-m", "samwhispers", "worker", "--unmanaged-server"]
         if self._config_path:
             cmd += ["--config", self._config_path]
         if self._verbose:
@@ -203,7 +204,8 @@ class WorkerSupervisor:
         """Launch a fresh worker process. Caller holds the lock."""
         cmd = self._build_cmd()
         log.info("Starting worker: %s", " ".join(cmd))
-        self._proc = subprocess.Popen(cmd)
+        flags = _CREATE_NO_WINDOW if sys.platform == "win32" else 0
+        self._proc = subprocess.Popen(cmd, creationflags=flags)
         self._set_state(WorkerState.RUNNING)
 
     def _terminate_proc(self) -> None:

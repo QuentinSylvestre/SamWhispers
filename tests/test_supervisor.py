@@ -30,7 +30,7 @@ def _running_proc() -> MagicMock:
 
 def test_build_cmd_minimal() -> None:
     s = WorkerSupervisor()
-    assert s._build_cmd() == [sys.executable, "-m", "samwhispers", "--unmanaged-server"]
+    assert s._build_cmd() == [sys.executable, "-m", "samwhispers", "worker", "--unmanaged-server"]
 
 
 def test_build_cmd_with_config_and_verbose() -> None:
@@ -39,6 +39,7 @@ def test_build_cmd_with_config_and_verbose() -> None:
         sys.executable,
         "-m",
         "samwhispers",
+        "worker",
         "--unmanaged-server",
         "--config",
         "/tmp/c.toml",

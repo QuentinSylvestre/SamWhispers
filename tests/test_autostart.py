@@ -65,14 +65,14 @@ def test_dispatch_selects_platform(monkeypatch: object) -> None:
             lin_start.assert_called_once()
 
 
-def test_enable_windows_creates_shortcut_and_starts() -> None:
+def test_enable_windows_only_creates_shortcut() -> None:
     with (
         patch.object(autostart, "_create_startup_shortcut") as mk,
         patch.object(autostart, "_start_windows") as start,
     ):
         autostart._enable_windows()
     mk.assert_called_once()
-    start.assert_called_once()
+    start.assert_not_called()  # enable configures autostart; it does not launch
 
 
 def test_ps_quote_escapes_single_quotes() -> None:

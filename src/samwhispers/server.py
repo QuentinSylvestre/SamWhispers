@@ -86,8 +86,13 @@ class WhisperServerManager:
     def _spawn(self) -> None:
         cmd = self._build_cmd()
         log.info("Starting whisper-server: %s", " ".join(cmd))
+        # On Windows, run the console binary without popping a window when the
+        # parent has no console (e.g. launched via pythonw at login).
+        flags = 0x08000000 if sys.platform == "win32" else 0  # CREATE_NO_WINDOW
         with self._lock:
-            self._proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            self._proc = subprocess.Popen(
+                cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=flags
+            )
 
     def _wait_ready(self) -> None:
         client = WhisperClient(server_url=self._config.server_url)

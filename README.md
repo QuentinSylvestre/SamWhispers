@@ -263,12 +263,19 @@ All arguments are forwarded:
 You can also run manually with an activated venv:
 
 ```bash
-python -m samwhispers
+samwhispers              # the full app: tray + web UI + worker
+samwhispers-supervisor   # identical to the above
+python -m samwhispers    # identical to the above
 ```
+
+`samwhispers` / `samwhispers-supervisor` / `python -m samwhispers` all launch the
+full app (tray, web UI, and a managed worker), configured by your `config.toml`.
+(`samwhispers worker` runs just the worker and is used internally by the
+supervisor — you don't normally run it directly.)
 
 Once running, open any text editor or input field, hold the hotkey, speak, and release.
 
-Stop with `Ctrl+C` or `SIGTERM`.
+Quit from the tray's **Quit** item (or `Ctrl+C` if you ran it in a terminal).
 
 ### On-screen indicator
 

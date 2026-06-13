@@ -2,9 +2,9 @@
 
 Cross-platform: a systemd *user* service on Linux, a per-user Startup-folder
 shortcut on Windows (no admin / Task Scheduler needed -- the latter is blocked
-on many managed machines). ``enable`` installs it *and* starts it now;
-``start``/``stop`` control the background instance during a session; ``disable``
-removes it.
+on many managed machines). ``enable``/``disable`` only manage the autostart
+entry (they don't launch or kill the app); ``start``/``stop`` control a running
+background instance; run it in the foreground with ``samwhispers-supervisor``.
 """
 
 from __future__ import annotations
@@ -68,19 +68,15 @@ def _enable_linux() -> None:
     subprocess.run(
         ["systemctl", "--user", "import-environment", "DISPLAY", "XAUTHORITY"], check=False
     )
-    subprocess.run(
-        ["systemctl", "--user", "enable", "--now", f"{SERVICE_NAME}.service"], check=True
-    )
-    print(f"Autostart enabled. Status: systemctl --user status {SERVICE_NAME}")
+    subprocess.run(["systemctl", "--user", "enable", f"{SERVICE_NAME}.service"], check=True)
+    print("Autostart configured (starts at next login). Run now with: samwhispers-supervisor")
 
 
 def _disable_linux() -> None:
-    subprocess.run(
-        ["systemctl", "--user", "disable", "--now", f"{SERVICE_NAME}.service"], check=False
-    )
+    subprocess.run(["systemctl", "--user", "disable", f"{SERVICE_NAME}.service"], check=False)
     systemd_unit_path().unlink(missing_ok=True)
     subprocess.run(["systemctl", "--user", "daemon-reload"], check=False)
-    print("Autostart disabled.")
+    print("Autostart removed (a running instance keeps running; quit it from the tray).")
 
 
 def _start_linux() -> None:
@@ -171,14 +167,13 @@ def _create_startup_shortcut() -> None:
 
 def _enable_windows() -> None:
     _create_startup_shortcut()
-    _start_windows()
-    print(f"Autostart enabled (Startup folder) and started: {_startup_shortcut()}")
+    print(f"Autostart configured (starts at next login): {_startup_shortcut()}")
+    print("Run now with: samwhispers-supervisor")
 
 
 def _disable_windows() -> None:
-    _stop_windows()
     _startup_shortcut().unlink(missing_ok=True)
-    print("Autostart disabled.")
+    print("Autostart removed (a running instance keeps running; quit it from the tray).")
 
 
 def _start_windows() -> None:

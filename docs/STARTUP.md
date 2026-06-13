@@ -9,7 +9,7 @@ with a system tray icon showing whether it's running.
 
 - shows a **tray icon** (green = running, amber = paused, grey = stopped) with a
   menu to **Pause/Resume**, **Restart worker**, and **Quit**;
-- spawns the actual voice-to-text daemon (`python -m samwhispers`) as a child
+- spawns the actual voice-to-text daemon (`samwhispers worker`) as a child
   and restarts it automatically if it crashes;
 - owns the managed `whisper-server` (when `whisper.managed = true`), so the
   worker can be restarted after a config change without reloading the whisper
@@ -31,17 +31,17 @@ headless.
 On Linux and Windows, one command sets up login autostart for you:
 
 ```bash
-samwhispers-autostart enable     # install to run at login, and start it now
-samwhispers-autostart start      # start the background instance manually
-samwhispers-autostart stop       # stop it for this session
+samwhispers-autostart enable     # configure it to run at every login
+samwhispers-autostart disable    # stop running at login
+samwhispers-autostart start      # start a background instance now (no terminal)
+samwhispers-autostart stop       # stop the background instance
 samwhispers-autostart status     # check it
-samwhispers-autostart disable    # remove it (won't run at login anymore)
 ```
 
-`enable` does two things: registers SamWhispers to launch at every login **and**
-starts it immediately, so you don't have to log out. After that it always comes
-up at login; you can `stop`/`start` it during a session (or use the tray's
-**Quit**), and `start` it again manually whenever you like — no terminal needed.
+`enable`/`disable` only manage the autostart entry — they don't launch or kill
+the app. To run it now, use `samwhispers-supervisor` (foreground, with logs) or
+`samwhispers-autostart start` (background, no window). After `enable` it comes up
+automatically at every login; quit it anytime from the tray's **Quit**.
 
 It installs a systemd *user* service on Linux and a per-user **Startup-folder
 shortcut** on Windows (running via `pythonw`, no console window). The Startup
