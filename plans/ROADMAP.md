@@ -191,6 +191,64 @@ PyInstaller/Briefcase bundles or platform packages (.deb, .dmg, MSI/winget),
 plus an update check against GitHub releases. Productization, not features, but
 key for non-developer adoption.
 
+## 8. Dictation intelligence & personalization (Wispr Flow gap analysis)
+
+> **Status**: Exploring
+> **Scope**: Make dictation itself smarter and more personal — real-time AI
+> editing, voice editing commands, context/app awareness, mixed typing+voice,
+> a learning dictionary, snippets, and whispered-speech support. Most of these
+> build on the LLM provider work (items 2 & 5) and the streaming engine.
+
+### 8.1 Real-time auto-edit while speaking
+
+Apply AI cleanup **incrementally as you speak** (not a single post-pass), and
+recognize **spoken self-corrections** inline ("no, make that Tuesday"). Builds
+on the streaming path + a (local-or-cloud) LLM. Mode A (preview) is the natural
+surface for showing live edits before injecting the final text.
+
+### 8.2 Command mode
+
+Voice commands that **edit already-written / selected text** — shorten,
+lengthen, rephrase, change tone. Requires reading the current selection (or
+recently injected text) and replacing it; LLM-driven. A distinct "command"
+activation (separate hotkey or trigger word) vs normal dictation.
+
+### 8.3 Context awareness
+
+Detect the **focused application/window** and apply a matching formatting/tone
+profile (email vs chat vs code). Needs platform-specific active-window
+detection (X11 `_NET_ACTIVE_WINDOW`, Win32 `GetForegroundWindow`, macOS
+Accessibility) plus user-defined per-app profiles in the config UI.
+
+### 8.4 Multi-mode typing (voice + keyboard)
+
+Let voice and typing mix: **read the surrounding text** in the target field and
+continue mid-sentence / match its tone, rather than dumping a standalone block.
+The hard part is reading the target field across arbitrary apps (accessibility
+APIs / clipboard tricks) — a meaningful platform investment.
+
+### 8.5 Personal dictionary with auto-learn
+
+Extend the current (manual) vocabulary into a **learning dictionary**: when the
+user corrects a transcription, learn new proper nouns and add them
+automatically; manage entries (add / import / remove) in the config UI. Feeds
+the existing `initial_prompt` biasing.
+
+### 8.6 Snippets / voice text-replacement
+
+**Trigger phrases that expand** to saved text or code (a voice text-expander),
+applied as a post-transcription substitution step. Self-contained and
+low-risk; manage snippets in the config UI.
+
+### 8.7 Whispered speech support
+
+Improve recognition of **whispered / very quiet speech** for dictating
+discreetly in public. Likely a mix of input normalization/gain, model choice,
+and tuning; research needed to gauge what whisper.cpp / alternative models can
+do here.
+
+---
+
 ## Other roadmap candidates (unscheduled)
 
 - **Language-code normalization** (e.g. `zh -> zh-CN`) once non-Whisper engines
