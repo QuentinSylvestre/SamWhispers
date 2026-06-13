@@ -45,7 +45,7 @@ aside { background: var(--surface); border-right: 1px solid var(--border);
 .nav-icon { width: 18px; text-align: center; flex-shrink: 0; }
 
 /* Content */
-.content { padding: 28px 36px; overflow-y: auto; max-width: 960px; }
+.content { padding: 28px 36px; overflow-y: auto; max-width: 780px; }
 .page { display: none; }
 .page.active { display: block; }
 .page-title { font-size: 20px; font-weight: 600; margin-bottom: 4px; }
@@ -107,10 +107,7 @@ button.primary:disabled { opacity: .5; cursor: default; }
 .empty { color: var(--muted); text-align: center; padding: 40px 0; }
 
 /* Model manager */
-.model-row-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 16px;
-  margin-bottom: 16px; }
-.model-manager-card { display: flex; flex-direction: column; }
-.model-list-scroll { flex: 1; overflow-y: auto; max-height: 360px;
+.model-list-scroll { max-height: 340px; overflow-y: auto;
   display: flex; flex-direction: column; gap: 6px; }
 .model-row { display: flex; align-items: center; gap: 8px; padding: 7px 10px;
   border-radius: 8px; background: var(--bg); }
@@ -130,7 +127,6 @@ button.primary:disabled { opacity: .5; cursor: default; }
   border-radius: 6px; font-size: 14px; line-height: 1; color: var(--fg); }
 .model-row button:hover:not(:disabled) { background: var(--surface2); }
 .model-row button:disabled { opacity: 0.2; cursor: default; }
-@media (max-width: 900px) { .model-row-layout { grid-template-columns: 1fr; } }
 
 /* Responsive */
 @media (max-width: 768px) {
@@ -228,19 +224,16 @@ button.primary:disabled { opacity: .5; cursor: default; }
     <div class="field" data-show-when="whisper.managed=true"><label>Server binary</label><input type="text" data-path="whisper.server_bin" /></div>
   </div>
 
-  <div class="model-row-layout">
-    <div class="card">
-      <h3>Model</h3>
-      <div class="field"><label>Active model</label>
-        <div class="stack">
-          <select id="activeModelSelect" data-fill="whisper.model_path"></select>
-          <input type="text" data-path="whisper.model_path" placeholder="model path" />
-        </div>
+  <div class="card">
+    <h3>Model</h3>
+    <div class="field"><label>Active model</label>
+      <div class="stack">
+        <select id="activeModelSelect" data-fill="whisper.model_path"></select>
+        <input type="text" data-path="whisper.model_path" placeholder="model path" />
       </div>
-      <span class="hint" id="dlStatus"></span>
     </div>
-    <div class="card model-manager-card">
-      <h3>Model manager</h3>
+    <span class="hint" id="dlStatus"></span>
+    <div style="border-top:1px solid var(--border);margin-top:14px;padding-top:14px">
       <input type="text" id="modelSearch" placeholder="Search models…" style="margin-bottom:10px" />
       <div id="modelList" class="model-list-scroll"></div>
     </div>
