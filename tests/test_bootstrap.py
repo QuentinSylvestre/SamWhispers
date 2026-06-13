@@ -45,14 +45,19 @@ def test_ensure_whisper_server_uses_existing(tmp_path: Path) -> None:
     binp = bootstrap.server_bin_path(whisper_dir)
     binp.parent.mkdir(parents=True)
     binp.write_bytes(b"x")
-    with (
-        patch.object(bootstrap, "build_whisper_from_source") as build,
-        patch.object(bootstrap, "download_whisper_prebuilt_windows") as dl,
-    ):
-        result = bootstrap.ensure_whisper_server(whisper_dir, build=False)
+    with patch.object(bootstrap, "build_whisper_from_source") as build:
+        result = bootstrap.ensure_whisper_server(whisper_dir)
     build.assert_not_called()
-    dl.assert_not_called()
     assert result == binp
+
+
+def test_ensure_whisper_server_builds_when_missing(tmp_path: Path) -> None:
+    whisper_dir = tmp_path / "whisper.cpp"
+    sentinel = whisper_dir / "build" / "bin" / "whisper-server"
+    with patch.object(bootstrap, "build_whisper_from_source", return_value=sentinel) as build:
+        result = bootstrap.ensure_whisper_server(whisper_dir)
+    build.assert_called_once_with(whisper_dir)
+    assert result == sentinel
 
 
 def test_build_from_source_requires_toolchain(tmp_path: Path) -> None:

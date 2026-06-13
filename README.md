@@ -31,10 +31,10 @@ samwhispers-supervisor
 samwhispers-autostart enable
 ```
 
-`samwhispers-setup` builds whisper.cpp from source on Linux/macOS (needs `git`,
-`cmake`, a C++ compiler) and downloads a prebuilt binary on Windows (no Visual
-Studio needed). Everything lands in your user data dir. The manual steps below
-are the fallback / advanced path.
+`samwhispers-setup` builds whisper.cpp from source from the official repo on all
+platforms (needs `git`, `cmake`, and a C++ compiler — on Windows, Visual Studio
+Build Tools with the C++ workload, or MinGW). Everything lands in your user data
+dir. The manual steps below are the fallback / advanced path.
 
 ## Prerequisites
 

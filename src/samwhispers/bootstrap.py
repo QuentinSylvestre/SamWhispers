@@ -1,32 +1,24 @@
-"""One-command setup: fetch a model, obtain whisper-server, write a config.
+"""One-command setup: fetch a model, build whisper-server, write a config.
 
 Targets the per-user data dir so it works whether SamWhispers was installed
-from source or via pip/pipx. On Windows it downloads a prebuilt whisper.cpp
-release (no Visual Studio needed); on Linux/macOS it builds from source (needs
-git + cmake + a C++ compiler).
+from source or via pip/pipx. whisper.cpp is **built from source** from the
+official repo on all platforms (needs git + cmake + a C++ compiler) -- a local
+build is verifiable, unlike a downloaded binary.
 """
 
 from __future__ import annotations
 
 import argparse
-import io
 import shutil
 import subprocess
 import sys
-import zipfile
 from pathlib import Path
-
-import httpx
 
 from samwhispers.history import resolve_data_dir
 from samwhispers.models import WHISPER_CPP_MODELS, ModelDownloader
 from samwhispers.webconfig import resolve_config_path
 
 _WHISPER_REPO = "https://github.com/ggerganov/whisper.cpp.git"
-# Stable "latest release" asset URL (no GitHub API / rate limit).
-_WIN_PREBUILT_URL = (
-    "https://github.com/ggerganov/whisper.cpp/releases/latest/download/whisper-bin-x64.zip"
-)
 
 
 def _paths() -> tuple[Path, Path, Path]:
@@ -84,9 +76,13 @@ def build_whisper_from_source(whisper_dir: Path) -> Path:
     """Clone (if needed) and build whisper.cpp; return the server binary path."""
     for tool in ("git", "cmake"):
         if shutil.which(tool) is None:
+            hint = (
+                "install Visual Studio Build Tools (C++ workload) + CMake, or MinGW"
+                if sys.platform == "win32"
+                else "e.g. `sudo apt install git cmake g++`"
+            )
             raise SystemExit(
-                f"'{tool}' is required to build whisper.cpp. Install it "
-                "(e.g. `sudo apt install git cmake g++`) and re-run."
+                f"'{tool}' is required to build whisper.cpp. Install it ({hint}) and re-run."
             )
     if not (whisper_dir / ".git").exists():
         print("Cloning whisper.cpp...")
@@ -97,55 +93,34 @@ def build_whisper_from_source(whisper_dir: Path) -> Path:
     print("Building whisper.cpp (this can take a few minutes)...")
     subprocess.run(["cmake", "-B", "build"], cwd=whisper_dir, check=True)
     subprocess.run(
-        ["cmake", "--build", "build", "--config", "Release", "-j"], cwd=whisper_dir, check=True
+        ["cmake", "--build", "build", "--config", "Release", "--parallel"],
+        cwd=whisper_dir,
+        check=True,
     )
     return server_bin_path(whisper_dir)
 
 
-def download_whisper_prebuilt_windows(whisper_dir: Path) -> Path:
-    """Download a prebuilt whisper.cpp release and return the server .exe path."""
-    print("Downloading prebuilt whisper.cpp (Windows)...")
-    dest = whisper_dir / "prebuilt"
-    dest.mkdir(parents=True, exist_ok=True)
-    with httpx.Client(follow_redirects=True, timeout=httpx.Timeout(30.0, read=300.0)) as client:
-        resp = client.get(_WIN_PREBUILT_URL)
-        resp.raise_for_status()
-        zipfile.ZipFile(io.BytesIO(resp.content)).extractall(dest)
-    matches = sorted(dest.rglob("*server*.exe"))
-    if not matches:
-        raise SystemExit(
-            "Could not find whisper-server.exe in the prebuilt archive; "
-            "build from source with --build instead."
-        )
-    return matches[0]
-
-
-def ensure_whisper_server(whisper_dir: Path, build: bool) -> Path:
-    """Locate or obtain the whisper-server binary."""
+def ensure_whisper_server(whisper_dir: Path) -> Path:
+    """Locate the whisper-server binary, building it from source if missing."""
     existing = server_bin_path(whisper_dir)
     if existing.exists():
         return existing
-    if sys.platform == "win32" and not build:
-        return download_whisper_prebuilt_windows(whisper_dir)
     return build_whisper_from_source(whisper_dir)
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(
         prog="samwhispers-setup",
-        description="Set up whisper-server, a model, and a starter config.",
+        description="Build whisper-server, download a model, and write a starter config.",
     )
     parser.add_argument("--model", default="base.en", help="Model to download (default base.en)")
-    parser.add_argument(
-        "--build", action="store_true", help="Build whisper.cpp from source even on Windows"
-    )
     parser.add_argument(
         "--force-config", action="store_true", help="Overwrite an existing config.toml"
     )
     args = parser.parse_args()
 
     whisper_dir, models_dir, config_path = _paths()
-    server_bin = ensure_whisper_server(whisper_dir, build=args.build)
+    server_bin = ensure_whisper_server(whisper_dir)
     model_path = ensure_model(args.model, models_dir)
     wrote = write_config(config_path, server_bin, model_path, force=args.force_config)
 
