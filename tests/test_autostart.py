@@ -15,7 +15,10 @@ def test_systemd_unit_text_has_execstart_and_targets() -> None:
 
 
 def test_supervisor_command_prefers_installed_script() -> None:
-    with patch.object(autostart.shutil, "which", return_value="/usr/bin/samwhispers-supervisor"):
+    with (
+        patch.object(autostart.sys, "platform", "linux"),
+        patch.object(autostart.shutil, "which", return_value="/usr/bin/samwhispers-supervisor"),
+    ):
         cmd = autostart.supervisor_command()
     assert cmd.startswith("/usr/bin/samwhispers-supervisor")
     assert "--foreground" in cmd  # autostart runs the supervisor in foreground

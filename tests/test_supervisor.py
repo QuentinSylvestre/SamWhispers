@@ -75,10 +75,20 @@ def test_relaunch_detached_builds_foreground_cmd() -> None:
     ):
         sup._relaunch_detached(args)
     cmd = popen.call_args.args[0]
-    assert cmd == ["py", "-m", "samwhispers.supervisor", "--foreground"]
+    assert cmd[0] == "py"
+    assert cmd[1] == "-c"
+    # Args are embedded in the -c script string
+    script = cmd[2]
+    assert "--foreground" in script
+    assert "from samwhispers.supervisor import main; main()" in script
     kwargs = popen.call_args.kwargs
     assert kwargs["stdout"] == sup.subprocess.DEVNULL
-    assert kwargs.get("start_new_session") is True  # POSIX detach (test host)
+    if sys.platform == "win32":
+        flags = kwargs.get("creationflags", 0)
+        assert flags & 0x08000000  # CREATE_NO_WINDOW
+        assert flags & 0x00000200  # CREATE_NEW_PROCESS_GROUP
+    else:
+        assert kwargs.get("start_new_session") is True
 
 
 def test_relaunch_detached_passes_through_args() -> None:
@@ -89,9 +99,11 @@ def test_relaunch_detached_passes_through_args() -> None:
     ):
         sup._relaunch_detached(args)
     cmd = popen.call_args.args[0]
+    # All args are embedded in the -c script string
+    script = cmd[2]
     for token in ("--foreground", "--no-tray", "--no-web", "--verbose", "--config", "/c.toml"):
-        assert token in cmd
-    assert cmd[cmd.index("--web-port") + 1] == "9000"
+        assert token in script
+    assert "--web-port" in script and "9000" in script
 
 
 def test_apply_config_change_without_whisper_restart() -> None:
@@ -154,7 +166,7 @@ def test_start_spawns_and_runs_monitor() -> None:
         s.start()
         try:
             popen.assert_called_once()
-            assert s.state == WorkerState.RUNNING
+            assert s.state == WorkerState.STARTING
             assert s._monitor_thread is not None and s._monitor_thread.is_alive()
         finally:
             s.shutdown()
@@ -170,7 +182,7 @@ def test_pause_terminates_and_resume_respawns() -> None:
         assert s.state == WorkerState.PAUSED
         proc1.terminate.assert_called_once()
         s.resume()
-        assert s.state == WorkerState.RUNNING
+        assert s.state == WorkerState.STARTING
         assert popen.call_count == 2
         s.shutdown()
 
@@ -193,7 +205,7 @@ def test_restart_swaps_process() -> None:
         s.restart()
         proc1.terminate.assert_called_once()
         assert s._proc is proc2
-        assert s.state == WorkerState.RUNNING
+        assert s.state == WorkerState.STARTING
         s.shutdown()
 
 
@@ -212,7 +224,7 @@ def test_state_listener_receives_transitions() -> None:
         s.start()
         s.pause()
         s.shutdown()
-    assert WorkerState.RUNNING in seen
+    assert WorkerState.STARTING in seen
     assert WorkerState.PAUSED in seen
     assert seen[-1] == WorkerState.STOPPED
 
