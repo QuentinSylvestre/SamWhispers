@@ -65,12 +65,33 @@ def test_dispatch_selects_platform(monkeypatch: object) -> None:
             lin_start.assert_called_once()
 
 
-def test_enable_windows_creates_then_starts() -> None:
+def test_enable_windows_creates_shortcut_and_starts() -> None:
     with (
-        patch.object(autostart, "supervisor_command", return_value="cmd"),
-        patch.object(autostart.subprocess, "run") as run,
+        patch.object(autostart, "_create_startup_shortcut") as mk,
+        patch.object(autostart, "_start_windows") as start,
     ):
         autostart._enable_windows()
-    calls = [c.args[0] for c in run.call_args_list]
-    assert any("/Create" in c for c in calls)
-    assert any("/Run" in c for c in calls)  # also starts immediately
+    mk.assert_called_once()
+    start.assert_called_once()
+
+
+def test_ps_quote_escapes_single_quotes() -> None:
+    assert autostart._ps_quote("a'b") == "'a''b'"
+    assert autostart._ps_quote("plain") == "'plain'"
+
+
+def test_startup_shortcut_path(monkeypatch: object) -> None:
+    with patch.dict(autostart.os.environ, {"APPDATA": "/roaming"}):
+        lnk = autostart._startup_shortcut()
+    assert lnk.name == "samwhispers.lnk"
+    assert "Startup" in lnk.parts
+
+
+def test_windows_target_uses_pythonw() -> None:
+    with (
+        patch.object(autostart.sys, "executable", "/py/python.exe"),
+        patch.object(autostart.Path, "exists", return_value=True),
+    ):
+        target, args = autostart._windows_target_and_args()
+    assert target.endswith("pythonw.exe")
+    assert args == "-m samwhispers.supervisor"

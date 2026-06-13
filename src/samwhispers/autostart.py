@@ -1,14 +1,16 @@
 """Install/manage a login-autostart entry for the supervisor.
 
-Cross-platform: a systemd *user* service on Linux, a Task Scheduler "at logon"
-task on Windows. ``enable`` installs it *and* starts it now; ``start``/``stop``
-control the background instance during a session; ``disable`` removes it.
-Replaces the manual unit-editing in docs/STARTUP.md.
+Cross-platform: a systemd *user* service on Linux, a per-user Startup-folder
+shortcut on Windows (no admin / Task Scheduler needed -- the latter is blocked
+on many managed machines). ``enable`` installs it *and* starts it now;
+``start``/``stop`` control the background instance during a session; ``disable``
+removes it.
 """
 
 from __future__ import annotations
 
 import argparse
+import os
 import shutil
 import subprocess
 import sys
@@ -95,46 +97,99 @@ def _status_linux() -> None:
     subprocess.run(["systemctl", "--user", "status", f"{SERVICE_NAME}.service"], check=False)
 
 
-# --- Windows (Task Scheduler) ---------------------------------------------
+# --- Windows (Startup folder shortcut) ------------------------------------
+#
+# A Task Scheduler task needs permissions that managed/corporate machines often
+# deny ("Access is denied"). A shortcut in the per-user Startup folder runs at
+# logon with no admin rights and no policy exception.
+
+_DETACHED_PROCESS = 0x00000008
+_CREATE_NO_WINDOW = 0x08000000
+
+# Find our supervisor process precisely (don't touch other pythonw apps).
+_FIND_PROC = (
+    "Get-CimInstance Win32_Process -Filter \"Name='pythonw.exe'\" | "
+    "Where-Object { $_.CommandLine -like '*samwhispers.supervisor*' }"
+)
+
+
+def _windows_target_and_args() -> tuple[str, str]:
+    python = sys.executable
+    pythonw = Path(python).with_name("pythonw.exe")
+    exe = str(pythonw) if pythonw.exists() else python
+    return exe, "-m samwhispers.supervisor"
+
+
+def _startup_shortcut() -> Path:
+    appdata = os.environ.get("APPDATA") or str(Path.home() / "AppData" / "Roaming")
+    return (
+        Path(appdata)
+        / "Microsoft"
+        / "Windows"
+        / "Start Menu"
+        / "Programs"
+        / "Startup"
+        / f"{SERVICE_NAME}.lnk"
+    )
+
+
+def _ps_quote(value: str) -> str:
+    """Quote a string for a PowerShell single-quoted literal."""
+    return "'" + value.replace("'", "''") + "'"
+
+
+def _run_powershell(script: str, check: bool) -> None:
+    subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", script], check=check)
+
+
+def _create_startup_shortcut() -> None:
+    lnk = _startup_shortcut()
+    lnk.parent.mkdir(parents=True, exist_ok=True)
+    target, args = _windows_target_and_args()
+    script = (
+        "$s=(New-Object -ComObject WScript.Shell).CreateShortcut(" + _ps_quote(str(lnk)) + ");"
+        "$s.TargetPath=" + _ps_quote(target) + ";"
+        "$s.Arguments=" + _ps_quote(args) + ";"
+        "$s.Save()"
+    )
+    _run_powershell(script, check=True)
 
 
 def _enable_windows() -> None:
-    subprocess.run(
-        [
-            "schtasks",
-            "/Create",
-            "/SC",
-            "ONLOGON",
-            "/TN",
-            SERVICE_NAME,
-            "/TR",
-            supervisor_command(),
-            "/F",
-        ],
-        check=True,
-    )
+    _create_startup_shortcut()
     _start_windows()
-    print(f"Autostart enabled and started (Task Scheduler task '{SERVICE_NAME}').")
+    print(f"Autostart enabled (Startup folder) and started: {_startup_shortcut()}")
 
 
 def _disable_windows() -> None:
-    subprocess.run(["schtasks", "/End", "/TN", SERVICE_NAME], check=False)
-    subprocess.run(["schtasks", "/Delete", "/TN", SERVICE_NAME, "/F"], check=False)
+    _stop_windows()
+    _startup_shortcut().unlink(missing_ok=True)
     print("Autostart disabled.")
 
 
 def _start_windows() -> None:
-    subprocess.run(["schtasks", "/Run", "/TN", SERVICE_NAME], check=True)
+    target, _ = _windows_target_and_args()
+    subprocess.Popen(
+        [target, "-m", "samwhispers.supervisor"],
+        creationflags=_DETACHED_PROCESS | _CREATE_NO_WINDOW,
+        close_fds=True,
+    )
     print("Started.")
 
 
 def _stop_windows() -> None:
-    subprocess.run(["schtasks", "/End", "/TN", SERVICE_NAME], check=False)
+    _run_powershell(
+        _FIND_PROC + " | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }", check=False
+    )
     print("Stopped.")
 
 
 def _status_windows() -> None:
-    subprocess.run(["schtasks", "/Query", "/TN", SERVICE_NAME], check=False)
+    lnk = _startup_shortcut()
+    print(f"Startup shortcut: {'present' if lnk.exists() else 'absent'} ({lnk})")
+    _run_powershell(
+        _FIND_PROC + " | Select-Object ProcessId,CommandLine | Format-List", check=False
+    )
 
 
 def _dispatch(action: str) -> None:

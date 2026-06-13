@@ -43,10 +43,11 @@ starts it immediately, so you don't have to log out. After that it always comes
 up at login; you can `stop`/`start` it during a session (or use the tray's
 **Quit**), and `start` it again manually whenever you like — no terminal needed.
 
-It installs a systemd *user* service on Linux and a Task Scheduler "at logon"
-task on Windows (running via `pythonw`, no console window), pointing at your
-installed supervisor. The manual instructions below are the fallback / for
-customization (and macOS).
+It installs a systemd *user* service on Linux and a per-user **Startup-folder
+shortcut** on Windows (running via `pythonw`, no console window). The Startup
+folder needs no admin rights and avoids Task Scheduler, which is often blocked
+on managed/corporate machines. The manual instructions below are the fallback /
+for customization (and macOS).
 
 ## Linux (systemd user service)
 
