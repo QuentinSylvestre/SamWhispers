@@ -73,7 +73,10 @@ class WhisperServerManager:
         atexit.register(self.stop)
 
     def _build_cmd(self) -> list[str]:
-        return [self._bin, "-m", self._model, "--host", self._host, "--port", self._port]
+        return [
+            self._bin, "-m", self._model, "--host", self._host, "--port", self._port,
+            "-sns",
+        ]
 
     def start(self) -> None:
         """Spawn whisper-server and block until it passes health check."""
