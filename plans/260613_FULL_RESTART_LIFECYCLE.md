@@ -1,7 +1,7 @@
 # Full Restart Lifecycle (start/stop/restart)
 
 > **Date**: 2026-06-13
-> **Status**: Draft  <!-- Status lifecycle: Exploring → Draft → In Progress → Complete -->
+> **Status**: In Progress  <!-- Status lifecycle: Exploring → Draft → In Progress → Complete -->
 > **Scope**: Add full supervisor restart/stop commands to CLI, tray, and web UI
 > **Estimated effort**: 2-4 hours
 
@@ -81,10 +81,13 @@ None — code-only change, no new infrastructure or services.
 - Call `write_pid()` after lock is acquired in `main()`
 
 **Exit criteria**:
-- [ ] PID file created at startup, readable via `read_pid()`
-- [ ] `POST /api/supervisor/shutdown` triggers clean shutdown (main thread exits)
-- [ ] `POST /api/supervisor/restart` triggers re-exec (old exits, new starts)
-- [ ] Launch args are preserved for re-exec fidelity
+- [x] PID file created at startup, readable via `read_pid()`
+- [x] `POST /api/supervisor/shutdown` triggers clean shutdown (main thread exits)
+- [x] `POST /api/supervisor/restart` triggers re-exec (old exits, new starts)
+- [x] Launch args are preserved for re-exec fidelity
+
+Implementation (2026-06-13, code: d6a2f65)
+Added `write_pid()` and `read_pid()` to `singleinstance.py` for PID file management at `<data-dir>/supervisor.pid`. Updated `supervisor.py` to store launch args in a module-level `_launch_args` dict at startup, added `request_shutdown()` and `request_relaunch()` event-setting methods to `WorkerSupervisor`, refactored `_relaunch_detached()` to work from the stored args dict, and rewired `main()` to pass a `stop_callback` to the web server and check relaunch/shutdown events after the tray/headless loop exits. Added `POST /api/supervisor/shutdown` and `POST /api/supervisor/restart` endpoints to `webserver.py`.
 
 ### Phase 2: CLI subcommands [QA] [P:3]
 
