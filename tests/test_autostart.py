@@ -60,6 +60,17 @@ def test_dispatch_selects_platform(monkeypatch: object) -> None:
             autostart._dispatch("enable")
             win_enable.assert_called_once()
     with patch.object(autostart.sys, "platform", "linux"):
-        with patch.object(autostart, "_status_linux") as lin_status:
-            autostart._dispatch("status")
-            lin_status.assert_called_once()
+        with patch.object(autostart, "_start_linux") as lin_start:
+            autostart._dispatch("start")
+            lin_start.assert_called_once()
+
+
+def test_enable_windows_creates_then_starts() -> None:
+    with (
+        patch.object(autostart, "supervisor_command", return_value="cmd"),
+        patch.object(autostart.subprocess, "run") as run,
+    ):
+        autostart._enable_windows()
+    calls = [c.args[0] for c in run.call_args_list]
+    assert any("/Create" in c for c in calls)
+    assert any("/Run" in c for c in calls)  # also starts immediately

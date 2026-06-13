@@ -1,8 +1,9 @@
-"""Install/remove a login-autostart entry for the supervisor.
+"""Install/manage a login-autostart entry for the supervisor.
 
 Cross-platform: a systemd *user* service on Linux, a Task Scheduler "at logon"
-task on Windows. Replaces the manual unit-editing in docs/STARTUP.md with
-``samwhispers-autostart enable``.
+task on Windows. ``enable`` installs it *and* starts it now; ``start``/``stop``
+control the background instance during a session; ``disable`` removes it.
+Replaces the manual unit-editing in docs/STARTUP.md.
 """
 
 from __future__ import annotations
@@ -80,6 +81,16 @@ def _disable_linux() -> None:
     print("Autostart disabled.")
 
 
+def _start_linux() -> None:
+    subprocess.run(["systemctl", "--user", "start", f"{SERVICE_NAME}.service"], check=True)
+    print("Started.")
+
+
+def _stop_linux() -> None:
+    subprocess.run(["systemctl", "--user", "stop", f"{SERVICE_NAME}.service"], check=False)
+    print("Stopped.")
+
+
 def _status_linux() -> None:
     subprocess.run(["systemctl", "--user", "status", f"{SERVICE_NAME}.service"], check=False)
 
@@ -102,12 +113,24 @@ def _enable_windows() -> None:
         ],
         check=True,
     )
-    print(f"Autostart enabled (Task Scheduler task '{SERVICE_NAME}').")
+    _start_windows()
+    print(f"Autostart enabled and started (Task Scheduler task '{SERVICE_NAME}').")
 
 
 def _disable_windows() -> None:
+    subprocess.run(["schtasks", "/End", "/TN", SERVICE_NAME], check=False)
     subprocess.run(["schtasks", "/Delete", "/TN", SERVICE_NAME, "/F"], check=False)
     print("Autostart disabled.")
+
+
+def _start_windows() -> None:
+    subprocess.run(["schtasks", "/Run", "/TN", SERVICE_NAME], check=True)
+    print("Started.")
+
+
+def _stop_windows() -> None:
+    subprocess.run(["schtasks", "/End", "/TN", SERVICE_NAME], check=False)
+    print("Stopped.")
 
 
 def _status_windows() -> None:
@@ -115,8 +138,20 @@ def _status_windows() -> None:
 
 
 def _dispatch(action: str) -> None:
-    linux = {"enable": _enable_linux, "disable": _disable_linux, "status": _status_linux}
-    windows = {"enable": _enable_windows, "disable": _disable_windows, "status": _status_windows}
+    linux = {
+        "enable": _enable_linux,
+        "disable": _disable_linux,
+        "start": _start_linux,
+        "stop": _stop_linux,
+        "status": _status_linux,
+    }
+    windows = {
+        "enable": _enable_windows,
+        "disable": _disable_windows,
+        "start": _start_windows,
+        "stop": _stop_windows,
+        "status": _status_windows,
+    }
     table = windows if sys.platform == "win32" else linux
     table[action]()
 
@@ -124,9 +159,9 @@ def _dispatch(action: str) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(
         prog="samwhispers-autostart",
-        description="Enable/disable launching SamWhispers at login.",
+        description="Install/manage launching SamWhispers at login.",
     )
-    parser.add_argument("action", choices=["enable", "disable", "status"])
+    parser.add_argument("action", choices=["enable", "disable", "start", "stop", "status"])
     args = parser.parse_args()
     if sys.platform not in ("win32", "linux"):
         print(

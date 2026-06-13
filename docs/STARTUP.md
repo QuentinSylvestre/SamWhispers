@@ -31,14 +31,22 @@ headless.
 On Linux and Windows, one command sets up login autostart for you:
 
 ```bash
-samwhispers-autostart enable     # install + start at login
+samwhispers-autostart enable     # install to run at login, and start it now
+samwhispers-autostart start      # start the background instance manually
+samwhispers-autostart stop       # stop it for this session
 samwhispers-autostart status     # check it
-samwhispers-autostart disable    # remove it
+samwhispers-autostart disable    # remove it (won't run at login anymore)
 ```
 
+`enable` does two things: registers SamWhispers to launch at every login **and**
+starts it immediately, so you don't have to log out. After that it always comes
+up at login; you can `stop`/`start` it during a session (or use the tray's
+**Quit**), and `start` it again manually whenever you like — no terminal needed.
+
 It installs a systemd *user* service on Linux and a Task Scheduler "at logon"
-task on Windows, pointing at your installed `samwhispers-supervisor`. The manual
-instructions below are the fallback / for customization (and macOS).
+task on Windows (running via `pythonw`, no console window), pointing at your
+installed supervisor. The manual instructions below are the fallback / for
+customization (and macOS).
 
 ## Linux (systemd user service)
 
