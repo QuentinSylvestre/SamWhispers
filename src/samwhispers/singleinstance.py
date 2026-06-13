@@ -64,6 +64,26 @@ class InstanceLock:
             self._fd = None
 
 
+def pid_path() -> Path:
+    return resolve_data_dir() / "supervisor.pid"
+
+
+def write_pid() -> None:
+    """Write current process PID to a separate file (not the lock file)."""
+    p = pid_path()
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(str(os.getpid()), encoding="utf-8")
+
+
+def read_pid() -> int | None:
+    """Read the stored PID, or None if missing/invalid."""
+    p = pid_path()
+    try:
+        return int(p.read_text(encoding="utf-8").strip())
+    except (OSError, ValueError):
+        return None
+
+
 def is_running() -> bool:
     """Whether another instance currently holds the lock."""
     probe = InstanceLock()

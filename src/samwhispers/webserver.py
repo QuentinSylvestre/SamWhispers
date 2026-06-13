@@ -40,6 +40,7 @@ def create_app(
     supervisor: WorkerSupervisor | None = None,
     config_path: str | Path | None = None,
     history_store: HistoryStore | None = None,
+    stop_callback: Any | None = None,
 ) -> FastAPI:
     """Build the FastAPI app. ``supervisor`` may be None for API-only testing."""
     app = FastAPI(title="SamWhispers", docs_url=None, redoc_url=None)
@@ -207,6 +208,24 @@ def create_app(
         else:
             raise HTTPException(status_code=400, detail=f"Unknown action: {action}")
         return {"state": supervisor.state.value}
+
+    @app.post("/api/supervisor/shutdown")
+    def supervisor_shutdown() -> dict[str, Any]:
+        if supervisor is None:
+            raise HTTPException(status_code=503, detail="No supervisor attached")
+        supervisor.request_shutdown()
+        if stop_callback is not None:
+            stop_callback()
+        return {"shutting_down": True}
+
+    @app.post("/api/supervisor/restart")
+    def supervisor_restart() -> dict[str, Any]:
+        if supervisor is None:
+            raise HTTPException(status_code=503, detail="No supervisor attached")
+        supervisor.request_relaunch()
+        if stop_callback is not None:
+            stop_callback()
+        return {"restarting": True}
 
     return app
 

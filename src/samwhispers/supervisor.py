@@ -36,6 +36,9 @@ from samwhispers.notify import notify
 
 log = logging.getLogger("samwhispers.supervisor")
 
+# Module-level storage for launch args (populated in main()) so relaunch() can access them.
+_launch_args: dict[str, Any] = {}
+
 _SHUTDOWN_GRACE = 5.0
 _MAX_RESTARTS = 5
 _RESTART_BACKOFF = 2.0
@@ -87,6 +90,10 @@ class WorkerSupervisor:
         # Managed whisper-server is owned here, not by the worker.
         self._whisper_manager: WhisperServerManager | None = None
         self._whisper_lock = threading.Lock()
+
+        # Supervisor lifecycle events (checked by main() after tray/headless loop exits)
+        self._shutdown_requested = threading.Event()
+        self._relaunch_requested = threading.Event()
 
     # --- public API -----------------------------------------------------
 
@@ -173,6 +180,14 @@ class WorkerSupervisor:
             self._set_state(WorkerState.STOPPED)
         self._stop_whisper()
         log.info("Supervisor shutdown complete")
+
+    def request_shutdown(self) -> None:
+        """Signal the main thread to shut down after the tray/headless loop exits."""
+        self._shutdown_requested.set()
+
+    def request_relaunch(self) -> None:
+        """Signal the main thread to re-exec after the tray/headless loop exits."""
+        self._relaunch_requested.set()
 
     # --- internals ------------------------------------------------------
 
@@ -376,21 +391,37 @@ def _python_launcher() -> str:
     return sys.executable
 
 
-def _relaunch_detached(args: Any) -> None:
-    """Start the supervisor as a detached background process, then return."""
-    cmd = [_python_launcher(), "-c", "from samwhispers.supervisor import main; main()"]
-    # Pass args via environment to avoid quoting issues with -c
+def _relaunch_detached(args: Any = None) -> None:
+    """Start the supervisor as a detached background process, then return.
+
+    Uses ``args`` (argparse namespace) when called from the detach path, or
+    falls back to the module-level ``_launch_args`` dict for re-exec.
+    """
+    # Normalize to a dict
+    if args is not None and not isinstance(args, dict):
+        la = {
+            "config": args.config,
+            "verbose": args.verbose,
+            "no_tray": args.no_tray,
+            "no_web": args.no_web,
+            "web_port": args.web_port,
+        }
+    elif args is not None:
+        la = args
+    else:
+        la = _launch_args
+
     extra_args = ["--foreground"]
-    if args.config:
-        extra_args += ["--config", args.config]
-    if args.verbose:
+    if la.get("config"):
+        extra_args += ["--config", la["config"]]
+    if la.get("verbose"):
         extra_args.append("--verbose")
-    if args.no_tray:
+    if la.get("no_tray"):
         extra_args.append("--no-tray")
-    if args.no_web:
+    if la.get("no_web"):
         extra_args.append("--no-web")
-    if args.web_port is not None:
-        extra_args += ["--web-port", str(args.web_port)]
+    if la.get("web_port") is not None:
+        extra_args += ["--web-port", str(la["web_port"])]
     cmd = [_python_launcher(), "-c",
            f"import sys; sys.argv = ['samwhispers-supervisor'] + {extra_args!r}; "
            "from samwhispers.supervisor import main; main()"]
@@ -402,8 +433,6 @@ def _relaunch_detached(args: Any) -> None:
         "close_fds": True,
     }
     if sys.platform == "win32":
-        # CREATE_NEW_PROCESS_GROUP keeps the interactive desktop (needed for
-        # pystray's Shell_NotifyIcon); DETACHED_PROCESS would break the tray.
         popen_kwargs["creationflags"] = _CREATE_NEW_PROCESS_GROUP | _CREATE_NO_WINDOW
     else:
         popen_kwargs["start_new_session"] = True
@@ -480,10 +509,29 @@ def main() -> None:
         log.error("Another SamWhispers instance is already running; exiting.")
         return
 
+    # Store launch args for re-exec and write PID file
+    global _launch_args
+    _launch_args = {
+        "config": args.config,
+        "verbose": args.verbose,
+        "no_tray": args.no_tray,
+        "no_web": args.no_web,
+        "web_port": args.web_port,
+    }
+    from samwhispers.singleinstance import write_pid
+
+    write_pid()
+
     supervisor = WorkerSupervisor(config_path=args.config, verbose=args.verbose)
     supervisor.start()
 
-    web_handle = _start_web(supervisor, args.config, args.no_web, args.web_port)
+    # Shared stop mechanism: the web endpoints call this to unblock the main thread.
+    _main_stop = threading.Event()
+
+    def _stop_main_loop() -> None:
+        _main_stop.set()
+
+    web_handle = _start_web(supervisor, args.config, args.no_web, args.web_port, stop_callback=_stop_main_loop)
     settings_url = web_handle.url if web_handle else None
 
     use_tray = not args.no_tray
@@ -503,26 +551,29 @@ def main() -> None:
 
             try:
                 run_tray(supervisor, settings_url)  # installs signals, blocks until Quit
-                return
             except Exception:
                 log.exception("Tray failed to start; falling back to headless mode")
+                use_tray = False
 
-        # Headless: block until a termination signal arrives.
-        stop = threading.Event()
+        if not use_tray:
+            # Headless: block until a termination signal or stop_callback fires.
+            def _handle_signal(signum: int, frame: FrameType | None) -> None:
+                log.info("Received signal %d, shutting down", signum)
+                _main_stop.set()
 
-        def _handle_signal(signum: int, frame: FrameType | None) -> None:
-            log.info("Received signal %d, shutting down", signum)
-            stop.set()
-
-        signal.signal(signal.SIGTERM, _handle_signal)
-        signal.signal(signal.SIGINT, _handle_signal)
-        while not stop.wait(timeout=0.5):
-            pass
+            signal.signal(signal.SIGTERM, _handle_signal)
+            signal.signal(signal.SIGINT, _handle_signal)
+            while not _main_stop.wait(timeout=0.5):
+                pass
     finally:
         supervisor.shutdown()
         if web_handle is not None:
             web_handle.shutdown()
         lock.release()
+
+    # Post-loop: check if a relaunch was requested
+    if supervisor._relaunch_requested.is_set():
+        _relaunch_detached()
 
 
 def _start_web(
@@ -530,6 +581,7 @@ def _start_web(
     config_path: str | None,
     no_web: bool,
     port: int | None,
+    stop_callback: Callable[[], None] | None = None,
 ) -> WebServerHandle | None:
     """Start the config web UI in a background thread, or return None."""
     if no_web:
@@ -546,7 +598,7 @@ def _start_web(
     try:
         from samwhispers.webserver import DEFAULT_PORT, create_app, serve
 
-        app = create_app(supervisor, config_path=config_path)
+        app = create_app(supervisor, config_path=config_path, stop_callback=stop_callback)
         handle = serve(app, port=port or DEFAULT_PORT)
         log.info("Config UI available at %s", handle.url)
         return handle
