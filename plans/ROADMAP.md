@@ -115,12 +115,90 @@ choice, without the rest of the app caring which is active.
 
 ---
 
+## 2. Local-or-cloud AI processing (offline LLM)
+
+> **Status**: Exploring
+> **Scope**: Run AI cleanup/translation through a **local LLM** (e.g. llama.cpp)
+> as an alternative to the cloud providers, user-selectable per feature.
+
+Today cleanup and translation require a cloud API (OpenAI/Anthropic) — the one
+remaining cloud dependency in an otherwise local-first app. OpenWhispr runs AI
+text processing fully offline via llama.cpp. Add a `provider = "local" | "openai"
+| "anthropic" | ...` choice (per feature) with a managed local model
+(download + run, mirroring whisper-server management). Keeps dictation 100%
+offline end-to-end.
+
+## 3. Voice activity detection (VAD)
+
+> **Status**: Exploring
+> **Scope**: Detect speech vs silence to improve endpointing, trim silence, and
+> provide natural commit points for streaming.
+
+whisper.cpp ships a VAD model/config; OpenWhispr uses one (`whisperVad.json`).
+Benefits: auto-stop on trailing silence (no need to release the key precisely),
+skip empty/silent recordings, and give the streaming path real commit points
+instead of fixed time intervals. Low-to-medium effort, broadly useful.
+
+## 4. Cloud transcription option (BYOK)
+
+> **Status**: Exploring
+> **Scope**: Optional cloud transcription engine (OpenAI/Groq/etc.) as an
+> alternative to local whisper.cpp, for speed or low-power devices.
+
+We're local-only for transcription. Add a `cloud` engine behind the backend
+abstraction (item 1) that POSTs audio to a transcription API with the user's
+own key. Fits the same engine-selection UI; reuses the multi-provider plumbing
+(item 5). Must remain opt-in (privacy).
+
+## 5. Multi-provider management (BYOK)
+
+> **Status**: Exploring
+> **Scope**: Generalize hardcoded OpenAI/Anthropic into a managed list of AI
+> providers usable across cleanup, translation, cloud transcription, and any
+> future agent/actions.
+
+OpenWhispr manages many providers (GPT-5, Claude, Gemini, Groq, local). Replace
+our two-provider cleanup config with a provider registry (name, base URL, key,
+model, type) that any AI feature can reference, surfaced in the config UI.
+Foundation for items 2, 4, and a future actions/agent feature.
+
+## 6. Meeting capture & diarization
+
+> **Status**: Exploring (large; a distinct product direction)
+> **Scope**: Record and transcribe meetings with speaker labels.
+
+OpenWhispr's meeting suite — what we'd need to match it:
+
+- **System/loopback audio capture** (record the call, not just the mic) —
+  platform-specific (WASAPI loopback, Core Audio taps, PulseAudio monitor).
+- **Auto-detect meetings** in Zoom / Teams / FaceTime and offer to record.
+- **Speaker diarization**, local/on-device, ideally **live**.
+- **Voice fingerprinting** that recognizes the same speaker across meetings.
+- **Acoustic echo cancellation** for clean capture (OpenWhispr ships a native
+  AEC helper).
+
+This is a meetings product layered on the dictation core; sizeable, and only
+worth it if we want to move beyond dictation.
+
+## 7. Packaging: installers & auto-update
+
+> **Status**: Exploring
+> **Scope**: Native installers per OS and a built-in updater.
+
+We're a Python daemon installed from source. OpenWhispr ships packaged
+installers (electron-builder) and auto-update (`updater.js`). Candidates:
+PyInstaller/Briefcase bundles or platform packages (.deb, .dmg, MSI/winget),
+plus an update check against GitHub releases. Productization, not features, but
+key for non-developer adoption.
+
 ## Other roadmap candidates (unscheduled)
 
 - **Language-code normalization** (e.g. `zh -> zh-CN`) once non-Whisper engines
   are in play, to map between engine code sets.
 - **Streaming window trimming**: true sliding-window decode with buffer trimming
-  (currently the streaming engine decodes the whole buffer each tick).
-- **VAD-based commit points** for streaming (commit on detected silences).
+  (currently the streaming engine decodes the whole buffer each tick). Pairs
+  with VAD (item 3).
 - **Simple "preferred language" mode** as an alternative to the configured
   list + cycle hotkey, for casual multilingual users.
+- **Audio file upload / batch transcription** (transcribe existing recordings).
+- **MCP server / public API** to expose dictation to AI assistants.
