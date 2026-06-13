@@ -514,18 +514,18 @@ async function loadModels() {
 
 // --- Model Manager ---
 const MODEL_META = {
-  "tiny.en":        { size: "~75 MB",   speed: "Fastest", lang: "English only" },
-  "tiny":           { size: "~75 MB",   speed: "Fastest", lang: "Multilingual" },
-  "base.en":        { size: "~150 MB",  speed: "Fast",    lang: "English only", rec: true },
-  "base":           { size: "~150 MB",  speed: "Fast",    lang: "Multilingual" },
-  "small.en":       { size: "~500 MB",  speed: "Medium",  lang: "English only" },
-  "small":          { size: "~500 MB",  speed: "Medium",  lang: "Multilingual" },
-  "medium.en":      { size: "~1.5 GB",  speed: "Slow",    lang: "English only" },
-  "medium":         { size: "~1.5 GB",  speed: "Slow",    lang: "Multilingual", rec: true },
-  "large-v1":       { size: "~3 GB",    speed: "Slowest", lang: "Multilingual" },
-  "large-v2":       { size: "~3 GB",    speed: "Slowest", lang: "Multilingual" },
-  "large-v3":       { size: "~3 GB",    speed: "Slowest", lang: "Multilingual" },
-  "large-v3-turbo": { size: "~1.6 GB",  speed: "Medium",  lang: "Multilingual", rec: true },
+  "tiny.en":        { size: "~75 MB",   info: "Fastest, lowest accuracy. Good for quick tests.", rec: false },
+  "tiny":           { size: "~75 MB",   info: "Fastest multilingual. Poor accuracy on non-English.", rec: false },
+  "base.en":        { size: "~150 MB",  info: "Best balance for English-only. 2x slower than tiny, much better accuracy.", rec: true },
+  "base":           { size: "~150 MB",  info: "Good multilingual starter. Struggles with short clips or accents.", rec: false },
+  "small.en":       { size: "~500 MB",  info: "High accuracy English. 3x slower than base, noticeable quality jump.", rec: false },
+  "small":          { size: "~500 MB",  info: "Solid multilingual. Handles accents and code-switching decently.", rec: false },
+  "medium.en":      { size: "~1.5 GB",  info: "Near-best English accuracy. 5x slower than base.", rec: false },
+  "medium":         { size: "~1.5 GB",  info: "Recommended for multilingual. Reliable auto-detection and accents.", rec: true },
+  "large-v1":       { size: "~3 GB",    info: "Original large model. Superseded by v2/v3 — no reason to use.", rec: false },
+  "large-v2":       { size: "~3 GB",    info: "Improved over v1. Superseded by v3 — use v3 instead.", rec: false },
+  "large-v3":       { size: "~3 GB",    info: "Best accuracy overall. 10x slower than base. For difficult audio.", rec: false },
+  "large-v3-turbo": { size: "~1.6 GB",  info: "Near large-v3 accuracy at 3x its speed. Best quality/speed tradeoff.", rec: true },
 };
 
 function renderModelManager() {
@@ -544,7 +544,7 @@ function renderModelManager() {
     row.innerHTML =
       (meta.rec ? `<span class="star" title="Recommended">&#9733;</span>` : "") +
       `<span class="name">${name}</span>` +
-      `<span class="info-icon" title="${meta.size || "?"} · ${meta.speed || "?"} · ${meta.lang || "?"}">&#9432;</span>` +
+      `<span class="info-icon" title="${meta.size || "?"} — ${meta.info || ""}">&#9432;</span>` +
       `<span class="spacer"></span>` +
       (isDl ? `<span class="tag">downloaded</span>` : "") +
       `<button class="dl-btn" title="Download" ${isDl ? "disabled" : ""}>&#x2B07;</button>` +
