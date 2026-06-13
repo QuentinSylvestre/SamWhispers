@@ -326,6 +326,9 @@ The Whisper section lets you pick a model from the ones detected on disk (or
 enter a custom path), and **download** any standard whisper.cpp model on demand
 with a progress indicator — handy for grabbing a model you don't have yet.
 
+The **Logs** tab shows recent supervisor and worker log output for diagnosing
+issues without `--foreground` mode.
+
 The server binds to loopback only and has no authentication, so don't expose
 the port beyond `127.0.0.1`.
 

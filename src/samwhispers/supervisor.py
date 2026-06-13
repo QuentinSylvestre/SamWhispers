@@ -15,6 +15,7 @@ manages (or an external one when ``whisper.managed = false``).
 
 from __future__ import annotations
 
+import collections
 import enum
 import logging
 import shutil
@@ -66,12 +67,21 @@ class WorkerSupervisor:
         self._verbose = verbose
         self._on_state_change = on_state_change
 
-        self._proc: subprocess.Popen[bytes] | None = None
+        self._proc: subprocess.Popen[str] | None = None
         self._lock = threading.RLock()
         self._monitor_thread: threading.Thread | None = None
         self._stop_event = threading.Event()  # set => supervisor is shutting down
         self._paused = False
         self._state = WorkerState.STOPPED
+
+        # Log ring buffer (shared between worker stderr and supervisor logger)
+        self._log_buffer: collections.deque[str] = collections.deque(maxlen=200)
+        self._log_lock = threading.Lock()
+        self._log_reader: threading.Thread | None = None
+
+        # Capture supervisor logger output into the ring buffer
+        handler = _RingBufferHandler(self._log_buffer, self._log_lock)
+        logging.getLogger("samwhispers.supervisor").addHandler(handler)
 
         # Managed whisper-server is owned here, not by the worker.
         self._whisper_manager: WhisperServerManager | None = None
@@ -83,6 +93,11 @@ class WorkerSupervisor:
     def state(self) -> WorkerState:
         with self._lock:
             return self._state
+
+    @property
+    def logs(self) -> list[str]:
+        with self._log_lock:
+            return list(self._log_buffer)
 
     def set_state_listener(self, callback: Callable[[WorkerState], None] | None) -> None:
         """Register a callback invoked on every state transition (e.g. tray update)."""
@@ -216,7 +231,13 @@ class WorkerSupervisor:
         cmd = self._build_cmd()
         log.info("Starting worker: %s", " ".join(cmd))
         flags = _CREATE_NO_WINDOW if sys.platform == "win32" else 0
-        self._proc = subprocess.Popen(cmd, creationflags=flags)
+        self._proc = subprocess.Popen(cmd, creationflags=flags, stderr=subprocess.PIPE, text=True)
+        with self._log_lock:
+            self._log_buffer.append("--- worker started ---")
+        self._log_reader = threading.Thread(
+            target=self._read_worker_logs, daemon=True, name="worker-log-reader"
+        )
+        self._log_reader.start()
         self._set_state(WorkerState.RUNNING)
 
     def _terminate_proc(self) -> None:
@@ -231,6 +252,15 @@ class WorkerSupervisor:
                 log.warning("Worker did not exit gracefully, killing")
                 proc.kill()
                 proc.wait()
+
+    def _read_worker_logs(self) -> None:
+        """Read lines from worker stderr and append to the ring buffer."""
+        proc = self._proc
+        if proc is None or proc.stderr is None:
+            return
+        for line in proc.stderr:
+            with self._log_lock:
+                self._log_buffer.append(line.rstrip("\n"))
 
     def _set_state(self, state: WorkerState) -> None:
         """Update state and notify the listener. Caller holds the lock."""
@@ -258,6 +288,8 @@ class WorkerSupervisor:
                 continue
 
             # Worker exited unexpectedly -- reap it and decide whether to restart.
+            if self._log_reader is not None:
+                self._log_reader.join(timeout=2.0)
             proc.wait()
             code = proc.returncode
 
@@ -303,6 +335,23 @@ class WorkerSupervisor:
                 if self._stop_event.is_set() or self._paused or self._proc is not proc:
                     continue
                 self._spawn()
+
+
+class _RingBufferHandler(logging.Handler):
+    """Logging handler that appends formatted records to a shared ring buffer."""
+
+    def __init__(self, buffer: collections.deque[str], lock: threading.Lock) -> None:
+        super().__init__()
+        self._buffer = buffer
+        self._buf_lock = lock
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            msg = self.format(record)
+            with self._buf_lock:
+                self._buffer.append(msg)
+        except Exception:
+            self.handleError(record)
 
 
 def _python_launcher() -> str:

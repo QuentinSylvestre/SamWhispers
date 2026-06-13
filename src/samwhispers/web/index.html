@@ -139,6 +139,7 @@ button.primary:disabled { opacity: .5; cursor: default; }
     <div class="nav-group">
       <div class="nav-group-label">Data</div>
       <a class="nav-item" data-page="history"><span class="nav-icon">⏱</span>History</a>
+      <a class="nav-item" data-page="logs"><span class="nav-icon">≡</span>Logs</a>
     </div>
   </nav>
 </aside>
@@ -346,6 +347,19 @@ button.primary:disabled { opacity: .5; cursor: default; }
   </div>
 </div>
 
+<!-- Logs -->
+<div class="page" id="page-logs">
+  <h2 class="page-title">Logs</h2>
+  <p class="page-desc">Recent supervisor and worker log output.</p>
+  <div style="display:flex;gap:8px;margin-bottom:14px;align-items:center">
+    <button id="btnLogsFilter" class="active">All</button>
+    <button id="btnLogsErrors">Errors only</button>
+    <button id="btnLogsJump" hidden>Jump to latest</button>
+  </div>
+  <div id="logContainer" style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px;max-height:60vh;overflow-y:auto;font:13px/1.6 monospace;white-space:pre-wrap;word-break:break-all"></div>
+  <p class="empty" id="logEmpty">No log entries yet. Logs appear here when the worker starts.</p>
+</div>
+
 </div><!-- /content -->
 
 <div class="toast" id="toast"></div>
@@ -391,6 +405,7 @@ for (const item of document.querySelectorAll(".nav-item[data-page]")) {
     document.getElementById("page-" + item.dataset.page).classList.add("active");
     document.getElementById("sidebar").classList.remove("open");
     if (item.dataset.page === "history") loadHistory(true);
+    if (item.dataset.page === "logs") loadLogs();
   });
 }
 document.getElementById("menuToggle").addEventListener("click", () => {
@@ -661,10 +676,60 @@ document.getElementById("btnHistClear").addEventListener("click", async () => {
   toast("History cleared.", "ok");
 });
 
+// --- Logs ---
+let logFilter = 'all', logAutoScroll = true, logLines = [];
+
+function renderLogs() {
+  const c = document.getElementById('logContainer');
+  const empty = document.getElementById('logEmpty');
+  const filtered = logFilter === 'errors' ? logLines.filter(l => /ERROR|CRITICAL/i.test(l)) : logLines;
+  if (!filtered.length) { c.style.display = 'none'; empty.style.display = ''; return; }
+  c.style.display = ''; empty.style.display = 'none';
+  c.innerHTML = filtered.map(l => {
+    if (/ERROR|CRITICAL/i.test(l)) return `<span style="color:var(--danger)">${esc(l)}</span>`;
+    if (/WARNING/i.test(l)) return `<span style="color:var(--amber)">${esc(l)}</span>`;
+    return esc(l);
+  }).join('\n');
+  if (logAutoScroll) c.scrollTop = c.scrollHeight;
+}
+
+async function loadLogs() {
+  try {
+    const r = await api('GET', '/api/logs');
+    logLines = r.lines || [];
+    renderLogs();
+  } catch (_) {}
+}
+
+document.getElementById('logContainer').addEventListener('scroll', (e) => {
+  const c = e.target;
+  logAutoScroll = c.scrollTop + c.clientHeight >= c.scrollHeight - 20;
+  document.getElementById('btnLogsJump').hidden = logAutoScroll;
+});
+document.getElementById('btnLogsJump').addEventListener('click', () => {
+  const c = document.getElementById('logContainer');
+  c.scrollTop = c.scrollHeight;
+  logAutoScroll = true;
+  document.getElementById('btnLogsJump').hidden = true;
+});
+document.getElementById('btnLogsFilter').addEventListener('click', () => {
+  logFilter = 'all';
+  document.getElementById('btnLogsFilter').classList.add('active');
+  document.getElementById('btnLogsErrors').classList.remove('active');
+  renderLogs();
+});
+document.getElementById('btnLogsErrors').addEventListener('click', () => {
+  logFilter = 'errors';
+  document.getElementById('btnLogsErrors').classList.add('active');
+  document.getElementById('btnLogsFilter').classList.remove('active');
+  renderLogs();
+});
+
 // --- Boot ---
 loadAll().catch(e => toast("Failed to load config: " + e.message, "err"));
 loadStatus();
 setInterval(loadStatus, 3000);
+setInterval(() => { if (document.getElementById('page-logs').classList.contains('active')) loadLogs(); }, 3000);
 </script>
 </body>
 </html>

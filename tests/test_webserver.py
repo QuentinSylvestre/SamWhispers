@@ -24,6 +24,10 @@ class FakeSupervisor:
     def state(self) -> WorkerState:
         return self._state
 
+    @property
+    def logs(self) -> list[str]:
+        return ["line1", "line2"]
+
     def pause(self) -> None:
         self.calls.append("pause")
         self._state = WorkerState.PAUSED
@@ -67,6 +71,12 @@ def test_meta(client_and_sup: tuple[TestClient, FakeSupervisor, Path]) -> None:
 def test_status(client_and_sup: tuple[TestClient, FakeSupervisor, Path]) -> None:
     client, _, _ = client_and_sup
     assert client.get("/api/status").json()["state"] == "running"
+
+
+def test_logs_endpoint(client_and_sup: tuple[TestClient, FakeSupervisor, Path]) -> None:
+    client, _, _ = client_and_sup
+    body = client.get("/api/logs").json()
+    assert body["lines"] == ["line1", "line2"]
 
 
 def test_autostart_status(client_and_sup: tuple[TestClient, FakeSupervisor, Path]) -> None:

@@ -106,6 +106,10 @@ def create_app(
     def status() -> dict[str, Any]:
         return {"state": supervisor.state.value if supervisor else "unknown"}
 
+    @app.get("/api/logs")
+    def get_logs() -> dict[str, Any]:
+        return {"lines": supervisor.logs if supervisor else []}
+
     @app.get("/api/autostart")
     def get_autostart() -> dict[str, Any]:
         from samwhispers import autostart
