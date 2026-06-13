@@ -360,6 +360,20 @@ def main() -> None:
     # it doesn't kill SamWhispers. --foreground keeps it attached (and is what
     # the autostart service uses, since it manages the process itself).
     if not args.foreground:
+        from samwhispers.singleinstance import is_running
+
+        if is_running():
+            print("SamWhispers is already running.")
+            if not args.no_web:
+                import webbrowser
+
+                url = f"http://127.0.0.1:{args.web_port or 7891}/"
+                print(f"Opening {url} ...")
+                try:
+                    webbrowser.open(url)
+                except Exception:
+                    pass
+            return
         _relaunch_detached(args)
         return
 
@@ -368,6 +382,13 @@ def main() -> None:
         format="%(asctime)s %(levelname)-8s %(name)s: %(message)s",
         datefmt="%H:%M:%S",
     )
+
+    from samwhispers.singleinstance import InstanceLock
+
+    lock = InstanceLock()
+    if not lock.acquire():
+        log.error("Another SamWhispers instance is already running; exiting.")
+        return
 
     supervisor = WorkerSupervisor(config_path=args.config, verbose=args.verbose)
     supervisor.start()
@@ -411,6 +432,7 @@ def main() -> None:
         supervisor.shutdown()
         if web_handle is not None:
             web_handle.shutdown()
+        lock.release()
 
 
 def _start_web(

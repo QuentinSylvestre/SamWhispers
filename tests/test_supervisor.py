@@ -50,10 +50,21 @@ def test_build_cmd_with_config_and_verbose() -> None:
 def test_main_detaches_by_default() -> None:
     with (
         patch.object(sup.sys, "argv", ["samwhispers-supervisor"]),
+        patch("samwhispers.singleinstance.is_running", return_value=False),
         patch.object(sup, "_relaunch_detached") as relaunch,
     ):
         sup.main()
     relaunch.assert_called_once()
+
+
+def test_main_skips_launch_when_already_running() -> None:
+    with (
+        patch.object(sup.sys, "argv", ["samwhispers-supervisor", "--no-web"]),
+        patch("samwhispers.singleinstance.is_running", return_value=True),
+        patch.object(sup, "_relaunch_detached") as relaunch,
+    ):
+        sup.main()
+    relaunch.assert_not_called()  # detected an existing instance; no second launch
 
 
 def test_relaunch_detached_builds_foreground_cmd() -> None:

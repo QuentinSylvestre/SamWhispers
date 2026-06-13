@@ -274,6 +274,9 @@ free and closing it won't stop SamWhispers; pass `--foreground` / `-f` to keep i
 attached (useful for seeing logs). (`samwhispers worker` runs just the worker and
 is used internally — you don't run it directly.)
 
+Only **one instance runs at a time** — launching `samwhispers` again won't start a
+second copy; it just opens the running instance's config UI.
+
 Once running, open any text editor or input field, hold the hotkey, speak, and release.
 
 Quit from the tray's **Quit** item (or `Ctrl+C` if you ran it with `-f`).
