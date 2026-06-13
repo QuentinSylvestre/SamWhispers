@@ -114,10 +114,24 @@ _FIND_PROC = (
 
 
 def _windows_target_and_args() -> tuple[str, str]:
-    python = sys.executable
-    pythonw = Path(python).with_name("pythonw.exe")
-    exe = str(pythonw) if pythonw.exists() else python
-    return exe, "-m samwhispers.supervisor"
+    """Return (target, args) for launching the supervisor with no console window.
+
+    Anchored on the installed ``samwhispers-supervisor`` script so we use the
+    venv's ``pythonw`` (``sys.executable`` can report the base interpreter in
+    some venv setups, which wouldn't have the package importable).
+    """
+    candidates: list[Path] = []
+    script = shutil.which("samwhispers-supervisor")
+    if script:
+        candidates.append(Path(script).with_name("pythonw.exe"))  # <venv>/Scripts/pythonw.exe
+    candidates.append(Path(sys.executable).with_name("pythonw.exe"))
+    for pythonw in candidates:
+        if pythonw.exists():
+            return str(pythonw), "-m samwhispers.supervisor"
+    # No pythonw found -> use the console script directly (shows a brief window).
+    if script:
+        return script, ""
+    return sys.executable, "-m samwhispers.supervisor"
 
 
 def _startup_shortcut() -> Path:
@@ -168,12 +182,9 @@ def _disable_windows() -> None:
 
 
 def _start_windows() -> None:
-    target, _ = _windows_target_and_args()
-    subprocess.Popen(
-        [target, "-m", "samwhispers.supervisor"],
-        creationflags=_DETACHED_PROCESS | _CREATE_NO_WINDOW,
-        close_fds=True,
-    )
+    target, args = _windows_target_and_args()
+    argv = [target, *args.split()]
+    subprocess.Popen(argv, creationflags=_DETACHED_PROCESS | _CREATE_NO_WINDOW, close_fds=True)
     print("Started.")
 
 

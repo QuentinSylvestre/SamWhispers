@@ -87,11 +87,13 @@ def test_startup_shortcut_path(monkeypatch: object) -> None:
     assert "Startup" in lnk.parts
 
 
-def test_windows_target_uses_pythonw() -> None:
+def test_windows_target_anchors_on_script_dir() -> None:
     with (
-        patch.object(autostart.sys, "executable", "/py/python.exe"),
+        patch.object(
+            autostart.shutil, "which", return_value="/venv/Scripts/samwhispers-supervisor.exe"
+        ),
         patch.object(autostart.Path, "exists", return_value=True),
     ):
         target, args = autostart._windows_target_and_args()
-    assert target.endswith("pythonw.exe")
+    assert target.replace("\\", "/").endswith("/venv/Scripts/pythonw.exe")
     assert args == "-m samwhispers.supervisor"
