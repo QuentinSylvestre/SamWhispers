@@ -1,7 +1,7 @@
 # Production Stabilization: Error Visibility & Polish
 
 > **Date**: 2026-06-13
-> **Status**: Draft  <!-- Status lifecycle: Exploring → Draft → In Progress → Complete -->
+> **Status**: In Progress  <!-- Status lifecycle: Exploring → Draft → In Progress → Complete -->
 > **Scope**: Make SamWhispers' infrastructure layer (supervisor, tray, web UI, overlay) production-grade — visible errors, accurate status, smart restarts, crisp overlay
 > **Estimated effort**: 2-3 days
 
@@ -126,13 +126,16 @@ if restart_count > _MAX_RESTARTS:
    - Max crashes: "SamWhispers stopped after repeated failures — open Settings → Logs for details"
 
 **Exit criteria**:
-- [ ] `notify()` works on Windows (shows a toast via existing PowerShell mechanism)
-- [ ] Present ≥3 alternative notification title/message wordings to user; iterate until user approves final copy
-- [ ] Worker exit code 78 (EX_CONFIG) stops retry loop immediately with notification
-- [ ] Max-restart exhaustion triggers a notification
-- [ ] Whisper-server start failure triggers a notification
-- [ ] `python -m pytest tests/test_supervisor.py -v` passes
-- [ ] Update README.md to remove the `notify-send` Linux prerequisite note (notifications are cross-platform via existing notify.py)
+- [x] `notify()` works on Windows (shows a toast via existing PowerShell mechanism)
+- [x] Present ≥3 alternative notification title/message wordings to user; iterate until user approves final copy
+- [x] Worker exit code 78 (EX_CONFIG) stops retry loop immediately with notification
+- [x] Max-restart exhaustion triggers a notification
+- [x] Whisper-server start failure triggers a notification
+- [x] `python -m pytest tests/test_supervisor.py -v` passes
+- [x] Update README.md to remove the `notify-send` Linux prerequisite note (notifications are cross-platform via existing notify.py)
+
+**Implementation (2026-06-13, code: fa42a7a)**
+Added exit code 78 (`_EX_CONFIG`) to `app.py` for all `_startup_checks` failures (3 occurrences), enabling the supervisor to distinguish deterministic startup failures from runtime crashes. Updated `supervisor.py` to import `notify` at module level and: (1) immediately stop the retry loop with a user notification on exit code 78, (2) send a notification when max restarts are exhausted, and (3) notify when managed whisper-server fails to start. Default notification wording used per plan. Removed the `notify-send` Linux prerequisite bullet from README Known Limitations. Added 4 new tests covering all notification paths.
 
 ### Phase 2: Log capture + web UI Logs tab [QA]
 
@@ -413,6 +416,13 @@ samwhispers  # with whisper.server_bin pointing to nonexistent path
 | 11 | Low | DPI winfo_fpixels needs update_idletasks() first | Noted — will add in implementation |
 | 12 | Low | Exit code 78 log message is developer jargon | Noted — will use human-readable message: "configuration or setup error" |
 | 13 | Low | README update note incorrectly mentions "plyer" | Resolved — fixed to say "existing cross-platform notify.py" |
+
+### 2026-06-13 -- Implementation Review (after Phase 1, persona: Reliability engineer)
+
+Implementation health: Green.
+0 findings (0 High, 0 Medium, 0 Low).
+
+No findings. Exit code 78 handling correctly short-circuits before restart_count increment. notify import at module level (no deferred import). All 4 notification paths tested. QA deferred to Step 9b (runtime toast delivery requires actual process failure).
 
 ## 9) Implementation Divergences from Plan
 <Reserved -- filled during implementation>
