@@ -88,6 +88,11 @@
     <button id="btnReload">Reload from disk</button>
   </div>
 
+  <section id="autostartSection" hidden>
+    <h2>Startup</h2>
+    <div class="field"><label>Start at login</label><input type="checkbox" id="autostartToggle" /><span class="hint">launches SamWhispers automatically when you log in (applies immediately, not part of Save)</span></div>
+  </section>
+
   <section>
     <h2>Hotkey</h2>
     <div class="field"><label>Hotkey</label><input type="text" data-path="hotkey.key" /></div>
@@ -348,6 +353,31 @@ document.querySelector("main").addEventListener("change", (e) => {
   }
 });
 
+async function loadAutostart() {
+  try {
+    const a = await api("GET", "/api/autostart");
+    const section = document.getElementById("autostartSection");
+    if (!a.supported) { section.hidden = true; return; }
+    section.hidden = false;
+    document.getElementById("autostartToggle").checked = a.enabled;
+  } catch (_) {}
+}
+
+document.getElementById("autostartToggle").addEventListener("change", async (e) => {
+  const enabled = e.target.checked;
+  e.target.disabled = true;
+  try {
+    const r = await api("PUT", "/api/autostart", { enabled });
+    e.target.checked = r.enabled;
+    toast(r.enabled ? "Will start at login." : "Won't start at login.", "ok");
+  } catch (err) {
+    e.target.checked = !enabled;  // revert on failure
+    toast("Autostart error: " + err.message, "err");
+  } finally {
+    e.target.disabled = false;
+  }
+});
+
 function collect() {
   for (const el of document.querySelectorAll("[data-path]")) {
     const type = el.dataset.type;
@@ -384,6 +414,7 @@ async function loadAll() {
   ]);
   render();
   await loadModels();
+  await loadAutostart();
 }
 
 document.getElementById("btnSave").addEventListener("click", async () => {

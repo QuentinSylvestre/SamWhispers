@@ -26,7 +26,13 @@ The tray needs `pystray` and `Pillow` (installed automatically with the
 package). On a host with no display the supervisor logs a warning and runs
 headless.
 
-## Easiest: the autostart command
+## Easiest: the config UI
+
+The simplest way to toggle start-at-login is the **Startup** section in the
+config UI (open `http://127.0.0.1:7891`, or the tray's *Open settings*). Flip
+"Start at login" — it applies immediately. The CLI below does the same thing.
+
+## The autostart command
 
 On Linux and Windows, one command sets up login autostart for you:
 

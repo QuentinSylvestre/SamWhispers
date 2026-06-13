@@ -69,7 +69,7 @@ def _enable_linux() -> None:
         ["systemctl", "--user", "import-environment", "DISPLAY", "XAUTHORITY"], check=False
     )
     subprocess.run(["systemctl", "--user", "enable", f"{SERVICE_NAME}.service"], check=True)
-    print("Autostart configured (starts at next login). Run now with: samwhispers-supervisor")
+    print("Autostart configured (starts at next login). Run now with: samwhispers")
 
 
 def _disable_linux() -> None:
@@ -168,7 +168,7 @@ def _create_startup_shortcut() -> None:
 def _enable_windows() -> None:
     _create_startup_shortcut()
     print(f"Autostart configured (starts at next login): {_startup_shortcut()}")
-    print("Run now with: samwhispers-supervisor")
+    print("Run now with: samwhispers")
 
 
 def _disable_windows() -> None:
@@ -215,6 +215,42 @@ def _dispatch(action: str) -> None:
     }
     table = windows if sys.platform == "win32" else linux
     table[action]()
+
+
+# --- Public API (used by the CLI and the web UI) --------------------------
+
+
+def is_supported() -> bool:
+    """Whether autostart can be managed automatically on this platform."""
+    return sys.platform in ("win32", "linux")
+
+
+def is_enabled() -> bool:
+    """Whether autostart is currently configured."""
+    try:
+        if sys.platform == "win32":
+            return _startup_shortcut().exists()
+        if sys.platform == "linux":
+            result = subprocess.run(
+                ["systemctl", "--user", "is-enabled", f"{SERVICE_NAME}.service"],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            return result.stdout.strip() == "enabled"
+    except Exception:
+        return False
+    return False
+
+
+def enable() -> None:
+    """Configure autostart at login (does not launch the app)."""
+    _dispatch("enable")
+
+
+def disable() -> None:
+    """Remove the autostart entry (does not stop a running instance)."""
+    _dispatch("disable")
 
 
 def main() -> None:

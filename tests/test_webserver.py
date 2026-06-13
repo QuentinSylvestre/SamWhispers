@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -66,6 +67,48 @@ def test_meta(client_and_sup: tuple[TestClient, FakeSupervisor, Path]) -> None:
 def test_status(client_and_sup: tuple[TestClient, FakeSupervisor, Path]) -> None:
     client, _, _ = client_and_sup
     assert client.get("/api/status").json()["state"] == "running"
+
+
+def test_autostart_status(client_and_sup: tuple[TestClient, FakeSupervisor, Path]) -> None:
+    client, _, _ = client_and_sup
+    with (
+        patch("samwhispers.autostart.is_supported", return_value=True),
+        patch("samwhispers.autostart.is_enabled", return_value=True),
+    ):
+        body = client.get("/api/autostart").json()
+    assert body == {"supported": True, "enabled": True}
+
+
+def test_autostart_enable(client_and_sup: tuple[TestClient, FakeSupervisor, Path]) -> None:
+    client, _, _ = client_and_sup
+    with (
+        patch("samwhispers.autostart.is_supported", return_value=True),
+        patch("samwhispers.autostart.enable") as enable,
+        patch("samwhispers.autostart.disable") as disable,
+        patch("samwhispers.autostart.is_enabled", return_value=True),
+    ):
+        body = client.put("/api/autostart", json={"enabled": True}).json()
+    enable.assert_called_once()
+    disable.assert_not_called()
+    assert body["enabled"] is True
+
+
+def test_autostart_disable(client_and_sup: tuple[TestClient, FakeSupervisor, Path]) -> None:
+    client, _, _ = client_and_sup
+    with (
+        patch("samwhispers.autostart.is_supported", return_value=True),
+        patch("samwhispers.autostart.disable") as disable,
+        patch("samwhispers.autostart.is_enabled", return_value=False),
+    ):
+        body = client.put("/api/autostart", json={"enabled": False}).json()
+    disable.assert_called_once()
+    assert body["enabled"] is False
+
+
+def test_autostart_unsupported(client_and_sup: tuple[TestClient, FakeSupervisor, Path]) -> None:
+    client, _, _ = client_and_sup
+    with patch("samwhispers.autostart.is_supported", return_value=False):
+        assert client.put("/api/autostart", json={"enabled": True}).status_code == 400
 
 
 def test_models_endpoint(client_and_sup: tuple[TestClient, FakeSupervisor, Path]) -> None:

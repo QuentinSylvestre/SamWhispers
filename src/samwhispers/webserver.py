@@ -106,6 +106,29 @@ def create_app(
     def status() -> dict[str, Any]:
         return {"state": supervisor.state.value if supervisor else "unknown"}
 
+    @app.get("/api/autostart")
+    def get_autostart() -> dict[str, Any]:
+        from samwhispers import autostart
+
+        supported = autostart.is_supported()
+        return {"supported": supported, "enabled": supported and autostart.is_enabled()}
+
+    @app.put("/api/autostart")
+    async def set_autostart(request: Request) -> dict[str, Any]:
+        from samwhispers import autostart
+
+        payload: dict[str, Any] = await request.json()
+        if not autostart.is_supported():
+            raise HTTPException(status_code=400, detail="Autostart not supported on this platform")
+        try:
+            if payload.get("enabled"):
+                autostart.enable()
+            else:
+                autostart.disable()
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=f"Autostart update failed: {exc}") from exc
+        return {"enabled": autostart.is_enabled()}
+
     @app.get("/api/config")
     def get_config() -> dict[str, Any]:
         return load_config_dict(config_path)

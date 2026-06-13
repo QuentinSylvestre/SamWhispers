@@ -54,6 +54,40 @@ def test_enable_linux_writes_unit_and_enables(tmp_path: object) -> None:
     assert any("enable" in c for c in calls)
 
 
+def test_is_supported() -> None:
+    with patch.object(autostart.sys, "platform", "linux"):
+        assert autostart.is_supported() is True
+    with patch.object(autostart.sys, "platform", "darwin"):
+        assert autostart.is_supported() is False
+
+
+def test_is_enabled_windows_checks_shortcut() -> None:
+    with (
+        patch.object(autostart.sys, "platform", "win32"),
+        patch.object(autostart, "_startup_shortcut") as sc,
+    ):
+        sc.return_value.exists.return_value = True
+        assert autostart.is_enabled() is True
+
+
+def test_is_enabled_linux_reads_systemctl() -> None:
+    with (
+        patch.object(autostart.sys, "platform", "linux"),
+        patch.object(autostart.subprocess, "run") as run,
+    ):
+        run.return_value.stdout = "enabled\n"
+        assert autostart.is_enabled() is True
+        run.return_value.stdout = "disabled\n"
+        assert autostart.is_enabled() is False
+
+
+def test_enable_disable_dispatch() -> None:
+    with patch.object(autostart, "_dispatch") as d:
+        autostart.enable()
+        autostart.disable()
+    assert [c.args[0] for c in d.call_args_list] == ["enable", "disable"]
+
+
 def test_dispatch_selects_platform(monkeypatch: object) -> None:
     with patch.object(autostart.sys, "platform", "win32"):
         with patch.object(autostart, "_enable_windows") as win_enable:
