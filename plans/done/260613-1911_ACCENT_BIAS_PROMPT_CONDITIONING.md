@@ -1,7 +1,8 @@
 # Accent Bias via Prompt Conditioning
 
 > **Date**: 2025-04-23
-> **Status**: Complete  <!-- Status lifecycle: Exploring -> Draft -> In Progress -> Complete -->
+> **Status**: All phases COMPLETE — archived 2026-06-13
+> **Last Updated**: 2026-06-13 19:11
 > **Scope**: Add whisper initial_prompt accent biasing so non-native speakers get better transcription accuracy
 
 ---
