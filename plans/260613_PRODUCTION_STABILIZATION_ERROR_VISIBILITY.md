@@ -319,11 +319,14 @@ self._proc = subprocess.Popen(
 ```
 
 **Exit criteria**:
-- [ ] Web UI shows "starting" (blue) during worker initialization, then "running" (green) after 3s
-- [ ] Overlay appears crisp on a high-DPI display (no pixelation)
-- [ ] No console window flash when overlay spawns on Windows
-- [ ] `python -m pytest tests/test_overlay.py -v` passes
-- [ ] Update docs/STARTUP.md to add "blue = starting" to tray icon color legend
+- [x] Web UI shows "starting" (blue) during worker initialization, then "running" (green) after 3s
+- [x] Overlay appears crisp on a high-DPI display (no pixelation)
+- [x] No console window flash when overlay spawns on Windows
+- [x] `python -m pytest tests/test_overlay.py -v` passes
+- [x] Update docs/STARTUP.md to add "blue = starting" to tray icon color legend
+
+**Implementation (2026-06-13, code: 8080910)**
+Added a `STARTING` state to `WorkerState` that the supervisor uses during worker initialization — the web UI shows a blue dot and the tray icon turns blue until 3 consecutive healthy polls confirm the worker is running (then transitions to green/RUNNING). The overlay subprocess now calls `SetProcessDpiAwareness(1)` on Windows and scales all canvas dimensions by the display's DPI factor, eliminating pixelation on high-DPI screens. The overlay is also spawned with `CREATE_NO_WINDOW` to suppress console flashes on Windows.
 
 ### Phase 4: Fix platform-conditional tests [QA]
 
@@ -433,6 +436,13 @@ Implementation health: Green.
 0 findings (0 High, 0 Medium, 0 Low).
 
 Ring buffer uses dedicated lock (no contention with main supervisor RLock). Stderr pipe read in daemon thread prevents deadlock. log_reader.join(2.0) before proc.wait() prevents pipe-buffer deadlock on Windows. _RingBufferHandler attached to supervisor logger only (no duplicate lines). 22 webserver tests pass.
+
+### 2026-06-13 -- Implementation Review (after Phase 3, persona: Reliability engineer)
+
+Implementation health: Green.
+0 findings (0 High, 0 Medium, 0 Low).
+
+STARTING state transitions correctly via startup_ticks counter. DPI awareness wrapped in try/except (graceful fallback). CREATE_NO_WINDOW flag added to overlay spawn. 11 overlay tests pass including new creation-flag test.
 
 ## 9) Implementation Divergences from Plan
 <Reserved -- filled during implementation>
