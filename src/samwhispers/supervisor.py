@@ -314,7 +314,9 @@ def _relaunch_detached(args: Any) -> None:
         "close_fds": True,
     }
     if sys.platform == "win32":
-        popen_kwargs["creationflags"] = _DETACHED_PROCESS | _CREATE_NO_WINDOW
+        # CREATE_NO_WINDOW hides the console; DETACHED_PROCESS is avoided because
+        # it detaches from the window station, breaking pystray's Shell_NotifyIcon.
+        popen_kwargs["creationflags"] = _CREATE_NO_WINDOW
     else:
         popen_kwargs["start_new_session"] = True
     subprocess.Popen(cmd, **popen_kwargs)
