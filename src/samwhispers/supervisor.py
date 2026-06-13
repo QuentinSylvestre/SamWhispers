@@ -39,6 +39,7 @@ _RESTART_BACKOFF = 2.0
 _POLL_INTERVAL = 1.0
 _CREATE_NO_WINDOW = 0x08000000  # Windows: run a console child without a window
 _DETACHED_PROCESS = 0x00000008  # Windows: detach a child from the console
+_CREATE_NEW_PROCESS_GROUP = 0x00000200  # Windows: new process group (no parent Ctrl+C)
 
 
 class WorkerState(enum.Enum):
@@ -279,33 +280,32 @@ class WorkerSupervisor:
 
 
 def _python_launcher() -> str:
-    """Interpreter to relaunch ourselves with (pythonw on Windows -> no window).
+    """Interpreter to relaunch ourselves with.
 
-    Anchored on the installed console script so we use the venv interpreter.
+    Always use python.exe; CREATE_NO_WINDOW hides the console.  pythonw.exe
+    silently swallows errors and breaks pystray on some Windows setups.
     """
-    if sys.platform == "win32":
-        script = shutil.which("samwhispers-supervisor")
-        candidates = [Path(script).with_name("pythonw.exe")] if script else []
-        candidates.append(Path(sys.executable).with_name("pythonw.exe"))
-        for cand in candidates:
-            if cand.exists():
-                return str(cand)
     return sys.executable
 
 
 def _relaunch_detached(args: Any) -> None:
     """Start the supervisor as a detached background process, then return."""
-    cmd = [_python_launcher(), "-m", "samwhispers.supervisor", "--foreground"]
+    cmd = [_python_launcher(), "-c", "from samwhispers.supervisor import main; main()"]
+    # Pass args via environment to avoid quoting issues with -c
+    extra_args = ["--foreground"]
     if args.config:
-        cmd += ["--config", args.config]
+        extra_args += ["--config", args.config]
     if args.verbose:
-        cmd.append("--verbose")
+        extra_args.append("--verbose")
     if args.no_tray:
-        cmd.append("--no-tray")
+        extra_args.append("--no-tray")
     if args.no_web:
-        cmd.append("--no-web")
+        extra_args.append("--no-web")
     if args.web_port is not None:
-        cmd += ["--web-port", str(args.web_port)]
+        extra_args += ["--web-port", str(args.web_port)]
+    cmd = [_python_launcher(), "-c",
+           f"import sys; sys.argv = ['samwhispers-supervisor'] + {extra_args!r}; "
+           "from samwhispers.supervisor import main; main()"]
 
     popen_kwargs: dict[str, Any] = {
         "stdin": subprocess.DEVNULL,
@@ -314,9 +314,9 @@ def _relaunch_detached(args: Any) -> None:
         "close_fds": True,
     }
     if sys.platform == "win32":
-        # CREATE_NO_WINDOW hides the console; DETACHED_PROCESS is avoided because
-        # it detaches from the window station, breaking pystray's Shell_NotifyIcon.
-        popen_kwargs["creationflags"] = _CREATE_NO_WINDOW
+        # CREATE_NEW_PROCESS_GROUP keeps the interactive desktop (needed for
+        # pystray's Shell_NotifyIcon); DETACHED_PROCESS would break the tray.
+        popen_kwargs["creationflags"] = _CREATE_NEW_PROCESS_GROUP | _CREATE_NO_WINDOW
     else:
         popen_kwargs["start_new_session"] = True
     subprocess.Popen(cmd, **popen_kwargs)
