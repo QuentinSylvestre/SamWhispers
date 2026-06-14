@@ -153,14 +153,30 @@ def _run_powershell(script: str, check: bool) -> None:
     subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", script], check=check)
 
 
+def _project_root() -> str:
+    """Best-effort project root: directory containing config.toml or the venv parent."""
+    from samwhispers.config import find_config
+
+    cfg = find_config()
+    if cfg:
+        return str(cfg.parent.resolve())
+    # Fall back to venv's parent (venv is typically at <project>/.venv/)
+    venv = Path(sys.prefix)
+    if venv.name.startswith(".venv"):
+        return str(venv.parent.resolve())
+    return str(Path.cwd())
+
+
 def _create_startup_shortcut() -> None:
     lnk = _startup_shortcut()
     lnk.parent.mkdir(parents=True, exist_ok=True)
     target, args = _windows_target_and_args()
+    work_dir = _project_root()
     script = (
         "$s=(New-Object -ComObject WScript.Shell).CreateShortcut(" + _ps_quote(str(lnk)) + ");"
         "$s.TargetPath=" + _ps_quote(target) + ";"
         "$s.Arguments=" + _ps_quote(args) + ";"
+        "$s.WorkingDirectory=" + _ps_quote(work_dir) + ";"
         "$s.Save()"
     )
     _run_powershell(script, check=True)
