@@ -137,17 +137,23 @@ class StreamingSession:
         engine: StreamingEngine,
         sample_rate: int,
         *,
+        window_seconds: float = 30.0,
         on_commit: Callable[[list[str]], None] | None = None,
         on_preview: Callable[[str], None] | None = None,
     ) -> None:
         self._engine = engine
         self._sample_rate = sample_rate
+        self._window_seconds = window_seconds
         self._on_commit = on_commit
         self._on_preview = on_preview
         self.agreement = LocalAgreement()
 
     def tick(self, audio: np.ndarray) -> str:
-        """Decode the current audio, stabilize, emit updates; return preview text."""
+        """Decode the current audio (windowed), stabilize, emit updates."""
+        # Apply sliding window: only decode the last window_seconds of audio
+        max_samples = int(self._window_seconds * self._sample_rate)
+        if audio.size > max_samples:
+            audio = audio[-max_samples:]
         words = split_words(self._engine.transcribe(audio, self._sample_rate))
         newly = self.agreement.update(words)
         if newly and self._on_commit is not None:

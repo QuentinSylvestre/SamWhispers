@@ -80,7 +80,12 @@ class WhisperClient:
                         continue
                     raise last_exc
                 resp.raise_for_status()
-                result = resp.json()
+                try:
+                    result = resp.json()
+                except ValueError as exc:
+                    raise RuntimeError(
+                        f"Whisper server returned non-JSON response (status {resp.status_code})"
+                    ) from exc
                 return str(result.get("text", "")).strip()
             except _RETRYABLE as exc:
                 last_exc = exc

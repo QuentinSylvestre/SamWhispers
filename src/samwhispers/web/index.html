@@ -425,6 +425,11 @@ for (const item of document.querySelectorAll(".nav-item[data-page]")) {
 document.getElementById("menuToggle").addEventListener("click", () => {
   document.getElementById("sidebar").classList.toggle("open");
 });
+// Deep-link: open page from URL hash (e.g. #logs)
+if (location.hash) {
+  const target = document.querySelector(`.nav-item[data-page="${location.hash.slice(1)}"]`);
+  if (target) target.click();
+}
 
 // --- Config rendering ---
 function fillSelect(el) {

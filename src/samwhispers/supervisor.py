@@ -17,14 +17,13 @@ from __future__ import annotations
 
 import collections
 import enum
+import json
 import logging
-import shutil
 import signal
 import subprocess
 import sys
 import threading
 from collections.abc import Callable
-from pathlib import Path
 from types import FrameType
 from typing import TYPE_CHECKING, Any
 
@@ -33,6 +32,7 @@ if TYPE_CHECKING:
     from samwhispers.webserver import WebServerHandle
 
 from samwhispers.notify import notify
+from samwhispers.overlay import OverlayController
 
 log = logging.getLogger("samwhispers.supervisor")
 
@@ -91,6 +91,9 @@ class WorkerSupervisor:
         self._whisper_manager: WhisperServerManager | None = None
         self._whisper_lock = threading.Lock()
 
+        # Startup overlay: shown during launch, dismissed once worker is running.
+        self._startup_overlay: OverlayController | None = None
+
         # Supervisor lifecycle events (checked by main() after tray/headless loop exits)
         self._shutdown_requested = threading.Event()
         self._relaunch_requested = threading.Event()
@@ -115,6 +118,7 @@ class WorkerSupervisor:
     def start(self) -> None:
         """Start whisper-server (if managed), then the worker and monitor thread."""
         self._stop_event.clear()
+        self._start_startup_overlay()
         self._start_whisper()
         with self._lock:
             self._paused = False
@@ -173,8 +177,13 @@ class WorkerSupervisor:
     def shutdown(self) -> None:
         """Stop the worker, whisper-server, and the monitor; the supervisor exits."""
         self._stop_event.set()
+        if self._startup_overlay is not None:
+            self._startup_overlay.stop()
+            self._startup_overlay = None
         if self._monitor_thread and self._monitor_thread.is_alive():
             self._monitor_thread.join(timeout=3.0)
+            if self._monitor_thread.is_alive():
+                log.warning("Monitor thread did not exit within 3s (will be cleaned up at process exit)")
         with self._lock:
             self._terminate_proc()
             self._set_state(WorkerState.STOPPED)
@@ -200,6 +209,29 @@ class WorkerSupervisor:
         if self._verbose:
             cmd.append("--verbose")
         return cmd
+
+    def _start_startup_overlay(self) -> None:
+        """Show spinner overlay immediately so the user sees launch feedback."""
+        try:
+            from samwhispers.webconfig import current_app_config
+
+            if not current_app_config(self._config_path).overlay.enabled:
+                return
+        except Exception:
+            return
+        ov = OverlayController()
+        ov.start()
+        ov.set_state("processing")
+        self._startup_overlay = ov
+
+    def _dismiss_startup_overlay(self) -> None:
+        """Transition startup overlay to checkmark then dismiss after 1s."""
+        ov = self._startup_overlay
+        if ov is None:
+            return
+        self._startup_overlay = None
+        ov.set_state("ready")
+        threading.Timer(1.0, ov.stop).start()
 
     def _start_whisper(self) -> None:
         """Start the managed whisper-server if ``whisper.managed`` is set."""
@@ -274,7 +306,8 @@ class WorkerSupervisor:
 
     def _read_worker_logs(self) -> None:
         """Read lines from worker stderr and append to the ring buffer."""
-        proc = self._proc
+        with self._lock:
+            proc = self._proc
         if proc is None or proc.stderr is None:
             return
         for line in proc.stderr:
@@ -288,6 +321,8 @@ class WorkerSupervisor:
         if state == self._state:
             return
         self._state = state
+        if state == WorkerState.RUNNING:
+            self._dismiss_startup_overlay()
         callback = self._on_state_change
         if callback is not None:
             try:
@@ -327,7 +362,8 @@ class WorkerSupervisor:
                 )
                 notify(
                     "SamWhispers",
-                    "SamWhispers couldn\u2019t start \u2014 open Settings \u2192 Logs for details",
+                    "SamWhispers couldn\u2019t start \u2014 click to open Logs",
+                    on_click_url="http://127.0.0.1:7891/#logs",
                 )
                 with self._lock:
                     if self._proc is proc:
@@ -342,7 +378,8 @@ class WorkerSupervisor:
                 )
                 notify(
                     "SamWhispers",
-                    "SamWhispers stopped after repeated failures \u2014 open Settings \u2192 Logs for details",
+                    "SamWhispers stopped after repeated failures \u2014 click to open Logs",
+                    on_click_url="http://127.0.0.1:7891/#logs",
                 )
                 with self._lock:
                     if self._proc is proc:
@@ -423,7 +460,7 @@ def _relaunch_detached(args: Any = None) -> None:
     if la.get("web_port") is not None:
         extra_args += ["--web-port", str(la["web_port"])]
     cmd = [_python_launcher(), "-c",
-           f"import sys; sys.argv = ['samwhispers-supervisor'] + {extra_args!r}; "
+           f"import sys, json; sys.argv = ['samwhispers-supervisor'] + json.loads('{json.dumps(extra_args)}'); "
            "from samwhispers.supervisor import main; main()"]
 
     popen_kwargs: dict[str, Any] = {

@@ -56,7 +56,12 @@ class CleanupProvider:
             },
         )
         resp.raise_for_status()
-        return str(resp.json()["choices"][0]["message"]["content"]).strip()
+        data = resp.json()
+        choices = data.get("choices")
+        if not choices or not isinstance(choices, list):
+            log.warning("Unexpected OpenAI response shape, returning original")
+            return text
+        return str(choices[0].get("message", {}).get("content", text)).strip()
 
     def _anthropic_cleanup(self, text: str) -> str:
         cfg = self._config.anthropic
@@ -78,7 +83,12 @@ class CleanupProvider:
             },
         )
         resp.raise_for_status()
-        return str(resp.json()["content"][0]["text"]).strip()
+        data = resp.json()
+        content = data.get("content")
+        if not content or not isinstance(content, list):
+            log.warning("Unexpected Anthropic response shape, returning original")
+            return text
+        return str(content[0].get("text", text)).strip()
 
     def close(self) -> None:
         self._client.close()

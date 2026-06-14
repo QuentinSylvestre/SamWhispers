@@ -20,6 +20,12 @@ def _no_managed_whisper(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(WorkerSupervisor, "_load_whisper_config", lambda self: None)
 
 
+@pytest.fixture(autouse=True)
+def _no_startup_overlay(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Disable the startup overlay in tests to avoid extra subprocess spawning."""
+    monkeypatch.setattr(WorkerSupervisor, "_start_startup_overlay", lambda self: None)
+
+
 def _running_proc() -> MagicMock:
     """A mock Popen that reports as still running."""
     proc = MagicMock()
@@ -333,7 +339,8 @@ def test_monitor_notifies_on_config_exit_code() -> None:
 
     mock_notify.assert_called_once_with(
         "SamWhispers",
-        "SamWhispers couldn\u2019t start \u2014 open Settings \u2192 Logs for details",
+        "SamWhispers couldn\u2019t start \u2014 click to open Logs",
+        on_click_url="http://127.0.0.1:7891/#logs",
     )
 
 
@@ -357,7 +364,8 @@ def test_monitor_notifies_on_max_restarts() -> None:
 
     mock_notify.assert_called_once_with(
         "SamWhispers",
-        "SamWhispers stopped after repeated failures \u2014 open Settings \u2192 Logs for details",
+        "SamWhispers stopped after repeated failures \u2014 click to open Logs",
+        on_click_url="http://127.0.0.1:7891/#logs",
     )
 
 

@@ -151,10 +151,15 @@ class HotkeyListener:
                 with self._lock:
                     if self._active:
                         self._active = False
-                        self._on_stop()
+                        action = "stop"
                     else:
                         self._active = True
-                        self._on_start()
+                        action = "start"
+                # Invoke callbacks outside the lock to prevent deadlock
+                if action == "stop":
+                    self._on_stop()
+                else:
+                    self._on_start()
 
     def _on_release(self, key: Any) -> None:
         with self._lock:

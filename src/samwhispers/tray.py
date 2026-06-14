@@ -9,10 +9,12 @@ from __future__ import annotations
 
 import logging
 import signal
+import sys
 from types import FrameType
 from typing import Any
 
 from samwhispers.supervisor import WorkerState, WorkerSupervisor
+from samwhispers.notify import notify
 
 log = logging.getLogger("samwhispers.tray")
 
@@ -116,12 +118,23 @@ def run_tray(supervisor: WorkerSupervisor, settings_url: str | None = None, stop
     )
 
     def on_state_change(state: WorkerState) -> None:
-        try:
-            icon.icon = _make_image(state)
-            icon.title = f"SamWhispers ({state.value})"
-            icon.update_menu()
-        except Exception:
-            log.debug("Failed to update tray icon", exc_info=True)
+        def _update() -> None:
+            try:
+                icon.icon = _make_image(state)
+                icon.title = f"SamWhispers ({state.value})"
+                icon.update_menu()
+            except Exception:
+                log.debug("Failed to update tray icon", exc_info=True)
+
+        if sys.platform == "linux":
+            try:
+                from gi.repository import GLib  # type: ignore[import-untyped]
+
+                GLib.idle_add(_update)
+                return
+            except ImportError:
+                pass
+        _update()
 
     def handle_signal(signum: int, _frame: FrameType | None) -> None:
         log.info("Received signal %d, stopping tray", signum)

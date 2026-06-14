@@ -22,6 +22,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
+from pathlib import Path
 
 from samwhispers import __version__
 
@@ -50,19 +51,39 @@ def _http_post(port: int, path: str) -> bool:
 def _is_process_alive(pid: int) -> bool:
     """Check if a process with the given PID exists."""
     try:
-        if sys.platform == "win32":
-            os.kill(pid, 0)
-        else:
-            os.kill(pid, 0)
+        os.kill(pid, 0)
         return True
     except OSError:
         return False
 
 
+def _is_samwhispers_process(pid: int) -> bool:
+    """Verify a PID belongs to a samwhispers process (best-effort)."""
+    if not _is_process_alive(pid):
+        return False
+    try:
+        if sys.platform == "win32":
+            import subprocess
+
+            result = subprocess.run(
+                ["powershell", "-NoProfile", "-c",
+                 f"(Get-CimInstance Win32_Process -Filter 'ProcessId={pid}').CommandLine"],
+                capture_output=True, text=True, timeout=5,
+            )
+            return "samwhispers" in result.stdout.lower()
+        else:
+            cmdline = Path(f"/proc/{pid}/cmdline").read_bytes().decode("utf-8", errors="replace")
+            return "samwhispers" in cmdline.lower()
+    except Exception:
+        # If we can't verify, assume it's ours (fallback to old behavior)
+        return True
+
+
 def _force_kill(pid: int) -> None:
     """Force-kill a process by PID."""
     if sys.platform == "win32":
-        os.kill(pid, signal.SIGTERM)  # TerminateProcess on Windows
+        # On Windows os.kill(SIGTERM) calls TerminateProcess — immediate kill
+        os.kill(pid, signal.SIGTERM)
     else:
         os.kill(pid, signal.SIGTERM)
         for _ in range(50):  # 5s in 100ms steps
@@ -89,7 +110,7 @@ def _do_stop(port: int) -> bool:
     from samwhispers.singleinstance import read_pid
 
     pid = read_pid()
-    if pid and _is_process_alive(pid):
+    if pid and _is_samwhispers_process(pid):
         print("Stopping SamWhispers...")
         _force_kill(pid)
         print("SamWhispers stopped.")

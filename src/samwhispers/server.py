@@ -46,6 +46,8 @@ class WhisperServerManager:
     def __init__(self, config: WhisperConfig) -> None:
         self._config = config
         self._proc: subprocess.Popen[bytes] | None = None
+        self._stderr_lines: list[str] = []
+        self._stderr_thread: threading.Thread | None = None
         self._lock = threading.Lock()
         self._monitor_thread: threading.Thread | None = None
         self._stop_event = threading.Event()
@@ -93,9 +95,29 @@ class WhisperServerManager:
         # parent has no console (e.g. launched via pythonw at login).
         flags = 0x08000000 if sys.platform == "win32" else 0  # CREATE_NO_WINDOW
         with self._lock:
+            self._stderr_lines = []
             self._proc = subprocess.Popen(
-                cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=flags
+                cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, creationflags=flags
             )
+            self._stderr_thread = threading.Thread(
+                target=self._read_stderr, daemon=True, name="whisper-stderr"
+            )
+            self._stderr_thread.start()
+
+    def _read_stderr(self) -> None:
+        """Read stderr from whisper-server, keeping last 50 lines for diagnostics."""
+        with self._lock:
+            proc = self._proc
+        if proc is None or proc.stderr is None:
+            return
+        for raw_line in proc.stderr:
+            line = raw_line.decode("utf-8", errors="replace").rstrip()
+            self._stderr_lines = self._stderr_lines[-49:] + [line]
+
+    @property
+    def last_stderr(self) -> list[str]:
+        """Last captured stderr lines from whisper-server (for diagnostics)."""
+        return list(self._stderr_lines)
 
     def _wait_ready(self) -> None:
         client = WhisperClient(server_url=self._config.server_url)
@@ -160,6 +182,7 @@ class WhisperServerManager:
 
     def stop(self) -> None:
         """Terminate the managed server process."""
+        atexit.unregister(self.stop)
         self._stop_event.set()
         if self._monitor_thread and self._monitor_thread.is_alive():
             self._monitor_thread.join(timeout=3.0)

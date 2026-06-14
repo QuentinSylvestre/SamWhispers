@@ -30,7 +30,7 @@ def test_notify_wsl_calls_powershell() -> None:
         patch("samwhispers.notify._notify_windows") as mock_win,
     ):
         notify("Title", "Msg")
-        mock_win.assert_called_once_with("Title", "Msg")
+        mock_win.assert_called_once_with("Title", "Msg", None)
 
 
 def test_notify_windows_calls_powershell() -> None:
@@ -42,7 +42,7 @@ def test_notify_windows_calls_powershell() -> None:
     ):
         mock_sys.platform = "win32"
         notify("Title", "Msg")
-        mock_win.assert_called_once_with("Title", "Msg")
+        mock_win.assert_called_once_with("Title", "Msg", None)
 
 
 def test_notify_failure_does_not_raise() -> None:

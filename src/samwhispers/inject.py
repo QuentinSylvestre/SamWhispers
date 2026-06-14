@@ -78,10 +78,10 @@ class WSLTextInjector:
             log.debug("Empty text, skipping injection")
             return
 
-        # Write to clipboard
+        # Write to clipboard (BOM required for clip.exe to interpret as Unicode)
         subprocess.run(
             [self._clip],
-            input=text.encode("utf-16-le"),
+            input=b"\xff\xfe" + text.encode("utf-16-le"),
             check=True,
             timeout=5,
         )

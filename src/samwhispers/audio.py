@@ -137,22 +137,22 @@ class AudioRecorder:
             if not self._recording:
                 return b""
             self._recording = False
-
-        if self._timer:
-            self._timer.cancel()
-            self._timer = None
-
-        if self._stream is not None:
-            self._stream.stop()
-            self._stream.close()
+            stream = self._stream
             self._stream = None
+            timer = self._timer
+            self._timer = None
+            frames = self._frames
+            self._frames = []
+
+        if timer:
+            timer.cancel()
+
+        if stream is not None:
+            stream.stop()
+            stream.close()
 
         if self._error:
             log.warning("Audio errors occurred during recording, result may be partial")
-
-        with self._lock:
-            frames = self._frames
-            self._frames = []
 
         if not frames:
             return b""

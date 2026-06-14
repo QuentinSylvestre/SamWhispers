@@ -132,8 +132,13 @@ class HistoryStore:
     def _search_clause(search: str | None) -> tuple[str, tuple[Any, ...]]:
         if not search:
             return "", ()
-        like = f"%{search}%"
-        return "WHERE text LIKE ? OR translated_text LIKE ?", (like, like)
+        # Escape LIKE wildcards so literal % and _ in user input aren't treated as patterns
+        escaped = search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        like = f"%{escaped}%"
+        return (
+            "WHERE text LIKE ? ESCAPE '\\' OR translated_text LIKE ? ESCAPE '\\'",
+            (like, like),
+        )
 
     @staticmethod
     def _row_to_dict(row: sqlite3.Row) -> dict[str, Any]:

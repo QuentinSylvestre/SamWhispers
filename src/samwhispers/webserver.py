@@ -44,6 +44,16 @@ def create_app(
 ) -> FastAPI:
     """Build the FastAPI app. ``supervisor`` may be None for API-only testing."""
     app = FastAPI(title="SamWhispers", docs_url=None, redoc_url=None)
+
+    from fastapi.middleware.cors import CORSMiddleware
+
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=[f"http://127.0.0.1:{DEFAULT_PORT}", f"http://localhost:{DEFAULT_PORT}"],
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
     store = history_store if history_store is not None else HistoryStore(default_db_path())
 
     @app.get("/", response_class=HTMLResponse)

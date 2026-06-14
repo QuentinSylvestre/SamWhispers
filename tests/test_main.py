@@ -32,4 +32,6 @@ def test_worker_subcommand_dispatches() -> None:
         patch.object(entry, "_run_worker") as run_worker,
     ):
         entry.main()
-    run_worker.assert_called_once_with(["--unmanaged-server"])
+    run_worker.assert_called_once()
+    args = run_worker.call_args[0][0]
+    assert args.unmanaged_server is True

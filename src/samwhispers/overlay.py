@@ -340,6 +340,11 @@ class OverlayApp:
 
         if state == "processing":
             self._animate_spinner()
+        elif state == "ready":
+            for item, _ in self._bars:
+                self.canvas.itemconfigure(item, state="hidden")
+            self.canvas.itemconfigure(self._arc, state="hidden")
+            self._render_checkmark()
         else:
             self._animate_bars(level)
         if self._wide:
@@ -371,6 +376,39 @@ class OverlayApp:
             self.canvas.itemconfigure(item, state="hidden")
         self._spin = (self._spin - 12) % 360
         self._render_spinner()
+
+    def _render_checkmark(self) -> None:
+        s = self._scale
+        size = int(26 * s)
+        ss = 4
+        big = size * ss
+        img = Image.new("RGBA", (big, big), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(img)
+        lw = int(3 * s) * ss
+        pad = lw // 2 + 1
+        # Draw circle
+        bbox = (pad, pad, big - pad, big - pad)
+        draw.ellipse(bbox, outline=(100, 220, 100, 255), width=lw)
+        # Draw checkmark inside
+        cx, cy = big // 2, big // 2
+        r = (big - 2 * pad) // 2
+        pts = [
+            (cx - r * 0.35, cy + r * 0.05),
+            (cx - r * 0.05, cy + r * 0.35),
+            (cx + r * 0.4, cy - r * 0.3),
+        ]
+        draw.line(pts, fill=(100, 220, 100, 255), width=lw, joint="curve")
+        img = img.resize((size, size), Image.LANCZOS)
+        from PIL import ImageTk
+
+        self._spinner_photo = ImageTk.PhotoImage(img)
+        if not self._spinner_img_id:
+            cx_canvas = self.canvas.winfo_width() // 2
+            self._spinner_img_id = self.canvas.create_image(
+                cx_canvas, self._cy, image=self._spinner_photo, anchor="center"
+            )
+        else:
+            self.canvas.itemconfigure(self._spinner_img_id, image=self._spinner_photo, state="normal")
 
     def _render_spinner(self) -> None:
         import tkinter as tk

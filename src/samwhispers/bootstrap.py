@@ -29,7 +29,8 @@ def _paths() -> tuple[Path, Path, Path]:
 
 def server_bin_path(whisper_dir: Path) -> Path:
     """Expected built binary path (``_resolve_server_bin`` finds the Windows variant)."""
-    return whisper_dir / "build" / "bin" / "whisper-server"
+    name = "whisper-server.exe" if sys.platform == "win32" else "whisper-server"
+    return whisper_dir / "build" / "bin" / name
 
 
 def default_config_text(server_bin: Path, model_path: Path) -> str:
@@ -64,8 +65,10 @@ def ensure_model(model: str, models_dir: Path) -> Path:
         raise SystemExit(f"Unknown model {model!r}; choose one of {WHISPER_CPP_MODELS}")
     print(f"Downloading model {model}...")
     downloader = ModelDownloader()
-    downloader._state["downloading"] = True
-    downloader._download(model, models_dir)
+    downloader.start(model, models_dir)
+    # Wait for the background download thread to complete
+    if downloader._thread is not None:
+        downloader._thread.join()
     status = downloader.status()
     if status["error"]:
         raise SystemExit(f"Model download failed: {status['error']}")
