@@ -76,7 +76,7 @@ class SnippetExpander:
 
     def expand(self, text: str) -> str:
         for pattern, expansion in self._replacements:
-            text = pattern.sub(expansion, text)
+            text = pattern.sub(lambda m: expansion, text)
         return text
 
 
