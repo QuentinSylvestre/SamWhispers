@@ -1,5 +1,11 @@
 ## Feedback
 
+### `re.sub(pattern, replacement, text)` treats replacement as template — use lambda for literal
+
+**Why**: `re.sub` interprets `\1`, `\U`, etc. in the replacement string. Real-world expansions (file paths, code) contain backslashes that crash or silently corrupt output.
+**How to apply**: When using `re.sub` with user-provided replacement text, always use `pattern.sub(lambda m: replacement, text)` not `pattern.sub(replacement, text)`.
+**Source**: Plan 260614_SNIPPETS_AND_VAD, Phase 1 review finding #1 | **Verified**: 2026-06-14
+
 ## Decision
 
 ### Python -m breaks pystray on Windows — use import-based launch
@@ -39,3 +45,10 @@
 **Why**: The user frequently asks for direct implementation of features (overlay polish, model management UI, config webUI rework) without going through /qexplore -> /qplan. Only multi-concern production-grade work gets the full lifecycle treatment.
 **How to apply**: For SamWhispers tasks that are single-file or single-concern (UI rework, visual polish, feature addition to existing modules), implement directly. Reserve /qexplore->/qplan for cross-cutting concerns or production-critical changes with failure modes.
 **Source**: Sessions 45ad4165, ce4f96dc, 44f3f23c (direct) vs 60a930c7, 8d312e75 (full lifecycle) | **Verified**: 2026-06-14
+
+
+### Deferred Timer(0) for audio callback stop actions — never call lock-acquiring methods from _callback
+
+**Why**: The audio callback thread holds `_lock`. Any method that also acquires `_lock` (like `stop()`) will deadlock if called directly from `_callback`. Use `threading.Timer(0, method).start()` to defer to a new thread.
+**How to apply**: When adding behavior in `AudioRecorder._callback` that triggers stop/state-change, defer via Timer(0). Include a boolean flag (e.g., `_vad_fired`) to prevent double-fire, and reset it in `start()`.
+**Source**: Plan 260614_SNIPPETS_AND_VAD, Phase 2 + Post-Implementation Review finding #1 | **Verified**: 2026-06-14
