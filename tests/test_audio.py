@@ -272,3 +272,42 @@ def test_closed_flag_prevents_start() -> None:
         recorder.start()
         mock_ctor.assert_not_called()
     assert not recorder.is_recording()
+
+
+
+def test_concurrent_start_stop_no_crash() -> None:
+    """Concurrent start() and stop() from different threads don't crash."""
+    import threading as th
+    from unittest.mock import MagicMock, patch
+
+    mock_stream = MagicMock()
+    recorder = AudioRecorder(keep_stream_open=True)
+
+    with patch("sounddevice.InputStream", return_value=mock_stream):
+        recorder.start()
+
+    errors: list[Exception] = []
+
+    def stop_loop() -> None:
+        for _ in range(20):
+            try:
+                recorder.stop()
+            except Exception as e:
+                errors.append(e)
+
+    def start_loop() -> None:
+        for _ in range(20):
+            try:
+                recorder.start()
+            except Exception as e:
+                errors.append(e)
+
+    t1 = th.Thread(target=stop_loop)
+    t2 = th.Thread(target=start_loop)
+    t1.start()
+    t2.start()
+    t1.join(timeout=5)
+    t2.join(timeout=5)
+
+    assert not errors, f"Concurrent start/stop raised: {errors}"
+    recorder.close()

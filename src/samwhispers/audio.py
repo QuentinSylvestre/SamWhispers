@@ -116,8 +116,9 @@ class AudioRecorder:
 
     def _trigger_vad_stop(self) -> None:
         """Cancel max-duration timer and auto-stop after silence detection."""
-        if self._timer:
-            self._timer.cancel()
+        timer = self._timer
+        if timer:
+            timer.cancel()
             self._timer = None
         log.info("Silence detected (%.1fs), auto-stopping", self._silence_duration)
         self._auto_stop()
