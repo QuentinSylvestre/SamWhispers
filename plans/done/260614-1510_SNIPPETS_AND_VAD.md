@@ -1,7 +1,8 @@
 # Snippets & Voice Activity Detection
 
 > **Date**: 2026-06-14
-> **Status**: Complete
+> **Status**: Complete — all 3 phases implemented and reviewed
+> **Last Updated**: 2026-06-14 15:10
 > **Scope**: Add voice text-replacement snippets and VAD (server-side + client-side auto-stop)
 > **Estimated effort**: 2-3 days
 
