@@ -1,7 +1,7 @@
 # Snippets & Voice Activity Detection
 
 > **Date**: 2026-06-14
-> **Status**: In Progress
+> **Status**: Complete
 > **Scope**: Add voice text-replacement snippets and VAD (server-side + client-side auto-stop)
 > **Estimated effort**: 2-3 days
 
@@ -635,3 +635,22 @@ Implementation health: Yellow → Green (after fix).
 | 2 | Low | No test for streaming-preview pipeline path with snippets | Noted — covered by Step 9 holistic review |
 | 3 | Low | No test for `snippets.enabled = False` | Noted — covered by Step 9 |
 | 4 | Low | No test for regex metacharacters in trigger | Noted — covered by Step 9 |
+
+### 2026-06-14 -- Post-Implementation Review
+
+Overall implementation health: Green (after fixes).
+Personas: Senior engineer, Reliability engineer, End-user advocate, Architect.
+10 unique findings (1 High, 4 Medium, 5 Low). 5 auto-resolved.
+
+| # | Severity | Finding | Resolution |
+|---|---|---|---|
+| 1 | High | `_vad_fired` never reset in `start()` — VAD only works once per session | Fixed — reset `_vad_fired` and `_silence_start` in `start()` (72e1159) |
+| 2 | Medium | Notification "silence detected" fires on max-duration stops too | Fixed — check `_vad_fired` to differentiate source (72e1159) |
+| 3 | Medium | `esc()` missing `&quot;` — snippets with quotes break UI | Fixed — added `"` → `&quot;` to esc() (72e1159) |
+| 4 | Medium | VAD enabled + empty model_path = silent no-op | Fixed — added UserWarning when model_path empty (72e1159) |
+| 5 | Medium | No notification for VAD auto-stop in streaming mode | Fixed — moved notify before streaming branch (72e1159) |
+| 6 | Low | `_vad_server_changed()` uses Any type annotation | Noted — low risk, improvement for later |
+| 7 | Low | Supervisor loads config twice for whisper+VAD | Noted — minor inefficiency, startup-only |
+| 8 | Low | No test for `snippets.enabled = False` | Noted — covered by validation + manual testing |
+| 9 | Low | No test for regex metacharacters in snippet triggers | Noted — `re.escape` handles it; regression test for later |
+| 10 | Low | `collectSnippets()` silently drops empty-trigger rows | Noted — acceptable UX for v1 |
