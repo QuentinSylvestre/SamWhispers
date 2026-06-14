@@ -133,3 +133,69 @@ def test_start_happy_path() -> None:
 
     # Clean up
     mgr.stop()
+
+
+
+# --- VAD flag tests ---
+
+
+def test_build_cmd_without_vad() -> None:
+    """_build_cmd without VAD produces base flags only."""
+    config = _make_config()
+    with patch("samwhispers.server.atexit"):
+        mgr = WhisperServerManager(config)
+    cmd = mgr._build_cmd()
+    assert "--vad" not in cmd
+    assert "-vm" not in cmd
+
+
+def test_build_cmd_with_vad_enabled(tmp_path: Path) -> None:
+    """_build_cmd with VAD enabled produces correct flags."""
+    from samwhispers.config import VadConfig
+
+    model_file = tmp_path / "vad.bin"
+    model_file.write_bytes(b"fake")
+    vad = VadConfig(enabled=True, model_path=str(model_file), threshold=0.6)
+    config = _make_config()
+    with patch("samwhispers.server.atexit"):
+        mgr = WhisperServerManager(config, vad_config=vad)
+    cmd = mgr._build_cmd()
+    assert "--vad" in cmd
+    assert "-vm" in cmd
+    assert "-vt" in cmd
+    vt_idx = cmd.index("-vt")
+    assert cmd[vt_idx + 1] == "0.6"
+
+
+def test_build_cmd_vad_non_default_flags(tmp_path: Path) -> None:
+    """_build_cmd with non-default VAD fields includes those flags."""
+    from samwhispers.config import VadConfig
+
+    model_file = tmp_path / "vad.bin"
+    model_file.write_bytes(b"fake")
+    vad = VadConfig(
+        enabled=True,
+        model_path=str(model_file),
+        min_speech_duration_ms=500,
+        speech_pad_ms=50,
+    )
+    config = _make_config()
+    with patch("samwhispers.server.atexit"):
+        mgr = WhisperServerManager(config, vad_config=vad)
+    cmd = mgr._build_cmd()
+    assert "-vspd" in cmd
+    assert "500" in cmd
+    assert "-vp" in cmd
+    assert "50" in cmd
+
+
+def test_build_cmd_vad_disabled_no_flags(tmp_path: Path) -> None:
+    """_build_cmd with VAD disabled produces no VAD flags."""
+    from samwhispers.config import VadConfig
+
+    vad = VadConfig(enabled=False, model_path="/fake/vad.bin")
+    config = _make_config()
+    with patch("samwhispers.server.atexit"):
+        mgr = WhisperServerManager(config, vad_config=vad)
+    cmd = mgr._build_cmd()
+    assert "--vad" not in cmd

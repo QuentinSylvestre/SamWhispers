@@ -355,6 +355,22 @@ class StreamingConfig:
 
 
 @dataclass
+class VadConfig:
+    enabled: bool = False
+    # Server-side (whisper.cpp --vad flags)
+    model_path: str = ""
+    threshold: float = 0.5
+    min_speech_duration_ms: int = 250
+    min_silence_duration_ms: int = 100
+    max_speech_duration_s: float = 0.0  # 0 = unlimited
+    speech_pad_ms: int = 30
+    samples_overlap: float = 0.1
+    # Client-side (auto-stop on silence, toggle mode only)
+    silence_threshold: float = 0.01
+    silence_duration: float = 10.0
+
+
+@dataclass
 class SnippetConfig:
     items: dict[str, str] = field(default_factory=dict)  # trigger -> expansion
     bias_recognition: bool = True  # add triggers to vocabulary prompt
@@ -376,6 +392,7 @@ class AppConfig:
     overlay: OverlayConfig = field(default_factory=OverlayConfig)
     streaming: StreamingConfig = field(default_factory=StreamingConfig)
     snippets: SnippetConfig = field(default_factory=SnippetConfig)
+    vad: VadConfig = field(default_factory=VadConfig)
 
 
 def find_config() -> Path | None:
@@ -566,6 +583,22 @@ def _validate(config: AppConfig) -> None:
         if not expansion:
             raise ValueError(f"Snippet expansion for trigger {trigger!r} must not be empty")
 
+    # Validate VAD
+    if config.vad.enabled and config.vad.model_path:
+        if not Path(config.vad.model_path).is_file():
+            raise ValueError(
+                f"vad.model_path not found: {Path(config.vad.model_path).resolve()}. "
+                "Download the VAD model with `samwhispers-setup` or disable VAD."
+            )
+    if not (0.0 <= config.vad.threshold <= 1.0):
+        raise ValueError(f"vad.threshold must be between 0.0 and 1.0, got {config.vad.threshold}")
+    if not (0.0 <= config.vad.silence_threshold <= 1.0):
+        raise ValueError(
+            f"vad.silence_threshold must be between 0.0 and 1.0, got {config.vad.silence_threshold}"
+        )
+    if config.vad.silence_duration <= 0:
+        raise ValueError(f"vad.silence_duration must be > 0, got {config.vad.silence_duration}")
+
 
 def load_config(path: Path | str | None = None) -> AppConfig:
     """Load TOML config, merge with defaults, validate."""
@@ -643,6 +676,10 @@ def build_config(raw: dict[str, Any], validate: bool = True) -> AppConfig:
         enabled=snippets_raw.get("enabled", True),
     )
 
+    # --- VAD: manual field extraction ---
+    vad_raw = d.get("vad", {})
+    vad_cfg = VadConfig(**_filter_fields(VadConfig, vad_raw))
+
     config = AppConfig(
         hotkey=HotkeyConfig(**_filter_fields(HotkeyConfig, d.get("hotkey", {}))),
         whisper=WhisperConfig(**_filter_fields(WhisperConfig, d.get("whisper", {}))),
@@ -662,6 +699,7 @@ def build_config(raw: dict[str, Any], validate: bool = True) -> AppConfig:
         overlay=OverlayConfig(**_filter_fields(OverlayConfig, d.get("overlay", {}))),
         streaming=StreamingConfig(**_filter_fields(StreamingConfig, d.get("streaming", {}))),
         snippets=snippets_cfg,
+        vad=vad_cfg,
     )
     if validate:
         _validate(config)

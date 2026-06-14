@@ -71,6 +71,16 @@ class SamWhispers:
             max_duration=config.audio.max_duration,
             on_auto_stop=self._on_auto_stop,
             on_level=self._emit_level,
+            silence_threshold=(
+                config.vad.silence_threshold
+                if config.vad.enabled and config.hotkey.mode == "toggle"
+                else 0.0
+            ),
+            silence_duration=(
+                config.vad.silence_duration
+                if config.vad.enabled and config.hotkey.mode == "toggle"
+                else 0.0
+            ),
         )
         self.whisper = WhisperClient(
             server_url=config.whisper.server_url,
@@ -138,7 +148,7 @@ class SamWhispers:
         # owns whisper-server and the worker only connects to it.
         self._server_manager: WhisperServerManager | None = None
         if config.whisper.managed and manage_server:
-            self._server_manager = WhisperServerManager(config.whisper)
+            self._server_manager = WhisperServerManager(config.whisper, vad_config=config.vad)
 
         # Language cycle params (only when multiple languages configured)
         lang_key = config.hotkey.language_key if len(self._languages) > 1 else None
@@ -307,6 +317,8 @@ class SamWhispers:
             self._finalize_streaming(from_auto_stop=True, wav_bytes=wav_bytes)
             return
         log.info("Auto-stop triggered, processing recorded audio")
+        from samwhispers.notify import notify
+        notify("SamWhispers", "Recording stopped (silence detected)")
         self._work_queue.put(wav_bytes)
 
     # --- Streaming transcription ---------------------------------------

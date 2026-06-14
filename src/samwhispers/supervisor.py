@@ -244,7 +244,8 @@ class WorkerSupervisor:
             try:
                 from samwhispers.server import WhisperServerManager
 
-                manager = WhisperServerManager(whisper_cfg)
+                vad_cfg = self._load_vad_config()
+                manager = WhisperServerManager(whisper_cfg, vad_config=vad_cfg)
                 manager.start()
                 self._whisper_manager = manager
                 log.info("Managed whisper-server started")
@@ -272,6 +273,16 @@ class WorkerSupervisor:
             return current_app_config(self._config_path).whisper
         except Exception:
             log.exception("Failed to load config for whisper-server")
+            return None
+
+    def _load_vad_config(self) -> Any:
+        """Load VAD config from disk without strict validation, or None on error."""
+        try:
+            from samwhispers.webconfig import current_app_config
+
+            return current_app_config(self._config_path).vad
+        except Exception:
+            log.exception("Failed to load VAD config")
             return None
 
     def _spawn(self) -> None:

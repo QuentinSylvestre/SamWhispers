@@ -494,6 +494,57 @@ When using auto-detect (`languages = ["auto"]`), the accent prompt is always
 active because the detected language is not known at prompt time. For best
 results with accent biasing, use explicit language codes.
 
+## Voice Activity Detection (VAD)
+
+SamWhispers supports Voice Activity Detection via whisper.cpp's built-in Silero VAD integration. VAD provides two benefits:
+
+1. **Server-side**: Trims silence from audio before decoding, improving transcription quality and speed.
+2. **Client-side**: Auto-stops recording in toggle mode after a configurable silence duration (no need to press the stop key).
+
+### Setup
+
+The VAD model is downloaded automatically by `samwhispers-setup`. To download it manually:
+
+```bash
+# The model is ~860KB
+# It will be placed alongside your whisper models
+samwhispers-setup
+```
+
+### Configuration
+
+```toml
+[vad]
+enabled = true
+model_path = "/path/to/ggml-silero-v6.2.0.bin"
+
+# Server-side (trims silence before decoding)
+threshold = 0.5              # Speech probability threshold (0.0-1.0)
+min_speech_duration_ms = 250
+min_silence_duration_ms = 100
+max_speech_duration_s = 0.0  # 0 = unlimited
+speech_pad_ms = 30
+samples_overlap = 0.1
+
+# Client-side (auto-stop in toggle mode)
+silence_threshold = 0.01     # Audio level below this = silence (0.0-1.0)
+silence_duration = 10.0      # Seconds of silence before auto-stop
+```
+
+### How It Works
+
+**Server-side VAD** passes `--vad` and related flags to the managed whisper-server. The VAD model detects speech segments in the audio, and only those segments are sent to Whisper for decoding. This reduces processing time and eliminates silence-induced hallucinations.
+
+**Client-side VAD** monitors the audio level during recording in toggle mode. When the level stays below `silence_threshold` for longer than `silence_duration` seconds, recording auto-stops automatically. This is inactive in hold mode (where releasing the key is the natural endpoint).
+
+### Tips
+
+- Server-side and client-side VAD are independent — you can enable one or both.
+- Client-side VAD only applies in toggle mode. Hold mode is unaffected.
+- The default 10-second silence duration is generous to avoid cutting off thinking pauses. Reduce it for faster auto-stop.
+- For server-side VAD, `threshold = 0.5` works well for most setups. Increase it if you get false positives in noisy environments.
+- The VAD model is ~860KB (Silero v6.2.0 in GGML format).
+
 ## Filler Word Removal
 
 SamWhispers automatically removes filler words (um, uh, euh, etc.) from transcriptions. This runs as a post-processing step before any AI cleanup, so it works without cloud dependencies.

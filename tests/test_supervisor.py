@@ -154,10 +154,11 @@ def test_start_whisper_starts_manager_when_managed() -> None:
     manager = MagicMock()
     with (
         patch.object(s, "_load_whisper_config", return_value=whisper_cfg),
+        patch.object(s, "_load_vad_config", return_value=None),
         patch("samwhispers.server.WhisperServerManager", return_value=manager) as mgr_cls,
     ):
         s._start_whisper()
-    mgr_cls.assert_called_once_with(whisper_cfg)
+    mgr_cls.assert_called_once_with(whisper_cfg, vad_config=None)
     manager.start.assert_called_once()
     assert s._whisper_manager is manager
     # stop_whisper tears it down

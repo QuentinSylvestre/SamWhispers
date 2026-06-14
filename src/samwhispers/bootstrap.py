@@ -19,6 +19,8 @@ from samwhispers.models import WHISPER_CPP_MODELS, ModelDownloader
 from samwhispers.webconfig import resolve_config_path
 
 _WHISPER_REPO = "https://github.com/ggerganov/whisper.cpp.git"
+_VAD_MODEL_URL = "https://huggingface.co/ggml-org/whisper-vad/resolve/main/ggml-silero-v6.2.0.bin"
+_VAD_MODEL_NAME = "ggml-silero-v6.2.0.bin"
 
 
 def _paths() -> tuple[Path, Path, Path]:
@@ -111,6 +113,28 @@ def ensure_whisper_server(whisper_dir: Path) -> Path:
     return build_whisper_from_source(whisper_dir)
 
 
+def ensure_vad_model(models_dir: Path) -> Path:
+    """Download the Silero VAD model into ``models_dir`` if missing."""
+    import httpx
+
+    dest = models_dir / _VAD_MODEL_NAME
+    if dest.exists():
+        return dest
+    print("Downloading VAD model (Silero v6.2.0)...")
+    models_dir.mkdir(parents=True, exist_ok=True)
+    tmp = dest.with_name(dest.name + ".part")
+    timeout = httpx.Timeout(connect=15.0, read=120.0, write=30.0, pool=15.0)
+    with httpx.Client(follow_redirects=True, timeout=timeout) as client:
+        with client.stream("GET", _VAD_MODEL_URL) as resp:
+            resp.raise_for_status()
+            with open(tmp, "wb") as f:
+                for chunk in resp.iter_bytes(1 << 20):
+                    f.write(chunk)
+    tmp.replace(dest)
+    print(f"  VAD model: {dest}")
+    return dest
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         prog="samwhispers-setup",
@@ -125,11 +149,13 @@ def main() -> None:
     whisper_dir, models_dir, config_path = _paths()
     server_bin = ensure_whisper_server(whisper_dir)
     model_path = ensure_model(args.model, models_dir)
+    vad_path = ensure_vad_model(models_dir)
     wrote = write_config(config_path, server_bin, model_path, force=args.force_config)
 
     print("\nSetup complete.")
     print(f"  whisper-server: {server_bin}")
     print(f"  model:          {model_path}")
+    print(f"  VAD model:      {vad_path}")
     print(f"  config:         {config_path}" + ("" if wrote else " (kept existing)"))
     print("\nNext:")
     print("  samwhispers-supervisor       # run now (tray + web UI)")

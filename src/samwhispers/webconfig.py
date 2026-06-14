@@ -135,6 +135,7 @@ def to_toml_dict(config: AppConfig) -> dict[str, Any]:
         "bias_recognition": config.snippets.bias_recognition,
         "items": dict(config.snippets.items),
     }
+    data["vad"] = asdict(config.vad)
     return data
 
 

@@ -36,6 +36,20 @@ DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 7891
 
 
+def _vad_server_changed(old: Any, new: Any) -> bool:
+    """Server-side VAD fields that require whisper-server restart."""
+    return bool(
+        old.enabled != new.enabled
+        or old.model_path != new.model_path
+        or old.threshold != new.threshold
+        or old.min_speech_duration_ms != new.min_speech_duration_ms
+        or old.min_silence_duration_ms != new.min_silence_duration_ms
+        or old.max_speech_duration_s != new.max_speech_duration_s
+        or old.speech_pad_ms != new.speech_pad_ms
+        or old.samples_overlap != new.samples_overlap
+    )
+
+
 def create_app(
     supervisor: WorkerSupervisor | None = None,
     config_path: str | Path | None = None,
@@ -183,7 +197,10 @@ def create_app(
         restarted = False
         whisper_restarted = False
         if supervisor is not None and requires_restart(old_cfg, new_cfg):
-            whisper_restarted = old_cfg.whisper != new_cfg.whisper
+            whisper_restarted = (
+                old_cfg.whisper != new_cfg.whisper
+                or _vad_server_changed(old_cfg.vad, new_cfg.vad)
+            )
             supervisor.apply_config_change(restart_whisper=whisper_restarted)
             restarted = True
         return {"saved": True, "restarted": restarted, "whisper_restarted": whisper_restarted}

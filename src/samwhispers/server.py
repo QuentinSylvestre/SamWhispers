@@ -11,7 +11,7 @@ import time
 from pathlib import Path
 from urllib.parse import urlparse
 
-from samwhispers.config import WhisperConfig
+from samwhispers.config import VadConfig, WhisperConfig
 from samwhispers.transcribe import WhisperClient
 
 log = logging.getLogger("samwhispers")
@@ -43,8 +43,9 @@ def _resolve_server_bin(raw_path: str) -> str:
 class WhisperServerManager:
     """Spawn, monitor, and restart whisper-server."""
 
-    def __init__(self, config: WhisperConfig) -> None:
+    def __init__(self, config: WhisperConfig, vad_config: VadConfig | None = None) -> None:
         self._config = config
+        self._vad = vad_config
         self._proc: subprocess.Popen[bytes] | None = None
         self._stderr_lines: list[str] = []
         self._stderr_thread: threading.Thread | None = None
@@ -75,10 +76,24 @@ class WhisperServerManager:
         atexit.register(self.stop)
 
     def _build_cmd(self) -> list[str]:
-        return [
+        cmd = [
             self._bin, "-m", self._model, "--host", self._host, "--port", self._port,
             "-sns",
         ]
+        if self._vad and self._vad.enabled and self._vad.model_path:
+            cmd.extend(["--vad", "-vm", str(Path(self._vad.model_path).resolve())])
+            cmd.extend(["-vt", str(self._vad.threshold)])
+            if self._vad.min_speech_duration_ms != 250:
+                cmd.extend(["-vspd", str(self._vad.min_speech_duration_ms)])
+            if self._vad.min_silence_duration_ms != 100:
+                cmd.extend(["-vsd", str(self._vad.min_silence_duration_ms)])
+            if self._vad.max_speech_duration_s > 0:
+                cmd.extend(["-vmsd", str(self._vad.max_speech_duration_s)])
+            if self._vad.speech_pad_ms != 30:
+                cmd.extend(["-vp", str(self._vad.speech_pad_ms)])
+            if self._vad.samples_overlap != 0.1:
+                cmd.extend(["-vo", str(self._vad.samples_overlap)])
+        return cmd
 
     def start(self) -> None:
         """Spawn whisper-server and block until it passes health check."""

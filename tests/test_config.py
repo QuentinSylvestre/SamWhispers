@@ -514,3 +514,99 @@ def test_snippet_config_roundtrip(tmp_path: Path) -> None:
     rebuilt = build_config(d, validate=False)
     assert rebuilt.snippets.items == {"addr": "123 Main"}
     assert rebuilt.snippets.bias_recognition is True
+
+
+
+# --- VAD config tests ---
+
+
+def test_vad_defaults(tmp_path: Path) -> None:
+    """No [vad] section gives disabled defaults."""
+    cfg = tmp_path / "config.toml"
+    cfg.write_text("[whisper]\nmanaged = false\n")
+    config = load_config(cfg)
+    assert config.vad.enabled is False
+    assert config.vad.model_path == ""
+    assert config.vad.threshold == 0.5
+    assert config.vad.silence_threshold == 0.01
+    assert config.vad.silence_duration == 10.0
+
+
+def test_vad_config_parsed(tmp_path: Path) -> None:
+    """VAD section parsed from TOML."""
+    cfg = tmp_path / "config.toml"
+    cfg.write_text(
+        "[whisper]\nmanaged = false\n\n"
+        "[vad]\nenabled = true\nthreshold = 0.6\nsilence_duration = 5.0\n"
+    )
+    config = load_config(cfg)
+    assert config.vad.enabled is True
+    assert config.vad.threshold == 0.6
+    assert config.vad.silence_duration == 5.0
+
+
+def test_vad_threshold_out_of_range(tmp_path: Path) -> None:
+    """vad.threshold outside 0.0-1.0 raises ValueError."""
+    cfg = tmp_path / "config.toml"
+    cfg.write_text("[whisper]\nmanaged = false\n[vad]\nthreshold = 1.5\n")
+    with pytest.raises(ValueError, match="vad.threshold must be between"):
+        load_config(cfg)
+
+
+def test_vad_silence_threshold_out_of_range(tmp_path: Path) -> None:
+    """vad.silence_threshold outside 0.0-1.0 raises ValueError."""
+    cfg = tmp_path / "config.toml"
+    cfg.write_text("[whisper]\nmanaged = false\n[vad]\nsilence_threshold = -0.1\n")
+    with pytest.raises(ValueError, match="vad.silence_threshold must be between"):
+        load_config(cfg)
+
+
+def test_vad_silence_duration_zero(tmp_path: Path) -> None:
+    """vad.silence_duration <= 0 raises ValueError."""
+    cfg = tmp_path / "config.toml"
+    cfg.write_text("[whisper]\nmanaged = false\n[vad]\nsilence_duration = 0.0\n")
+    with pytest.raises(ValueError, match="vad.silence_duration must be > 0"):
+        load_config(cfg)
+
+
+def test_vad_model_path_missing(tmp_path: Path) -> None:
+    """vad.enabled with non-existent model_path raises ValueError."""
+    cfg = tmp_path / "config.toml"
+    cfg.write_text(
+        '[whisper]\nmanaged = false\n[vad]\nenabled = true\n'
+        'model_path = "/nonexistent/vad.bin"\n'
+    )
+    with pytest.raises(ValueError, match="vad.model_path not found"):
+        load_config(cfg)
+
+
+def test_vad_model_path_exists(tmp_path: Path) -> None:
+    """vad.enabled with existing model_path passes validation."""
+    model = tmp_path / "vad.bin"
+    model.write_bytes(b"fake")
+    cfg = tmp_path / "config.toml"
+    model_str = str(model).replace("\\", "/")
+    cfg.write_text(
+        f'[whisper]\nmanaged = false\n[vad]\nenabled = true\n'
+        f'model_path = "{model_str}"\n'
+    )
+    config = load_config(cfg)
+    assert config.vad.enabled is True
+
+
+def test_vad_config_roundtrip(tmp_path: Path) -> None:
+    """VAD config survives to_toml_dict -> build_config round-trip."""
+    from samwhispers.config import build_config
+    from samwhispers.webconfig import to_toml_dict
+
+    cfg = tmp_path / "config.toml"
+    cfg.write_text(
+        "[whisper]\nmanaged = false\n[vad]\nenabled = true\nthreshold = 0.7\n"
+        "silence_duration = 5.0\n"
+    )
+    config = load_config(cfg)
+    d = to_toml_dict(config)
+    rebuilt = build_config(d, validate=False)
+    assert rebuilt.vad.enabled is True
+    assert rebuilt.vad.threshold == 0.7
+    assert rebuilt.vad.silence_duration == 5.0

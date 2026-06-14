@@ -61,6 +61,8 @@ class AudioRecorder:
         max_duration: float = 300.0,
         on_auto_stop: Callable[[bytes], None] | None = None,
         on_level: Callable[[float], None] | None = None,
+        silence_threshold: float = 0.0,
+        silence_duration: float = 0.0,
     ) -> None:
         self._sample_rate = sample_rate
         self._max_duration = max_duration
@@ -72,6 +74,11 @@ class AudioRecorder:
         self._stream: Any = None
         self._timer: threading.Timer | None = None
         self._error: bool = False
+        # Client-side VAD
+        self._silence_threshold = silence_threshold
+        self._silence_duration = silence_duration
+        self._silence_start: float | None = None
+        self._vad_fired = False
 
     def _callback(self, indata: np.ndarray, frames: int, time_info: object, status: object) -> None:
         if status:
@@ -88,6 +95,29 @@ class AudioRecorder:
                 self._on_level(compute_level(indata[:, 0]))
             except Exception:
                 log.debug("Level callback failed", exc_info=True)
+        # Client-side VAD: track silence duration (toggle mode only)
+        if recording and self._silence_threshold > 0 and self._silence_duration > 0:
+            level = compute_level(indata[:, 0])
+            if level < self._silence_threshold:
+                if self._silence_start is None:
+                    self._silence_start = time.monotonic()
+                elif (
+                    time.monotonic() - self._silence_start >= self._silence_duration
+                    and not self._vad_fired
+                ):
+                    self._vad_fired = True
+                    # Defer stop to avoid deadlock (callback holds _lock)
+                    threading.Timer(0, self._trigger_vad_stop).start()
+            else:
+                self._silence_start = None
+
+    def _trigger_vad_stop(self) -> None:
+        """Cancel max-duration timer and auto-stop after silence detection."""
+        if self._timer:
+            self._timer.cancel()
+            self._timer = None
+        log.info("Silence detected (%.1fs), auto-stopping", self._silence_duration)
+        self._auto_stop()
 
     def start(self) -> None:
         """Open audio stream and begin recording."""

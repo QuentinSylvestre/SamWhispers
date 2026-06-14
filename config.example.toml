@@ -109,3 +109,17 @@ window_seconds = 30.0       # Max audio window per tick (caps CPU cost for long 
 model = "base"              # faster-whisper model name or path (faster_whisper engine)
 compute_type = "int8"       # faster-whisper compute type (int8, float16, ...)
 # The faster_whisper engine needs: pip install samwhispers[faster-whisper]
+
+[vad]
+enabled = false             # Enable Voice Activity Detection
+model_path = ""             # Path to Silero VAD ONNX model (downloaded by samwhispers-setup)
+# Server-side VAD (trims silence before decoding)
+threshold = 0.5             # Speech probability threshold (0.0-1.0)
+min_speech_duration_ms = 250
+min_silence_duration_ms = 100
+max_speech_duration_s = 0.0 # 0 = unlimited
+speech_pad_ms = 30
+samples_overlap = 0.1
+# Client-side VAD (auto-stop in toggle mode after silence)
+silence_threshold = 0.01    # Audio level below this = silence (0.0-1.0)
+silence_duration = 10.0     # Seconds of silence before auto-stop (toggle mode only)

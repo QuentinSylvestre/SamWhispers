@@ -75,3 +75,96 @@ def test_auto_stop_no_callback_no_error() -> None:
     recorder._recording = True
     recorder._frames = [np.zeros(8000, dtype=np.float32)]
     recorder._auto_stop()  # Should not raise
+
+
+
+# --- Client-side VAD (silence detection) tests ---
+
+
+def test_silence_detection_fires_auto_stop() -> None:
+    """Silence exceeding duration fires on_auto_stop callback."""
+    import time
+
+    received: list[bytes] = []
+    recorder = AudioRecorder(
+        on_auto_stop=lambda b: received.append(b),
+        silence_threshold=0.05,
+        silence_duration=0.1,  # 100ms for fast test
+    )
+    # Manually set recording state and add frames
+    recorder._recording = True
+    recorder._frames = [np.zeros(8000, dtype=np.float32)]
+
+    # Simulate silent callbacks
+    silent_frame = np.zeros((512, 1), dtype=np.float32)
+    recorder._callback(silent_frame, 512, None, None)
+    # Wait for silence duration
+    time.sleep(0.15)
+    recorder._callback(silent_frame, 512, None, None)
+
+    # Wait for Timer(0) to fire
+    time.sleep(0.1)
+    assert len(received) == 1
+    assert len(received[0]) > 44  # WAV header + data
+
+
+def test_silence_resets_on_loud_frame() -> None:
+    """Loud frames reset the silence start time."""
+    recorder = AudioRecorder(
+        silence_threshold=0.05,
+        silence_duration=0.1,
+    )
+    recorder._recording = True
+    recorder._frames = [np.zeros(8000, dtype=np.float32)]
+
+    # Silent frame sets _silence_start
+    silent_frame = np.zeros((512, 1), dtype=np.float32)
+    recorder._callback(silent_frame, 512, None, None)
+    assert recorder._silence_start is not None
+
+    # Loud frame resets it
+    loud_frame = np.full((512, 1), 0.5, dtype=np.float32)
+    recorder._callback(loud_frame, 512, None, None)
+    assert recorder._silence_start is None
+
+
+def test_no_silence_tracking_when_disabled() -> None:
+    """No silence tracking when threshold/duration are 0."""
+    recorder = AudioRecorder(silence_threshold=0.0, silence_duration=0.0)
+    recorder._recording = True
+    recorder._frames = [np.zeros(8000, dtype=np.float32)]
+
+    silent_frame = np.zeros((512, 1), dtype=np.float32)
+    recorder._callback(silent_frame, 512, None, None)
+    assert recorder._silence_start is None
+
+
+def test_vad_fired_prevents_double_stop() -> None:
+    """Once _vad_fired is True, silence detection doesn't fire again."""
+    import time
+
+    received: list[bytes] = []
+    recorder = AudioRecorder(
+        on_auto_stop=lambda b: received.append(b),
+        silence_threshold=0.05,
+        silence_duration=0.05,
+    )
+    recorder._recording = True
+    recorder._frames = [np.zeros(8000, dtype=np.float32)]
+
+    silent_frame = np.zeros((512, 1), dtype=np.float32)
+    recorder._callback(silent_frame, 512, None, None)
+    time.sleep(0.08)
+    recorder._callback(silent_frame, 512, None, None)
+    time.sleep(0.1)
+
+    # Re-start a recording after VAD fired
+    recorder._recording = True
+    recorder._frames = [np.zeros(8000, dtype=np.float32)]
+    recorder._callback(silent_frame, 512, None, None)
+    time.sleep(0.08)
+    recorder._callback(silent_frame, 512, None, None)
+    time.sleep(0.1)
+
+    # First VAD fires, second doesn't because _vad_fired is still True
+    assert len(received) == 1
