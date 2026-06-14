@@ -488,16 +488,19 @@ data["vad"] = asdict(config.vad)
 - `tests/test_audio.py`: Test silence detection — simulated frames below threshold for >duration triggers auto-stop; frames above threshold reset timer.
 
 **Exit criteria**:
-- [ ] `VadConfig` dataclass with all server-side and client-side fields
-- [ ] `_build_cmd()` conditionally appends VAD flags when enabled
-- [ ] `AudioRecorder` tracks silence and fires auto-stop in toggle mode
-- [ ] Client-side VAD is inactive in hold mode
-- [ ] Client-side VAD works during streaming toggle sessions
-- [ ] VAD model downloadable via `samwhispers-setup`
-- [ ] Whisper-server restart triggered when server-side VAD fields change
-- [ ] Config round-trip: `build_config()` + `to_toml_dict()` handles VAD section
-- [ ] Tests pass for config, server flags, and silence detection
-- [ ] Update README.md VAD section with setup and config
+- [x] `VadConfig` dataclass with all server-side and client-side fields
+- [x] `_build_cmd()` conditionally appends VAD flags when enabled
+- [x] `AudioRecorder` tracks silence and fires auto-stop in toggle mode
+- [x] Client-side VAD is inactive in hold mode
+- [x] Client-side VAD works during streaming toggle sessions
+- [x] VAD model downloadable via `samwhispers-setup`
+- [x] Whisper-server restart triggered when server-side VAD fields change
+- [x] Config round-trip: `build_config()` + `to_toml_dict()` handles VAD section
+- [x] Tests pass for config, server flags, and silence detection
+- [x] Update README.md VAD section with setup and config
+
+**Implementation (2026-06-14, code: 71a5a7a)**
+Added full VAD support. `VadConfig` dataclass carries server-side fields (threshold, speech/silence durations, pad, overlap) and client-side fields (silence_threshold, silence_duration). `WhisperServerManager._build_cmd()` conditionally appends `--vad`, `-vm`, `-vt` and related flags. `AudioRecorder` tracks silence in `_callback` with deferred `Timer(0)` for stop (deadlock prevention) and `_vad_fired` flag + timer cancellation (race prevention). Client-side VAD active only in toggle mode. Supervisor passes `VadConfig` to `WhisperServerManager` for the default deployment path. `webserver.py` adds `_vad_server_changed()` for whisper-server restart gating. `bootstrap.py` downloads Silero VAD model from huggingface.co/ggml-org/whisper-vad. Per-phase review deferred to Step 9: high-risk concurrency concerns were pre-addressed in plan review (deadlock, race, supervisor path all resolved at plan-time).
 
 ### Phase 3: Web UI — snippets and VAD pages [QA]
 
