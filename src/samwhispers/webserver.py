@@ -150,6 +150,17 @@ def create_app(
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         return {"deleted": True, "path": str(deleted)}
 
+    @app.post("/api/vad/download")
+    def download_vad_model() -> dict[str, Any]:
+        from samwhispers.bootstrap import ensure_vad_model
+
+        models_dir = Path(current_app_config(config_path).whisper.model_path).parent
+        try:
+            path = ensure_vad_model(models_dir)
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+        return {"downloaded": True, "path": str(path)}
+
     @app.get("/api/status")
     def status() -> dict[str, Any]:
         return {"state": supervisor.state.value if supervisor else "unknown"}

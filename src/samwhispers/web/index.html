@@ -151,6 +151,8 @@ button.primary:disabled { opacity: .5; cursor: default; }
       <a class="nav-item" data-page="whisper"><span class="nav-icon">🎙</span>Whisper engine</a>
       <a class="nav-item" data-page="ai"><span class="nav-icon">✦</span>AI processing</a>
       <a class="nav-item" data-page="output"><span class="nav-icon">⎘</span>Output &amp; text</a>
+      <a class="nav-item" data-page="snippets"><span class="nav-icon">✂</span>Snippets</a>
+      <a class="nav-item" data-page="vad"><span class="nav-icon">◉</span>VAD</a>
       <a class="nav-item" data-page="streaming"><span class="nav-icon">⟳</span>Streaming</a>
     </div>
     <div class="nav-group">
@@ -346,6 +348,82 @@ button.primary:disabled { opacity: .5; cursor: default; }
   </div>
 </div>
 
+<!-- Snippets -->
+<div class="page" id="page-snippets">
+  <h2 class="page-title">Snippets</h2>
+  <p class="page-desc">Trigger phrases that expand to saved text (voice text expansion).</p>
+
+  <div class="card">
+    <h3>Settings</h3>
+    <div class="field"><label>Enabled</label><input type="checkbox" data-path="snippets.enabled" data-type="bool" /></div>
+    <div class="field"><label>Add to vocabulary</label><input type="checkbox" data-path="snippets.bias_recognition" data-type="bool" /></div>
+    <div class="hint">Adds snippet triggers to Whisper vocabulary for better recognition</div>
+  </div>
+
+  <div class="card">
+    <h3>Trigger &rarr; Expansion</h3>
+    <table id="snippetsTable" style="width:100%;border-collapse:collapse">
+      <thead><tr>
+        <th style="text-align:left;padding:6px 8px;border-bottom:1px solid var(--border)">Trigger</th>
+        <th style="text-align:left;padding:6px 8px;border-bottom:1px solid var(--border)">Expansion</th>
+        <th style="width:40px"></th>
+      </tr></thead>
+      <tbody id="snippetsBody"></tbody>
+    </table>
+    <button id="btnAddSnippet" style="margin-top:10px">+ Add snippet</button>
+  </div>
+
+  <div class="savebar">
+    <button class="primary" id="btnSaveSnippets">Save</button>
+    <span class="hint">The worker restarts automatically when a change requires it.</span>
+  </div>
+</div>
+
+<!-- VAD -->
+<div class="page" id="page-vad">
+  <h2 class="page-title">Voice Activity Detection</h2>
+  <p class="page-desc">Trim silence and auto-stop recording on silence in toggle mode.</p>
+
+  <div class="card">
+    <h3>General</h3>
+    <div class="field"><label>Enabled</label><input type="checkbox" data-path="vad.enabled" data-type="bool" /></div>
+    <div class="field"><label>Model path</label>
+      <div class="stack">
+        <select id="vadModelSelect"></select>
+        <input type="text" data-path="vad.model_path" placeholder="path to VAD model" />
+      </div>
+    </div>
+    <button id="btnDownloadVad" style="margin-top:8px">Download VAD model</button>
+    <span class="hint" id="vadDlStatus"></span>
+  </div>
+
+  <div class="card">
+    <h3>Server-side (trims silence before decoding)</h3>
+    <div class="field"><label>Threshold</label><input type="number" step="0.01" min="0" max="1" data-path="vad.threshold" data-type="number" /></div>
+    <div class="hint">Speech probability threshold (0.0 - 1.0)</div>
+    <div class="field"><label>Min speech duration (ms)</label><input type="number" data-path="vad.min_speech_duration_ms" data-type="number" /></div>
+    <div class="field"><label>Min silence duration (ms)</label><input type="number" data-path="vad.min_silence_duration_ms" data-type="number" /></div>
+    <div class="field"><label>Max speech duration (s)</label><input type="number" step="any" data-path="vad.max_speech_duration_s" data-type="number" /></div>
+    <div class="hint">0 = unlimited</div>
+    <div class="field"><label>Speech pad (ms)</label><input type="number" data-path="vad.speech_pad_ms" data-type="number" /></div>
+    <div class="field"><label>Samples overlap</label><input type="number" step="0.01" data-path="vad.samples_overlap" data-type="number" /></div>
+  </div>
+
+  <div class="card">
+    <h3>Client-side auto-stop</h3>
+    <p class="hint" style="margin-bottom:10px">Auto-stops recording after silence. Only applies in toggle mode.</p>
+    <div class="field"><label>Silence threshold</label><input type="number" step="0.001" min="0" max="1" data-path="vad.silence_threshold" data-type="number" /></div>
+    <div class="hint">Audio level below this is considered silence (0.0 - 1.0)</div>
+    <div class="field"><label>Silence duration (s)</label><input type="number" step="any" data-path="vad.silence_duration" data-type="number" /></div>
+    <div class="hint">Seconds of continuous silence before auto-stop</div>
+  </div>
+
+  <div class="savebar">
+    <button class="primary" id="btnSaveVad">Save</button>
+    <span class="hint">The worker restarts automatically when a change requires it.</span>
+  </div>
+</div>
+
 <!-- History -->
 <div class="page" id="page-history">
   <h2 class="page-title">History</h2>
@@ -470,6 +548,7 @@ function render() {
     else el.value = val == null ? "" : val;
   }
   applyVisibility();
+  renderSnippets();
 }
 
 function populateActiveModelSelect() {
@@ -516,6 +595,7 @@ async function loadModels() {
   populateActiveModelSelect();
   for (const el of document.querySelectorAll("[data-models]")) populateModelSelect(el);
   renderModelManager();
+  populateVadModels();
 }
 
 // --- Model Manager ---
@@ -650,6 +730,7 @@ function collect() {
     else val = el.value;
     if (val !== null) setPath(state.config, el.dataset.path, val);
   }
+  collectSnippets();
 }
 
 async function save() {
@@ -823,6 +904,74 @@ document.getElementById('btnLogsErrors').addEventListener('click', () => {
   document.getElementById('btnLogsFilter').classList.remove('active');
   renderLogs();
 });
+
+// --- Snippets editor ---
+function renderSnippets() {
+  const body = document.getElementById("snippetsBody");
+  body.innerHTML = "";
+  const items = (state.config && state.config.snippets && state.config.snippets.items) || {};
+  for (const [trigger, expansion] of Object.entries(items)) addSnippetRow(trigger, expansion);
+}
+
+function addSnippetRow(trigger, expansion) {
+  const body = document.getElementById("snippetsBody");
+  const tr = document.createElement("tr");
+  tr.innerHTML =
+    `<td style="padding:4px"><input type="text" class="sn-trigger" value="${esc(trigger || "")}" placeholder="trigger phrase" /></td>` +
+    `<td style="padding:4px"><input type="text" class="sn-expansion" value="${esc(expansion || "")}" placeholder="expansion text" /></td>` +
+    `<td style="padding:4px"><button class="sn-del" title="Delete">&times;</button></td>`;
+  tr.querySelector(".sn-del").addEventListener("click", () => tr.remove());
+  body.appendChild(tr);
+}
+
+function collectSnippets() {
+  const items = {};
+  for (const row of document.querySelectorAll("#snippetsBody tr")) {
+    const trigger = row.querySelector(".sn-trigger").value.trim();
+    const expansion = row.querySelector(".sn-expansion").value;
+    if (trigger) items[trigger] = expansion;
+  }
+  if (!state.config.snippets) state.config.snippets = {};
+  state.config.snippets.items = items;
+}
+
+document.getElementById("btnAddSnippet").addEventListener("click", () => addSnippetRow("", ""));
+document.getElementById("btnSaveSnippets").addEventListener("click", () => { collectSnippets(); save(); });
+
+// --- VAD model selector ---
+function populateVadModels() {
+  const el = document.getElementById("vadModelSelect");
+  if (!el || !state.models) return;
+  const target = document.querySelector('[data-path="vad.model_path"]');
+  const cur = target ? target.value : "";
+  el.innerHTML = "";
+  el.add(new Option("\u2014 select model \u2014", ""));
+  const whisperList = state.models.whisper || [];
+  for (const item of whisperList) {
+    if (item.label && item.label.includes("silero")) el.add(new Option(item.label, item.path));
+  }
+  // Also check in same dir for VAD models not in the whisper list
+  if (cur) el.value = cur;
+}
+
+document.getElementById("vadModelSelect").addEventListener("change", (e) => {
+  if (e.target.value) document.querySelector('[data-path="vad.model_path"]').value = e.target.value;
+});
+
+document.getElementById("btnDownloadVad").addEventListener("click", async () => {
+  const out = document.getElementById("vadDlStatus");
+  out.textContent = "Downloading VAD model\u2026";
+  try {
+    await api("POST", "/api/vad/download");
+    out.textContent = "Downloaded. Refreshing\u2026";
+    await loadModels();
+    populateVadModels();
+    out.textContent = "VAD model ready.";
+    toast("VAD model downloaded.", "ok");
+  } catch (e) { out.textContent = "Error: " + e.message; }
+});
+
+document.getElementById("btnSaveVad").addEventListener("click", save);
 
 // --- Boot ---
 loadAll().catch(e => toast("Failed to load config: " + e.message, "err"));
