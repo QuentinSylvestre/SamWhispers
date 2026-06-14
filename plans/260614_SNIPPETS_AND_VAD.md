@@ -1,7 +1,7 @@
 # Snippets & Voice Activity Detection
 
 > **Date**: 2026-06-14
-> **Status**: Draft
+> **Status**: In Progress
 > **Scope**: Add voice text-replacement snippets and VAD (server-side + client-side auto-stop)
 > **Estimated effort**: 2-3 days
 
@@ -281,14 +281,17 @@ Same insertion in `_inject_final_paragraph()` (streaming preview path).
 - `tests/test_app.py`: Test that snippet expansion runs in batch pipeline.
 
 **Exit criteria**:
-- [ ] `SnippetConfig` dataclass with `items` and `bias_recognition` fields
-- [ ] `SnippetExpander` class with `expand()` method
-- [ ] Snippet expansion wired into batch pipeline (after normalize, before cleanup)
-- [ ] Snippet expansion wired into streaming preview pipeline
-- [ ] `bias_recognition` adds snippet triggers to vocabulary prompt
-- [ ] Config round-trip: `build_config()` + `to_toml_dict()` handles snippets
-- [ ] Tests pass for expander, config parsing, and pipeline integration
-- [ ] Update README.md Snippets section with config format and usage
+- [x] `SnippetConfig` dataclass with `items` and `bias_recognition` fields
+- [x] `SnippetExpander` class with `expand()` method
+- [x] Snippet expansion wired into batch pipeline (after normalize, before cleanup)
+- [x] Snippet expansion wired into streaming preview pipeline
+- [x] `bias_recognition` adds snippet triggers to vocabulary prompt
+- [x] Config round-trip: `build_config()` + `to_toml_dict()` handles snippets
+- [x] Tests pass for expander, config parsing, and pipeline integration
+- [x] Update README.md Snippets section with config format and usage
+
+**Implementation (2026-06-14, code: c2c180a, fix: 107a0bd)**
+Added the snippet expansion feature to SamWhispers. A new `SnippetConfig` dataclass (with `items` dict, `bias_recognition` bool, `enabled` bool) is parsed from a nested `[snippets.items]` TOML sub-table, validated (rejecting empty triggers/expansions), and round-tripped through `to_toml_dict()`. The `SnippetExpander` class in `postprocess.py` performs exact-phrase, case-insensitive, word-boundary-anchored matching with longest-first ordering. It is wired into both the batch pipeline (`_process_recording`) and streaming preview pipeline (`_inject_final_paragraph`) — after `normalize()` and before `cleanup()`. When `bias_recognition` is enabled, snippet trigger keys are added to the Whisper vocabulary prompt via `_build_prompt()`. The `config.example.toml` includes the new section, and README.md documents the feature with setup, behavior, and tips. Post-review fix: `pattern.sub(expansion, text)` → `pattern.sub(lambda m: expansion, text)` to prevent `re.sub` template interpretation of backslashes/groups in expansion text.
 
 ### Phase 2: VAD — server-side flags, client-side auto-stop, model management [QA]
 
@@ -614,3 +617,15 @@ Manual verification:
 | 13 | Low | Phases share config.py/app.py — parallel annotation removed | Resolved — `[P:N]` annotations removed; phases are sequential |
 | 14 | Low | `config.example.toml` not in file scopes | Resolved — added to both Phase 1 and 2 file scopes |
 | 15 | Low | VAD page hides client-side section when mode≠toggle | Noted — show greyed-out (implementer UX decision) |
+
+### 2026-06-14 -- Implementation Review (after Phase 1, persona: Senior engineer)
+
+Implementation health: Yellow → Green (after fix).
+4 findings (1 High, 0 Medium, 3 Low). 1 auto-resolved.
+
+| # | Severity | Finding | Resolution |
+|---|---|---|---|
+| 1 | High | `pattern.sub(expansion, text)` treats expansion as re template — backslashes crash | Fixed — use `lambda m: expansion` (commit 107a0bd) |
+| 2 | Low | No test for streaming-preview pipeline path with snippets | Noted — covered by Step 9 holistic review |
+| 3 | Low | No test for `snippets.enabled = False` | Noted — covered by Step 9 |
+| 4 | Low | No test for regex metacharacters in trigger | Noted — covered by Step 9 |
