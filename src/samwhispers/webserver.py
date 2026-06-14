@@ -87,6 +87,8 @@ def create_app(
         )
 
         languages = sorted(WHISPER_LANGUAGES, key=lambda c: (c != "auto", c))
+        import importlib.util
+
         return {
             "languages": [{"code": c, "name": LANGUAGE_NAMES.get(c, c)} for c in languages],
             "modes": list(_VALID_MODES),
@@ -94,6 +96,7 @@ def create_app(
             "trailing": list(_VALID_TRAILING),
             "stream_engines": list(_VALID_STREAM_ENGINES),
             "stream_modes": list(_VALID_STREAM_MODES),
+            "faster_whisper_available": importlib.util.find_spec("faster_whisper") is not None,
         }
 
     @app.get("/api/models")

@@ -140,7 +140,7 @@ class AudioRecorder:
             stream.stop()
             with self._lock:
                 self._stream = stream
-            log.debug("Audio stream pre-warmed")
+            log.info("Audio stream pre-warmed")
         except Exception:
             log.debug("Audio stream pre-warm failed (will open on first use)", exc_info=True)
 

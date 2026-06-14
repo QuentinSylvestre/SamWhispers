@@ -4,6 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>SamWhispers</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><circle cx='32' cy='32' r='28' fill='%234caf50'/></svg>" />
 <style>
 :root {
   --bg: #0f1115; --surface: #181b22; --surface2: #1e222b; --border: #2a2f3a;
@@ -41,7 +42,7 @@ aside { background: var(--surface); border-right: 1px solid var(--border);
   transition: background .1s, color .1s; text-decoration: none; }
 .nav-item:hover { background: var(--surface2); color: var(--fg); }
 .nav-item.active { background: color-mix(in srgb, var(--accent2) 15%, transparent);
-  color: var(--fg); font-weight: 500; }
+  color: var(--fg); font-weight: 500; border-left: 3px solid var(--accent2); }
 .nav-icon { width: 18px; text-align: center; flex-shrink: 0; }
 
 /* Content */
@@ -260,6 +261,7 @@ button.primary:disabled { opacity: .5; cursor: default; }
   <div class="card">
     <h3>AI Cleanup</h3>
     <div class="field"><label>Enabled</label><input type="checkbox" data-path="cleanup.enabled" data-type="bool" /></div>
+    <div class="hint" data-show-when="cleanup.enabled=false">Enable to configure provider and API key</div>
     <div class="field" data-show-when="cleanup.enabled=true"><label>Provider</label><select data-path="cleanup.provider" data-meta="providers"></select></div>
     <div class="field" data-show-when="cleanup.enabled=true&cleanup.provider=openai"><label>OpenAI API key</label><input type="password" data-path="cleanup.openai.api_key" /></div>
     <div class="field" data-show-when="cleanup.enabled=true&cleanup.provider=openai"><label>OpenAI model</label><input type="text" data-path="cleanup.openai.model" /></div>
@@ -270,8 +272,8 @@ button.primary:disabled { opacity: .5; cursor: default; }
   <div class="card">
     <h3>Translation</h3>
     <div class="field"><label>Enabled</label><input type="checkbox" data-path="translation.enabled" data-type="bool" /></div>
+    <div class="hint" data-show-when="translation.enabled=false">Uses the AI provider and keys configured above</div>
     <div class="field" data-show-when="translation.enabled=true"><label>Target language</label><select data-path="translation.target_language" data-meta="languages" data-exclude-auto="1"></select></div>
-    <div class="hint">Uses the AI provider and keys configured above</div>
   </div>
 
   <div class="savebar">
@@ -333,14 +335,7 @@ button.primary:disabled { opacity: .5; cursor: default; }
       </div>
     </div>
     <div class="field" data-show-when="streaming.enabled=true&streaming.engine=faster_whisper"><label>Compute type</label><input type="text" data-path="streaming.compute_type" /></div>
-    <div class="hint">e.g. int8, int8_float16, float16</div>
-  </div>
-
-  <div class="card">
-    <h3>History retention</h3>
-    <div class="field"><label>Save transcriptions</label><input type="checkbox" data-path="history.enabled" data-type="bool" /></div>
-    <div class="field"><label>Max entries</label><input type="number" data-path="history.max_entries" data-type="number" /></div>
-    <div class="hint">0 = unlimited</div>
+    <div class="hint" data-show-when="streaming.enabled=true&streaming.engine=faster_whisper">e.g. int8, int8_float16, float16</div>
   </div>
 
   <div class="savebar">
@@ -388,14 +383,16 @@ button.primary:disabled { opacity: .5; cursor: default; }
   <div class="card">
     <h3>General</h3>
     <div class="field"><label>Enabled</label><input type="checkbox" data-path="vad.enabled" data-type="bool" /></div>
-    <div class="field"><label>Model path</label>
+    <div class="field"><label>Model</label>
       <div class="stack">
         <select id="vadModelSelect"></select>
         <input type="text" data-path="vad.model_path" placeholder="path to VAD model" />
       </div>
     </div>
-    <button id="btnDownloadVad" style="margin-top:8px">Download VAD model</button>
-    <span class="hint" id="vadDlStatus"></span>
+    <div style="border-top:1px solid var(--border);margin-top:14px;padding-top:14px">
+      <div id="vadModelList" class="model-list-scroll"></div>
+      <span class="hint" id="vadDlStatus"></span>
+    </div>
   </div>
 
   <div class="card">
@@ -429,6 +426,12 @@ button.primary:disabled { opacity: .5; cursor: default; }
 <div class="page" id="page-history">
   <h2 class="page-title">History</h2>
   <p class="page-desc">Browse and search your transcription history.</p>
+  <div class="card">
+    <h3>Retention</h3>
+    <div class="field"><label>Save transcriptions</label><input type="checkbox" data-path="history.enabled" data-type="bool" /></div>
+    <div class="field"><label>Max entries</label><input type="number" data-path="history.max_entries" data-type="number" /></div>
+    <div class="hint">0 = unlimited</div>
+  </div>
   <div class="histbar">
     <input type="text" id="histSearch" placeholder="Search transcriptions…" />
     <button id="btnHistRefresh">Refresh</button>
@@ -486,7 +489,7 @@ function toast(msg, kind) {
   const t = document.getElementById("toast");
   t.textContent = msg;
   t.className = `toast show ${kind || ""}`;
-  setTimeout(() => (t.className = "toast"), 3500);
+  setTimeout(() => (t.className = "toast"), kind === "err" ? 4000 : 2000);
 }
 
 // --- Navigation ---
@@ -939,37 +942,62 @@ function collectSnippets() {
 document.getElementById("btnAddSnippet").addEventListener("click", () => addSnippetRow("", ""));
 document.getElementById("btnSaveSnippets").addEventListener("click", () => { collectSnippets(); save(); });
 
-// --- VAD model selector ---
+// --- VAD model selector (aligned with whisper model manager style) ---
+const VAD_MODEL_NAME = "silero-v6.2.0";
+const VAD_MODEL_FILE = "ggml-silero-v6.2.0.bin";
+
 function populateVadModels() {
   const el = document.getElementById("vadModelSelect");
+  const list = document.getElementById("vadModelList");
   if (!el || !state.models) return;
   const target = document.querySelector('[data-path="vad.model_path"]');
   const cur = target ? target.value : "";
   el.innerHTML = "";
   el.add(new Option("\u2014 select model \u2014", ""));
   const whisperList = state.models.whisper || [];
-  for (const item of whisperList) {
-    if (item.label && item.label.includes("silero")) el.add(new Option(item.label, item.path));
-  }
-  // Also check in same dir for VAD models not in the whisper list
+  const vadModels = whisperList.filter(item => item.label && item.label.includes("silero"));
+  for (const item of vadModels) el.add(new Option(item.label, item.path));
   if (cur) el.value = cur;
+
+  // Render model-manager-style list
+  if (!list) return;
+  const downloaded = vadModels.length > 0;
+  list.innerHTML = "";
+  const row = document.createElement("div");
+  row.className = "model-row";
+  row.innerHTML =
+    `<span class="name">${VAD_MODEL_FILE}</span>` +
+    `<span class="info-icon" title="~860 KB — Silero VAD v6.2.0 (GGML format)">&#9432;</span>` +
+    `<span class="spacer"></span>` +
+    (downloaded ? `<span class="tag">downloaded</span>` : "") +
+    `<button class="dl-btn" title="Download" ${downloaded ? "disabled" : ""}>&#x2B07;</button>` +
+    `<button class="del-btn" title="Delete" ${downloaded ? "" : "disabled"}>&#x1F5D1;</button>`;
+  row.querySelector(".dl-btn").addEventListener("click", downloadVadModel);
+  row.querySelector(".del-btn").addEventListener("click", deleteVadModel);
+  list.appendChild(row);
 }
 
-document.getElementById("vadModelSelect").addEventListener("change", (e) => {
-  if (e.target.value) document.querySelector('[data-path="vad.model_path"]').value = e.target.value;
-});
-
-document.getElementById("btnDownloadVad").addEventListener("click", async () => {
+async function downloadVadModel() {
   const out = document.getElementById("vadDlStatus");
   out.textContent = "Downloading VAD model\u2026";
   try {
     await api("POST", "/api/vad/download");
-    out.textContent = "Downloaded. Refreshing\u2026";
+    out.textContent = "";
     await loadModels();
-    populateVadModels();
-    out.textContent = "VAD model ready.";
     toast("VAD model downloaded.", "ok");
   } catch (e) { out.textContent = "Error: " + e.message; }
+}
+
+async function deleteVadModel() {
+  try {
+    await api("DELETE", "/api/vad/model");
+    toast("VAD model deleted.", "ok");
+    await loadModels();
+  } catch (e) { toast("Delete failed: " + e.message, "err"); }
+}
+
+document.getElementById("vadModelSelect").addEventListener("change", (e) => {
+  if (e.target.value) document.querySelector('[data-path="vad.model_path"]').value = e.target.value;
 });
 
 document.getElementById("btnSaveVad").addEventListener("click", save);
@@ -977,8 +1005,141 @@ document.getElementById("btnSaveVad").addEventListener("click", save);
 // --- Boot ---
 loadAll().catch(e => toast("Failed to load config: " + e.message, "err"));
 loadStatus();
-setInterval(loadStatus, 3000);
-setInterval(() => { if (document.getElementById('page-logs').classList.contains('active')) loadLogs(); }, 3000);
+
+// #6 Smart status polling: 5s stable, 2s during transitions, pause when hidden
+let statusInterval = 5000;
+let statusTimer = setInterval(loadStatus, statusInterval);
+let inTransition = false;
+
+function setTransitionPolling() {
+  inTransition = true;
+  clearInterval(statusTimer);
+  statusTimer = setInterval(loadStatus, 2000);
+  setTimeout(() => { inTransition = false; clearInterval(statusTimer); statusTimer = setInterval(loadStatus, 5000); }, 15000);
+}
+
+document.addEventListener("visibilitychange", () => {
+  clearInterval(statusTimer);
+  if (!document.hidden) statusTimer = setInterval(loadStatus, inTransition ? 2000 : 5000);
+});
+
+// Hook transitions into restart/save actions
+const origSave = save;
+save = async function() { await origSave(); setTransitionPolling(); };
+
+setInterval(() => { if (document.getElementById('page-logs').classList.contains('active') && !document.hidden) loadLogs(); }, 5000);
+
+// #5 Grey out faster_whisper when unavailable
+async function checkFasterWhisperAvailable() {
+  try {
+    const meta = await api("GET", "/api/meta");
+    if (meta.faster_whisper_available === false) {
+      for (const opt of document.querySelectorAll('select[data-path="streaming.engine"] option')) {
+        if (opt.value === "faster_whisper") { opt.textContent = "faster_whisper (not installed)"; opt.disabled = true; }
+      }
+    }
+  } catch (_) {}
+}
+
+// #10 Bulk delete for history
+function addBulkDeleteUI() {
+  const bar = document.querySelector("#page-history .histbar");
+  if (!bar || bar.querySelector("#btnHistSelectAll")) return;
+  const selBtn = document.createElement("button");
+  selBtn.id = "btnHistSelectAll";
+  selBtn.textContent = "Select all";
+  selBtn.addEventListener("click", () => {
+    const checks = document.querySelectorAll("#histList .entry-check");
+    const allChecked = [...checks].every(c => c.checked);
+    checks.forEach(c => c.checked = !allChecked);
+    selBtn.textContent = allChecked ? "Select all" : "Deselect all";
+    delSelBtn.hidden = allChecked;
+  });
+  const delSelBtn = document.createElement("button");
+  delSelBtn.id = "btnHistDelSel";
+  delSelBtn.textContent = "Delete selected";
+  delSelBtn.hidden = true;
+  delSelBtn.addEventListener("click", async () => {
+    const checks = document.querySelectorAll("#histList .entry-check:checked");
+    if (!checks.length) return;
+    if (!confirm(`Delete ${checks.length} selected entries?`)) return;
+    for (const c of checks) await api("DELETE", `/api/history/${c.dataset.id}`);
+    loadHistory(true);
+    toast(`Deleted ${checks.length} entries.`, "ok");
+  });
+  bar.appendChild(selBtn);
+  bar.appendChild(delSelBtn);
+  // Show/hide delete button on checkbox changes
+  document.getElementById("histList").addEventListener("change", (e) => {
+    if (e.target.classList.contains("entry-check")) {
+      const any = document.querySelector("#histList .entry-check:checked");
+      delSelBtn.hidden = !any;
+    }
+  });
+}
+
+// Patch renderEntry to include checkbox
+const origRenderEntry = renderEntry;
+function renderEntryWithCheckbox(e) {
+  const div = origRenderEntry(e);
+  const cb = document.createElement("input");
+  cb.type = "checkbox";
+  cb.className = "entry-check";
+  cb.dataset.id = e.id;
+  cb.style.cssText = "margin-right:8px;vertical-align:middle;";
+  div.querySelector(".meta").prepend(cb);
+  return div;
+}
+// Override
+window._renderEntry = renderEntryWithCheckbox;
+
+// Patch loadHistory to use the checkbox version
+const origLoadHistory = loadHistory;
+async function loadHistoryPatched(reset) {
+  if (reset) { histOffset = 0; document.getElementById("histList").innerHTML = ""; }
+  const q = document.getElementById("histSearch").value.trim();
+  const url = `/api/history?limit=${HIST_PAGE}&offset=${histOffset}` + (q ? `&q=${encodeURIComponent(q)}` : "");
+  const { items, total } = await api("GET", url);
+  histTotal = total;
+  const list = document.getElementById("histList");
+  if (reset && items.length === 0) list.innerHTML = `<div class="empty">No transcriptions yet.</div>`;
+  for (const e of items) list.appendChild(renderEntryWithCheckbox(e));
+  histOffset += items.length;
+  document.getElementById("btnHistMore").hidden = histOffset >= histTotal;
+}
+// Re-bind
+loadHistory = loadHistoryPatched;
+document.getElementById("histSearch").removeEventListener("input", () => {});
+document.getElementById("histSearch").addEventListener("input", () => { clearTimeout(histTimer); histTimer = setTimeout(() => loadHistory(true), 250); });
+
+addBulkDeleteUI();
+
+// #11 Auto-scroll logs when new content arrives (already partially implemented via logAutoScroll)
+// The existing renderLogs() already scrolls when logAutoScroll is true. Just make sure loadLogs
+// is called on the Logs tab poll and auto-scroll fires. Already done above.
+
+// #12 Unsaved-changes indicator (dirty state tracking)
+let cleanConfig = null;
+const origRender = render;
+render = function() { origRender(); cleanConfig = JSON.stringify(state.config); updateDirtyState(); };
+document.querySelector(".content").addEventListener("input", updateDirtyState);
+document.querySelector(".content").addEventListener("change", updateDirtyState);
+
+function updateDirtyState() {
+  if (!cleanConfig) return;
+  collect();
+  const dirty = JSON.stringify(state.config) !== cleanConfig;
+  for (const btn of document.querySelectorAll('[id^="btnSave"]')) {
+    btn.textContent = dirty ? "Save •" : "Save";
+  }
+}
+
+// Reset dirty after save
+const origSave2 = save;
+save = async function() { await origSave2(); cleanConfig = JSON.stringify(state.config); updateDirtyState(); };
+
+// Check faster_whisper availability after models load
+checkFasterWhisperAvailable();
 </script>
 </body>
 </html>
