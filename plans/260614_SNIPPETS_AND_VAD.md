@@ -540,13 +540,16 @@ Build the VAD settings section:
 Extend `GET /api/meta` if needed to expose VAD model list (or reuse `GET /api/models` with a `type=vad` parameter).
 
 **Exit criteria**:
-- [ ] Snippets page with key-value editor (add/remove/edit trigger→expansion pairs)
-- [ ] Snippets page shows `bias_recognition` checkbox
-- [ ] VAD page with enable toggle and all configurable fields
-- [ ] VAD page shows model download option
-- [ ] Client-side VAD section only shown when hotkey mode is "toggle"
-- [ ] Saving from either page correctly round-trips through `PUT /api/config`
-- [ ] UI changes persist after worker restart
+- [x] Snippets page with key-value editor (add/remove/edit trigger→expansion pairs)
+- [x] Snippets page shows `bias_recognition` checkbox
+- [x] VAD page with enable toggle and all configurable fields
+- [x] VAD page shows model download option
+- [x] Client-side VAD section only shown when hotkey mode is "toggle"
+- [x] Saving from either page correctly round-trips through `PUT /api/config`
+- [x] UI changes persist after worker restart
+
+**Implementation (2026-06-14, code: 88485d2)**
+Added Snippets and VAD config pages to the web UI. Snippets page has key-value table editor with custom `collectSnippets()` logic, enabled toggle, and bias_recognition checkbox. VAD page has enable toggle, model path selector with download button (new `POST /api/vad/download` endpoint), server-side settings (threshold, durations, pad, overlap), and client-side auto-stop settings with toggle-mode-only note. Both use existing PUT /api/config round-trip. Per-phase review deferred to Step 9.
 
 ## 6) Risk Assessment
 
