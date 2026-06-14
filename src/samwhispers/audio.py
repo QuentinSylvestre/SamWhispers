@@ -123,6 +123,27 @@ class AudioRecorder:
         log.info("Silence detected (%.1fs), auto-stopping", self._silence_duration)
         self._auto_stop()
 
+    def warm(self) -> None:
+        """Pre-open the audio stream so the first recording starts instantly."""
+        if not self._keep_stream_open:
+            return
+        import sounddevice as sd  # type: ignore[import-untyped]
+
+        try:
+            stream = sd.InputStream(
+                samplerate=self._sample_rate,
+                channels=1,
+                dtype="float32",
+                callback=self._callback,
+            )
+            stream.start()
+            stream.stop()
+            with self._lock:
+                self._stream = stream
+            log.debug("Audio stream pre-warmed")
+        except Exception:
+            log.debug("Audio stream pre-warm failed (will open on first use)", exc_info=True)
+
     def start(self) -> None:
         """Open audio stream and begin recording."""
         import sounddevice as sd  # type: ignore[import-untyped]

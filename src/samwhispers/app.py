@@ -226,6 +226,9 @@ class SamWhispers:
         """Start daemon: checks, worker thread, hotkey listener, block until shutdown."""
         self._startup_checks()
 
+        if self.config.audio.keep_stream_open:
+            self.recorder.warm()
+
         if self.overlay is not None:
             self.overlay.start()
 
