@@ -69,6 +69,7 @@ class SamWhispers:
         self.recorder = AudioRecorder(
             sample_rate=config.audio.sample_rate,
             max_duration=config.audio.max_duration,
+            keep_stream_open=config.audio.keep_stream_open,
             on_auto_stop=self._on_auto_stop,
             on_level=self._emit_level,
             silence_threshold=(

@@ -27,6 +27,7 @@ accent_prompt = "The speaker has a French accent. Soft 'h' sounds, rolled 'r', '
 [audio]
 sample_rate = 16000
 max_duration = 300.0  # seconds
+keep_stream_open = true  # Keep mic handle open between recordings for instant start (~holds mic "in use")
 
 [cleanup]
 enabled = false

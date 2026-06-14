@@ -63,6 +63,7 @@ class AudioRecorder:
         on_level: Callable[[float], None] | None = None,
         silence_threshold: float = 0.0,
         silence_duration: float = 0.0,
+        keep_stream_open: bool = True,
     ) -> None:
         self._sample_rate = sample_rate
         self._max_duration = max_duration
@@ -74,6 +75,8 @@ class AudioRecorder:
         self._stream: Any = None
         self._timer: threading.Timer | None = None
         self._error: bool = False
+        self._keep_stream_open = keep_stream_open
+        self._closed = False
         # Client-side VAD
         self._silence_threshold = silence_threshold
         self._silence_duration = silence_duration
@@ -124,33 +127,60 @@ class AudioRecorder:
         import sounddevice as sd  # type: ignore[import-untyped]
 
         with self._lock:
-            if self._recording:
+            if self._recording or self._closed:
                 return
-            self._recording = True
             self._frames = []
-            self._error = False
             self._vad_fired = False
             self._silence_start = None
 
-        # Retry once — WSLg PulseAudio can timeout on first attempt
+            # Try warm restart (stream kept open from previous recording)
+            if self._stream is not None:
+                try:
+                    self._stream.start()
+                    self._recording = True
+                    self._error = False
+                except Exception:
+                    log.warning("Warm stream restart failed, re-opening device")
+                    try:
+                        self._stream.close()
+                    except Exception:
+                        pass
+                    self._stream = None
+
+            if self._recording:
+                # Warm restart succeeded
+                self._timer = threading.Timer(self._max_duration, self._auto_stop)
+                self._timer.daemon = True
+                self._timer.start()
+                log.debug("Recording started (warm, max %.0fs)", self._max_duration)
+                return
+
+        # Full open (first time, or after warm restart failure)
         for attempt in range(2):
             try:
-                self._stream = sd.InputStream(
+                stream = sd.InputStream(
                     samplerate=self._sample_rate,
                     channels=1,
                     dtype="float32",
                     callback=self._callback,
                 )
-                self._stream.start()
+                stream.start()
                 break
             except Exception:
                 if attempt == 0:
                     log.warning("Audio stream failed, retrying in 0.5s...")
                     time.sleep(0.5)
                 else:
-                    with self._lock:
-                        self._recording = False
                     raise
+
+        with self._lock:
+            if self._closed:
+                stream.stop()
+                stream.close()
+                return
+            self._stream = stream
+            self._recording = True
+            self._error = False
 
         self._timer = threading.Timer(self._max_duration, self._auto_stop)
         self._timer.daemon = True
@@ -170,18 +200,21 @@ class AudioRecorder:
                 return b""
             self._recording = False
             stream = self._stream
-            self._stream = None
+            if not self._keep_stream_open:
+                self._stream = None
             timer = self._timer
             self._timer = None
             frames = self._frames
             self._frames = []
+            keep = self._keep_stream_open
 
         if timer:
             timer.cancel()
 
         if stream is not None:
             stream.stop()
-            stream.close()
+            if not keep:
+                stream.close()
 
         if self._error:
             log.warning("Audio errors occurred during recording, result may be partial")
@@ -206,11 +239,20 @@ class AudioRecorder:
             return self._recording
 
     def close(self) -> None:
-        """Release resources."""
+        """Release resources. Always closes stream regardless of keep_stream_open."""
         with self._lock:
+            self._closed = True
             recording = self._recording
         if recording:
             self.stop()
+        with self._lock:
+            stream = self._stream
+            self._stream = None
+        if stream is not None:
+            try:
+                stream.close()
+            except Exception:
+                pass
         if self._timer:
             self._timer.cancel()
 

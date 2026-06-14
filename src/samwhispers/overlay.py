@@ -213,6 +213,7 @@ class OverlayApp:
                 root.attributes("-transparentcolor", _TRANSPARENT_KEY)
             except Exception:
                 self._bg = _PILL
+            root.wm_attributes("-toolwindow", True)
         root.configure(bg=self._bg)
 
         self._wide = False

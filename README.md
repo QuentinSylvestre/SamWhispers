@@ -203,6 +203,7 @@ accent = ""                 # Native language code for accent biasing (see Accen
 [audio]
 sample_rate = 16000         # Must be 16000 for whisper.cpp
 max_duration = 300.0        # Max recording length in seconds
+keep_stream_open = true     # Keep mic handle open between recordings for instant start
 
 [cleanup]
 enabled = false             # Enable AI text cleanup

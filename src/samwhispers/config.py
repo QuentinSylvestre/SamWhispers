@@ -251,6 +251,7 @@ class WhisperConfig:
 class AudioConfig:
     sample_rate: int = 16000
     max_duration: float = 300.0
+    keep_stream_open: bool = True
 
 
 @dataclass

@@ -168,3 +168,107 @@ def test_vad_fired_prevents_double_stop() -> None:
 
     # First VAD fires, second doesn't because _vad_fired is still True
     assert len(received) == 1
+
+
+
+# --- Warm stream (keep_stream_open) tests ---
+
+
+def test_warm_stream_reuses_existing_stream() -> None:
+    """With keep_stream_open=True, stop() does not close the stream and next start() reuses it."""
+    from unittest.mock import MagicMock, patch
+
+    mock_stream = MagicMock()
+    recorder = AudioRecorder(keep_stream_open=True)
+
+    # Simulate first recording via full open
+    with patch("sounddevice.InputStream", return_value=mock_stream):
+        recorder.start()
+    assert recorder.is_recording()
+    recorder._frames = [np.zeros(1600, dtype=np.float32)]
+    recorder.stop()
+
+    # Stream should NOT have been closed
+    mock_stream.close.assert_not_called()
+    mock_stream.stop.assert_called_once()
+
+    # Second start should reuse the existing stream (warm restart)
+    mock_stream.reset_mock()
+    with patch("sounddevice.InputStream") as mock_ctor:
+        recorder.start()
+        mock_ctor.assert_not_called()  # No new InputStream created
+    mock_stream.start.assert_called_once()  # Existing stream restarted
+    assert recorder.is_recording()
+
+
+def test_warm_stream_fallback_on_restart_failure() -> None:
+    """If warm restart raises, falls back to full device re-open."""
+    from unittest.mock import MagicMock, patch
+
+    old_stream = MagicMock()
+    old_stream.start.side_effect = [None, OSError("device lost")]  # first start OK, second fails
+    new_stream = MagicMock()
+
+    recorder = AudioRecorder(keep_stream_open=True)
+
+    # First recording
+    with patch("sounddevice.InputStream", return_value=old_stream):
+        recorder.start()
+    recorder._frames = [np.zeros(1600, dtype=np.float32)]
+    recorder.stop()
+
+    # Second start: warm restart fails, should create new stream
+    with patch("sounddevice.InputStream", return_value=new_stream):
+        recorder.start()
+    assert recorder.is_recording()
+    old_stream.close.assert_called()  # Old stream closed on failure
+    new_stream.start.assert_called()  # New stream started
+
+
+def test_keep_stream_open_false_closes_on_stop() -> None:
+    """With keep_stream_open=False, stop() closes the stream (original behavior)."""
+    from unittest.mock import MagicMock, patch
+
+    mock_stream = MagicMock()
+    recorder = AudioRecorder(keep_stream_open=False)
+
+    with patch("sounddevice.InputStream", return_value=mock_stream):
+        recorder.start()
+    recorder._frames = [np.zeros(1600, dtype=np.float32)]
+    recorder.stop()
+
+    mock_stream.stop.assert_called_once()
+    mock_stream.close.assert_called_once()
+
+
+def test_close_always_closes_stream() -> None:
+    """close() releases the stream even when keep_stream_open=True."""
+    from unittest.mock import MagicMock, patch
+
+    mock_stream = MagicMock()
+    recorder = AudioRecorder(keep_stream_open=True)
+
+    with patch("sounddevice.InputStream", return_value=mock_stream):
+        recorder.start()
+    recorder._frames = [np.zeros(1600, dtype=np.float32)]
+    recorder.stop()
+
+    # Stream still alive after stop
+    mock_stream.close.assert_not_called()
+
+    # close() forces it shut
+    recorder.close()
+    mock_stream.close.assert_called_once()
+
+
+def test_closed_flag_prevents_start() -> None:
+    """After close(), start() is a no-op."""
+    from unittest.mock import patch
+
+    recorder = AudioRecorder(keep_stream_open=True)
+    recorder.close()
+
+    with patch("sounddevice.InputStream") as mock_ctor:
+        recorder.start()
+        mock_ctor.assert_not_called()
+    assert not recorder.is_recording()
