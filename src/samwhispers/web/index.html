@@ -200,6 +200,7 @@ button.primary:disabled { opacity: .5; cursor: default; }
     <h3>Audio capture</h3>
     <div class="field"><label>Sample rate</label><input type="number" data-path="audio.sample_rate" data-type="number" /></div>
     <div class="field"><label>Max duration (s)</label><input type="number" step="any" data-path="audio.max_duration" data-type="number" /></div>
+    <div class="field"><label>Keep stream open</label><input type="checkbox" data-path="audio.keep_stream_open" data-type="bool" /><div class="hint">Keep mic handle open between recordings for instant start (mic stays "in use")</div></div>
   </div>
 
   <div class="savebar">
