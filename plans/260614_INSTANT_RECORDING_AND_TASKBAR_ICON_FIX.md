@@ -1,7 +1,7 @@
 # Instant Recording Start & Taskbar Icon Fix
 
 > **Date**: 2026-06-14
-> **Status**: Draft
+> **Status**: In Progress
 > **Scope**: Reduce hotkey-to-recording latency from ~1s to near-instant; hide overlay from Windows taskbar
 
 ---
@@ -256,6 +256,12 @@ Manual:
 |---|---|
 | `README.md` | Add `keep_stream_open` to Config Options table under `[audio]` |
 | `config.example.toml` | Already covered in Step 2 |
+
+## Implementation Notes
+
+Implementation (2026-06-14, code: 320145d)
+
+All 4 steps implemented in a single pass: overlay `-toolwindow` fix, `keep_stream_open` config field, warm audio stream with `_closed` sentinel and serialized lock access, and 5 new tests. 350 tests pass; no new lint/type errors introduced. README updated with new config option.
 
 ## Review Log
 
