@@ -111,6 +111,7 @@ class SamWhispers:
         self._stream_thread: threading.Thread | None = None
         self._stream_stop = threading.Event()
         self._stream_injected_any = False
+        self._finalize_thread: threading.Thread | None = None
         if config.streaming.enabled:
             try:
                 from samwhispers.streaming import make_engine
@@ -310,6 +311,7 @@ class SamWhispers:
         self._stream_session = StreamingSession(
             self._stream_engine,
             self.config.audio.sample_rate,
+            window_seconds=self.config.streaming.window_seconds,
             on_commit=self._inject_committed if mode == "progressive" else None,
             on_preview=self._preview_text if mode == "preview" else None,
         )
@@ -321,7 +323,8 @@ class SamWhispers:
     def _stream_loop(self) -> None:
         interval = self.config.streaming.interval_seconds
         while not self._stream_stop.wait(interval):
-            session = self._stream_session
+            with self._lock:
+                session = self._stream_session
             if session is None:
                 return
             try:
@@ -339,20 +342,26 @@ class SamWhispers:
         if self._stream_thread is not None:
             self._stream_thread.join(timeout=5.0)
 
+        with self._lock:
+            session = self._stream_session
+            self._stream_session = None
+        if session is None:
+            return  # Already finalized by a concurrent call
+
         if from_auto_stop:
             final_audio = wav_to_float32(wav_bytes)  # recorder already stopped
         else:
             final_audio = self.recorder.snapshot()
             self.recorder.stop()
 
-        session = self._stream_session
-        self._stream_session = None
-        threading.Thread(
+        t = threading.Thread(
             target=self._finalize_stream_worker,
             args=(session, final_audio),
             daemon=True,
             name="stream-finalize",
-        ).start()
+        )
+        self._finalize_thread = t
+        t.start()
 
     def _finalize_stream_worker(self, session: StreamingSession | None, final_audio: Any) -> None:
         import time
@@ -657,6 +666,8 @@ class SamWhispers:
         self._stream_stop.set()
         if self._stream_thread is not None and self._stream_thread.is_alive():
             self._stream_thread.join(timeout=2.0)
+        if self._finalize_thread is not None and self._finalize_thread.is_alive():
+            self._finalize_thread.join(timeout=5.0)
         if self._stream_engine is not None:
             self._stream_engine.close()
         self.hotkey_listener.stop()

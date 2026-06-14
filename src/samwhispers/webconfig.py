@@ -46,7 +46,10 @@ def list_whisper_models(config_path: Path | str | None = None) -> list[dict[str,
     cfg = current_app_config(config_path)
     model_path = Path(cfg.whisper.model_path)
     found: dict[str, str] = {}
-    for directory in (model_path.parent, Path("tools/whisper.cpp/models")):
+    # Determine a project-relative models dir based on config file location
+    config_file = Path(config_path) if config_path else resolve_config_path()
+    project_models = config_file.parent / "tools" / "whisper.cpp" / "models"
+    for directory in (model_path.parent, project_models, Path("tools/whisper.cpp/models")):
         try:
             if directory.is_dir():
                 for f in sorted(directory.glob("*.bin")):

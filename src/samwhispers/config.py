@@ -6,7 +6,7 @@ import logging
 import os
 import tomllib
 import warnings
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields as dataclass_fields
 from pathlib import Path
 from typing import Any
 
@@ -351,6 +351,7 @@ class StreamingConfig:
     interval_seconds: float = 0.8  # how often to re-decode while speaking
     model: str = "base"  # faster-whisper model name or path
     compute_type: str = "int8"  # faster-whisper compute type
+    window_seconds: float = 30.0  # max audio window per tick (caps CPU cost)
 
 
 @dataclass
@@ -571,6 +572,15 @@ def load_config(path: Path | str | None = None) -> AppConfig:
     return build_config(raw)
 
 
+def _filter_fields(cls: type, raw: dict[str, Any]) -> dict[str, Any]:
+    """Filter a dict to only keys that match dataclass field names."""
+    valid = {f.name for f in dataclass_fields(cls)}
+    unknown = set(raw) - valid
+    if unknown:
+        log.warning("Ignoring unknown config keys for %s: %s", cls.__name__, sorted(unknown))
+    return {k: v for k, v in raw.items() if k in valid}
+
+
 def build_config(raw: dict[str, Any], validate: bool = True) -> AppConfig:
     """Merge a raw config mapping over defaults and construct an AppConfig.
 
@@ -610,23 +620,23 @@ def build_config(raw: dict[str, Any], validate: bool = True) -> AppConfig:
     )
 
     config = AppConfig(
-        hotkey=HotkeyConfig(**d.get("hotkey", {})),
-        whisper=WhisperConfig(**d.get("whisper", {})),
-        audio=AudioConfig(**d.get("audio", {})),
+        hotkey=HotkeyConfig(**_filter_fields(HotkeyConfig, d.get("hotkey", {}))),
+        whisper=WhisperConfig(**_filter_fields(WhisperConfig, d.get("whisper", {}))),
+        audio=AudioConfig(**_filter_fields(AudioConfig, d.get("audio", {}))),
         cleanup=CleanupConfig(
             enabled=d.get("cleanup", {}).get("enabled", False),
             provider=d.get("cleanup", {}).get("provider", "openai"),
-            openai=OpenAIConfig(**d.get("cleanup", {}).get("openai", {})),
-            anthropic=AnthropicConfig(**d.get("cleanup", {}).get("anthropic", {})),
+            openai=OpenAIConfig(**_filter_fields(OpenAIConfig, d.get("cleanup", {}).get("openai", {}))),
+            anthropic=AnthropicConfig(**_filter_fields(AnthropicConfig, d.get("cleanup", {}).get("anthropic", {}))),
         ),
-        postprocess=PostprocessConfig(**d.get("postprocess", {})),
-        inject=InjectConfig(**d.get("inject", {})),
+        postprocess=PostprocessConfig(**_filter_fields(PostprocessConfig, d.get("postprocess", {}))),
+        inject=InjectConfig(**_filter_fields(InjectConfig, d.get("inject", {}))),
         vocabulary=VocabularyConfig(words=vocab_words, languages=vocab_langs),
         filler=filler_cfg,
-        history=HistoryConfig(**d.get("history", {})),
-        translation=TranslationConfig(**d.get("translation", {})),
-        overlay=OverlayConfig(**d.get("overlay", {})),
-        streaming=StreamingConfig(**d.get("streaming", {})),
+        history=HistoryConfig(**_filter_fields(HistoryConfig, d.get("history", {}))),
+        translation=TranslationConfig(**_filter_fields(TranslationConfig, d.get("translation", {}))),
+        overlay=OverlayConfig(**_filter_fields(OverlayConfig, d.get("overlay", {}))),
+        streaming=StreamingConfig(**_filter_fields(StreamingConfig, d.get("streaming", {}))),
     )
     if validate:
         _validate(config)
