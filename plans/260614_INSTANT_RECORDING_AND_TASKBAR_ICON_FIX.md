@@ -1,7 +1,7 @@
 # Instant Recording Start & Taskbar Icon Fix
 
 > **Date**: 2026-06-14
-> **Status**: In Progress
+> **Status**: Complete
 > **Scope**: Reduce hotkey-to-recording latency from ~1s to near-instant; hide overlay from Windows taskbar
 
 ---
@@ -283,3 +283,20 @@ All 4 steps implemented in a single pass: overlay `-toolwindow` fix, `keep_strea
 | 10 | Low | Line reference off-by-one (250 vs 251) | Resolved |
 | 11 | Low | Sleep blocks hotkey thread on failure | Noted — matches existing behavior, acceptable |
 | 12 | Low | Concurrency test needed | Resolved — added to test plan |
+
+
+### 2026-06-14 -- Post-Implementation Review
+
+Overall implementation health: Green.
+Personas: Senior engineer, Performance engineer, Reliability engineer, End-user advocate.
+4 findings (0 High, 2 Medium, 7 Low). 2 auto-resolved.
+
+| # | Severity | Finding | Resolution |
+|---|---|---|---|
+| 1 | Medium | Missing threading test specified in plan Step 4 | Fixed — added `test_concurrent_start_stop_no_crash` (c3fbc72) |
+| 2 | Medium | `_trigger_vad_stop` reads `self._timer` without None guard — race with `close()` | Fixed — local-var guard added (c3fbc72) |
+| 3 | Low | `_error` read outside lock in `stop()` — benign under CPython GIL | Accepted — PortAudio stop-blocks-until-callback contract makes this safe |
+| 4 | Low | No idle timeout for held microphone | Accepted — plan explicitly defers (finding #7); `keep_stream_open=false` is escape hatch |
+| 5 | Low | Timer allocation duplicated in warm/cold paths | Accepted — no runtime impact, minor hygiene |
+| 6 | Low | README could explain mic-in-use trade-off more | Accepted — config comment covers it; low-priority |
+| 7 | Low | `-toolwindow` not wrapped in try/except | Accepted — attribute has existed since Tk 8.5, risk near-zero |
