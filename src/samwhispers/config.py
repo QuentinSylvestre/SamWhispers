@@ -590,6 +590,13 @@ def _validate(config: AppConfig) -> None:
                 f"vad.model_path not found: {Path(config.vad.model_path).resolve()}. "
                 "Download the VAD model with `samwhispers-setup` or disable VAD."
             )
+    elif config.vad.enabled and not config.vad.model_path:
+        warnings.warn(
+            "VAD enabled but model_path is empty — server-side VAD will not be active. "
+            "Download the model with `samwhispers-setup` or set vad.model_path.",
+            UserWarning,
+            stacklevel=3,
+        )
     if not (0.0 <= config.vad.threshold <= 1.0):
         raise ValueError(f"vad.threshold must be between 0.0 and 1.0, got {config.vad.threshold}")
     if not (0.0 <= config.vad.silence_threshold <= 1.0):

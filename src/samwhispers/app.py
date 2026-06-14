@@ -307,18 +307,22 @@ class SamWhispers:
         self._work_queue.put(wav_bytes)
 
     def _on_auto_stop(self, wav_bytes: bytes) -> None:
-        """Handle max-duration auto-stop by processing the recorded audio."""
+        """Handle max-duration or VAD auto-stop by processing the recorded audio."""
         with self._lock:
             if self._state != State.RECORDING:
                 return
             self._state = State.PROCESSING
         self._set_overlay("processing")
+        # Determine stop reason for notification
+        from samwhispers.notify import notify
+        if self.recorder._vad_fired:
+            notify("SamWhispers", "Recording stopped (silence detected)")
+        else:
+            notify("SamWhispers", "Recording stopped (max duration reached)")
         if self._stream_session is not None:
             self._finalize_streaming(from_auto_stop=True, wav_bytes=wav_bytes)
             return
         log.info("Auto-stop triggered, processing recorded audio")
-        from samwhispers.notify import notify
-        notify("SamWhispers", "Recording stopped (silence detected)")
         self._work_queue.put(wav_bytes)
 
     # --- Streaming transcription ---------------------------------------

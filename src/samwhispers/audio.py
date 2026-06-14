@@ -129,6 +129,8 @@ class AudioRecorder:
             self._recording = True
             self._frames = []
             self._error = False
+            self._vad_fired = False
+            self._silence_start = None
 
         # Retry once — WSLg PulseAudio can timeout on first attempt
         for attempt in range(2):

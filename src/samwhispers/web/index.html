@@ -804,7 +804,7 @@ function fmtTime(iso) {
   return isNaN(d) ? iso : d.toLocaleString();
 }
 function esc(s) {
-  return (s ?? "").replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+  return (s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 }
 
 function renderEntry(e) {
