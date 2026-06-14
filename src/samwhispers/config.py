@@ -355,6 +355,13 @@ class StreamingConfig:
 
 
 @dataclass
+class SnippetConfig:
+    items: dict[str, str] = field(default_factory=dict)  # trigger -> expansion
+    bias_recognition: bool = True  # add triggers to vocabulary prompt
+    enabled: bool = True  # master toggle
+
+
+@dataclass
 class AppConfig:
     hotkey: HotkeyConfig = field(default_factory=HotkeyConfig)
     whisper: WhisperConfig = field(default_factory=WhisperConfig)
@@ -368,6 +375,7 @@ class AppConfig:
     translation: TranslationConfig = field(default_factory=TranslationConfig)
     overlay: OverlayConfig = field(default_factory=OverlayConfig)
     streaming: StreamingConfig = field(default_factory=StreamingConfig)
+    snippets: SnippetConfig = field(default_factory=SnippetConfig)
 
 
 def find_config() -> Path | None:
@@ -551,6 +559,13 @@ def _validate(config: AppConfig) -> None:
             "Set accent to your native language code (e.g., 'fr') to enable accent biasing."
         )
 
+    # Validate snippets
+    for trigger, expansion in config.snippets.items.items():
+        if not trigger.strip():
+            raise ValueError("Snippet trigger must not be empty or whitespace-only")
+        if not expansion:
+            raise ValueError(f"Snippet expansion for trigger {trigger!r} must not be empty")
+
 
 def load_config(path: Path | str | None = None) -> AppConfig:
     """Load TOML config, merge with defaults, validate."""
@@ -619,6 +634,15 @@ def build_config(raw: dict[str, Any], validate: bool = True) -> AppConfig:
         use_builtins=filler_raw.get("use_builtins", True),
     )
 
+    # --- Snippets: nested [snippets.items] sub-table ---
+    snippets_raw = d.get("snippets", {})
+    items_raw = snippets_raw.get("items", {})
+    snippets_cfg = SnippetConfig(
+        items=dict(items_raw),
+        bias_recognition=snippets_raw.get("bias_recognition", True),
+        enabled=snippets_raw.get("enabled", True),
+    )
+
     config = AppConfig(
         hotkey=HotkeyConfig(**_filter_fields(HotkeyConfig, d.get("hotkey", {}))),
         whisper=WhisperConfig(**_filter_fields(WhisperConfig, d.get("whisper", {}))),
@@ -637,6 +661,7 @@ def build_config(raw: dict[str, Any], validate: bool = True) -> AppConfig:
         translation=TranslationConfig(**_filter_fields(TranslationConfig, d.get("translation", {}))),
         overlay=OverlayConfig(**_filter_fields(OverlayConfig, d.get("overlay", {}))),
         streaming=StreamingConfig(**_filter_fields(StreamingConfig, d.get("streaming", {}))),
+        snippets=snippets_cfg,
     )
     if validate:
         _validate(config)

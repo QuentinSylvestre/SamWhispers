@@ -62,6 +62,24 @@ class FillerRemover:
         return text
 
 
+class SnippetExpander:
+    """Replace trigger phrases with saved expansions (exact match, word-boundary-anchored)."""
+
+    def __init__(self, items: dict[str, str]) -> None:
+        self._replacements: list[tuple[re.Pattern[str], str]] = []
+        for trigger in sorted(items, key=len, reverse=True):
+            pattern = re.compile(
+                r"(?<!\w)" + re.escape(trigger) + r"(?!\w)",
+                re.IGNORECASE,
+            )
+            self._replacements.append((pattern, items[trigger]))
+
+    def expand(self, text: str) -> str:
+        for pattern, expansion in self._replacements:
+            text = pattern.sub(expansion, text)
+        return text
+
+
 class TextPostprocessor:
     """Apply configurable text transformations to raw transcription output."""
 

@@ -444,3 +444,73 @@ def test_language_names_covers_all_languages() -> None:
 
     expected = WHISPER_LANGUAGES - {"auto"}
     assert expected == set(LANGUAGE_NAMES.keys())
+
+
+# --- Snippet config tests ---
+
+
+def test_snippet_config_defaults(tmp_path: Path) -> None:
+    """Default snippet config has empty items and bias_recognition=True."""
+    cfg = tmp_path / "config.toml"
+    cfg.write_text("[whisper]\nmanaged = false\n")
+    config = load_config(cfg)
+    assert config.snippets.items == {}
+    assert config.snippets.bias_recognition is True
+    assert config.snippets.enabled is True
+
+
+def test_snippet_config_parsed(tmp_path: Path) -> None:
+    """Snippet items parsed from TOML nested sub-table."""
+    cfg = tmp_path / "config.toml"
+    cfg.write_text(
+        '[whisper]\nmanaged = false\n\n'
+        '[snippets]\nbias_recognition = false\n\n'
+        '[snippets.items]\n'
+        '"my address" = "123 Main St"\n'
+        'sig = "Best regards"\n'
+    )
+    config = load_config(cfg)
+    assert config.snippets.items == {"my address": "123 Main St", "sig": "Best regards"}
+    assert config.snippets.bias_recognition is False
+
+
+def test_snippet_empty_trigger_rejected(tmp_path: Path) -> None:
+    """Empty trigger string raises ValueError."""
+    cfg = tmp_path / "config.toml"
+    cfg.write_text(
+        '[whisper]\nmanaged = false\n\n'
+        '[snippets.items]\n'
+        '"" = "something"\n'
+    )
+    with pytest.raises(ValueError, match="trigger must not be empty"):
+        load_config(cfg)
+
+
+def test_snippet_empty_expansion_rejected(tmp_path: Path) -> None:
+    """Empty expansion string raises ValueError."""
+    cfg = tmp_path / "config.toml"
+    cfg.write_text(
+        '[whisper]\nmanaged = false\n\n'
+        '[snippets.items]\n'
+        'sig = ""\n'
+    )
+    with pytest.raises(ValueError, match="expansion.*must not be empty"):
+        load_config(cfg)
+
+
+def test_snippet_config_roundtrip(tmp_path: Path) -> None:
+    """Snippet config survives to_toml_dict → build_config round-trip."""
+    from samwhispers.config import build_config
+    from samwhispers.webconfig import to_toml_dict
+
+    cfg = tmp_path / "config.toml"
+    cfg.write_text(
+        '[whisper]\nmanaged = false\n\n'
+        '[snippets]\nbias_recognition = true\n\n'
+        '[snippets.items]\naddr = "123 Main"\n'
+    )
+    config = load_config(cfg)
+    d = to_toml_dict(config)
+    rebuilt = build_config(d, validate=False)
+    assert rebuilt.snippets.items == {"addr": "123 Main"}
+    assert rebuilt.snippets.bias_recognition is True

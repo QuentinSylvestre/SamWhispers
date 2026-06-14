@@ -129,6 +129,12 @@ def to_toml_dict(config: AppConfig) -> dict[str, Any]:
     for lang, words in config.vocabulary.languages.items():
         vocab[lang] = {"words": list(words)}
     data["vocabulary"] = vocab
+
+    data["snippets"] = {
+        "enabled": config.snippets.enabled,
+        "bias_recognition": config.snippets.bias_recognition,
+        "items": dict(config.snippets.items),
+    }
     return data
 
 

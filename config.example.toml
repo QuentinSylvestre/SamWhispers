@@ -72,6 +72,16 @@ words = []              # Additional filler words to remove (elongated variants 
 # Built-in English: um, uh, hmm, mm, mhm, mmm, ah, oh, er
 # Built-in French: euh, bah, beh, ben, hein, mmh, mh, pfff
 
+[snippets]
+enabled = true              # Master toggle for snippet expansion
+bias_recognition = true     # Add snippet triggers to Whisper vocabulary prompt
+
+[snippets.items]
+# Trigger -> expansion pairs. Speaking the trigger inserts the expansion.
+# Matching: exact phrase, case-insensitive, word-boundary-anchored.
+# "my address" = "123 Main St, City, 12345"
+# sig = "Best regards,\nJohn Doe"
+
 [history]
 enabled = true          # Save each transcription to a local SQLite history
 max_entries = 1000      # Retention cap; oldest entries are pruned (0 = unlimited)

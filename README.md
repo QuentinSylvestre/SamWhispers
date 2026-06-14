@@ -423,6 +423,39 @@ When the active language is `en`, Whisper receives: `RSSI, BLE, Bluetooth Low En
 - Use broadly applicable terms. Domain-specific jargon for a single conversation may cause mild misrecognition in unrelated contexts.
 - Duplicates are automatically removed (case-insensitive).
 
+## Snippets (Voice Text Expansion)
+
+SamWhispers can expand trigger phrases into saved text. Define trigger→expansion pairs and speaking the trigger results in the expansion being pasted instead.
+
+### Setup
+
+Add snippets in `config.toml`:
+
+```toml
+[snippets]
+enabled = true
+bias_recognition = true    # Adds triggers to Whisper vocabulary for better recognition
+
+[snippets.items]
+"my address" = "123 Main St, City, 12345"
+sig = "Best regards,\nJohn Doe"
+"phone number" = "+1 555-0123"
+```
+
+### How It Works
+
+- **Matching**: Exact phrase, case-insensitive, word-boundary-anchored (no partial matches).
+- **Pipeline position**: Runs after filler removal and before AI cleanup.
+- **Vocabulary biasing**: When `bias_recognition = true` (default), snippet triggers are added to Whisper's initial prompt to improve recognition accuracy.
+
+### Tips
+
+- Keep triggers short and distinctive — avoid phrases that occur naturally in speech.
+- Triggers are matched at word boundaries: a trigger `sig` will not match inside `signal`.
+- When multiple triggers could match, the longest trigger wins.
+- Snippets work in batch mode and streaming preview mode. They do not work in progressive streaming mode (words are injected live before the full phrase is available).
+- If a trigger contains a filler word (e.g., "um"), filler removal runs first and may eat it. Use non-filler triggers.
+
 ## Accent Bias
 
 If you speak with a non-native accent (e.g., French-accented English), you can

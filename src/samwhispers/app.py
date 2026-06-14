@@ -11,6 +11,7 @@ from types import FrameType
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from samwhispers.postprocess import SnippetExpander
     from samwhispers.streaming import StreamingEngine, StreamingSession
 
 from samwhispers.audio import AudioRecorder, min_wav_size
@@ -96,6 +97,13 @@ class SamWhispers:
             filler_words=filler_words,
         )
 
+        # Snippet expander (trigger phrase -> expansion text)
+        self._snippet_expander: SnippetExpander | None = None
+        if config.snippets.enabled and config.snippets.items:
+            from samwhispers.postprocess import SnippetExpander
+
+            self._snippet_expander = SnippetExpander(config.snippets.items)
+
         self.whisper.prompt = self._build_prompt()
 
         self.history: HistoryStore | None = None
@@ -179,6 +187,9 @@ class SamWhispers:
         lang = self.whisper.language
         if lang != "auto" and lang in self.config.vocabulary.languages:
             words.extend(self.config.vocabulary.languages[lang])
+        # Bias recognition: add snippet triggers to vocabulary
+        if self.config.snippets.bias_recognition and self.config.snippets.items:
+            words.extend(self.config.snippets.items.keys())
         if words:
             unique = _dedup_words(words)
             if len(unique) > 100:
@@ -388,6 +399,8 @@ class SamWhispers:
     def _inject_final_paragraph(self, raw_text: str, duration_ms: int) -> None:
         """Output mode A: clean/translate the full text and inject it once."""
         text = self.postprocessor.normalize(raw_text)
+        if self._snippet_expander:
+            text = self._snippet_expander.expand(text)
         text = self.cleanup.cleanup(text)
         translated: str | None = None
         inject_source = text
@@ -490,6 +503,9 @@ class SamWhispers:
             return
 
         text = self.postprocessor.normalize(text)
+
+        if self._snippet_expander:
+            text = self._snippet_expander.expand(text)
 
         t0 = time.monotonic()
         text = self.cleanup.cleanup(text)

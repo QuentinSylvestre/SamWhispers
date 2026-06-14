@@ -593,3 +593,49 @@ def test_startup_prompt_warning_near_limit(caplog: pytest.LogCaptureFixture) -> 
     ):
         app._startup_checks()
     assert "approaching token limit" in caplog.text
+
+
+# --- Snippet integration tests ---
+
+
+def _make_app_with_snippets() -> SamWhispers:
+    """Create app with snippet expansion enabled."""
+    from samwhispers.config import SnippetConfig
+
+    config = AppConfig()
+    config.whisper.managed = False
+    config.snippets = SnippetConfig(items={"sig": "Best regards, John"}, bias_recognition=True)
+    with (
+        patch("samwhispers.app.AudioRecorder") as mock_rec,
+        patch("samwhispers.app.WhisperClient") as mock_wc,
+        patch("samwhispers.app.CleanupProvider") as mock_cp,
+        patch("samwhispers.wsl.is_wsl", return_value=False),
+    ):
+        app = SamWhispers(config)
+        app.recorder = mock_rec.return_value
+        app.whisper = mock_wc.return_value
+        app.cleanup = mock_cp.return_value
+    app.injector = MagicMock()
+    app.hotkey_listener = MagicMock()
+    return app
+
+
+def test_snippet_expansion_in_batch_pipeline() -> None:
+    """Snippet trigger is expanded in _process_recording pipeline."""
+    app = _make_app_with_snippets()
+    app.whisper.transcribe.return_value = "thanks sig"
+    app.cleanup.cleanup.side_effect = lambda t: t  # passthrough
+
+    wav_bytes = b"\x00" * 20000
+    app._process_recording(wav_bytes)
+
+    app.cleanup.cleanup.assert_called_once_with("thanks Best regards, John")
+    app.injector.inject.assert_called_once_with("thanks Best regards, John\n")
+
+
+def test_snippet_bias_recognition_adds_triggers() -> None:
+    """bias_recognition adds snippet triggers to vocabulary prompt."""
+    app = _make_app_with_snippets()
+    app.whisper.language = "auto"
+    prompt = app._build_prompt()
+    assert "sig" in prompt

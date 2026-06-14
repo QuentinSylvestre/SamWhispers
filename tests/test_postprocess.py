@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from samwhispers.config import PostprocessConfig
-from samwhispers.postprocess import FillerRemover, TextPostprocessor
+from samwhispers.postprocess import FillerRemover, SnippetExpander, TextPostprocessor
 
 
 def _make(
@@ -255,3 +255,44 @@ def test_filler_all_fillers_pipeline() -> None:
     assert normalized == ""
     final = pp.finalize(normalized)
     assert final == ""  # finalize returns "" for empty input
+
+
+# --- SnippetExpander tests ---
+
+
+def test_snippet_basic_expansion() -> None:
+    exp = SnippetExpander({"sig": "Best regards, John"})
+    assert exp.expand("thanks sig") == "thanks Best regards, John"
+
+
+def test_snippet_case_insensitive() -> None:
+    exp = SnippetExpander({"my address": "123 Main St"})
+    assert exp.expand("send to My Address please") == "send to 123 Main St please"
+
+
+def test_snippet_word_boundary() -> None:
+    """Triggers must match at word boundaries — no partial matches."""
+    exp = SnippetExpander({"sig": "Best regards"})
+    assert exp.expand("signal is good") == "signal is good"
+    assert exp.expand("design pattern") == "design pattern"
+
+
+def test_snippet_longest_first() -> None:
+    """Longer triggers match before shorter ones."""
+    exp = SnippetExpander({"my": "short", "my address": "123 Main St"})
+    assert exp.expand("send to my address") == "send to 123 Main St"
+
+
+def test_snippet_multiline_expansion() -> None:
+    exp = SnippetExpander({"sig": "Best regards,\nJohn Doe"})
+    assert exp.expand("sig") == "Best regards,\nJohn Doe"
+
+
+def test_snippet_empty_items() -> None:
+    exp = SnippetExpander({})
+    assert exp.expand("hello world") == "hello world"
+
+
+def test_snippet_multiple_occurrences() -> None:
+    exp = SnippetExpander({"ty": "thank you"})
+    assert exp.expand("ty and ty") == "thank you and thank you"
