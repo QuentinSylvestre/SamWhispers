@@ -3,6 +3,7 @@
 > **Date**: 2026-06-14
 > **Status**: Complete
 > **Scope**: Reduce hotkey-to-recording latency from ~1s to near-instant; hide overlay from Windows taskbar
+> **Last Updated**: 2026-06-15 00:04
 
 ---
 
