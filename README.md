@@ -306,7 +306,7 @@ samwhispers-supervisor --no-tray  # headless (no display)
 ```
 
 The tray icon uses the SamWhispers "Ghost Ribbon" artwork and reflects status:
-green = running, amber = paused, grey = stopped/starting. It offers Open
+green = running, amber = paused, red = stopped, grey = starting. It offers Open
 settings, Pause/Resume, Restart, and Quit. See [docs/STARTUP.md](docs/STARTUP.md)
 for start-on-login setup (systemd user service on Linux, launchd on macOS, Task
 Scheduler on Windows).
