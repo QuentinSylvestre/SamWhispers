@@ -305,7 +305,8 @@ samwhispers-supervisor            # tray icon + managed worker
 samwhispers-supervisor --no-tray  # headless (no display)
 ```
 
-The tray icon shows status (running / paused / stopped) and offers Open
+The tray icon uses the SamWhispers "Ghost Ribbon" artwork and reflects status:
+green = running, amber = paused, grey = stopped/starting. It offers Open
 settings, Pause/Resume, Restart, and Quit. See [docs/STARTUP.md](docs/STARTUP.md)
 for start-on-login setup (systemd user service on Linux, launchd on macOS, Task
 Scheduler on Windows).
@@ -729,6 +730,19 @@ sudo apt install gcc python3-dev linux-libc-dev
 ```
 
 These are not needed on Windows.
+
+### Brand assets
+
+The SamWhispers "Ghost Ribbon" icons ship inside the package:
+
+- `src/samwhispers/assets/tray/<state>/` — tray status icons (running, warning,
+  not_running, error) in PNG sizes 16–256, plus `.ico` variants.
+- `src/samwhispers/assets/app/` — desktop app icons for future packaging
+  (`windows/SamWhispers.ico`, `macos/SamWhispers.icns`, and a PNG set 16–1024).
+- `src/samwhispers/web/{favicon,pwa,logo}/` and `web/site.webmanifest` — favicon,
+  PWA install icons, and the in-app header wordmark, served by the config UI
+  under `/static/` (with `/favicon.ico`, `/apple-touch-icon.png`, and
+  `/site.webmanifest` at the root).
 
 ## Known Limitations
 

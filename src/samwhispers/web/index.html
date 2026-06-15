@@ -4,7 +4,11 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>SamWhispers</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><circle cx='32' cy='32' r='28' fill='%234caf50'/></svg>" />
+<link rel="icon" href="/favicon.ico" sizes="any" />
+<link rel="icon" type="image/png" sizes="32x32" href="/static/favicon/favicon-32x32.png" />
+<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+<link rel="manifest" href="/site.webmanifest" />
+<meta name="theme-color" content="#0D0D14" />
 <style>
 :root {
   --bg: #0f1115; --surface: #181b22; --surface2: #1e222b; --border: #2a2f3a;
@@ -22,6 +26,7 @@ header { grid-column: 1 / -1; display: flex; align-items: center; gap: 12px;
   padding: 14px 24px; border-bottom: 1px solid var(--border);
   background: var(--bg); position: sticky; top: 0; z-index: 10; }
 header h1 { font-size: 18px; font-weight: 600; }
+.brand-logo { height: 24px; width: auto; display: block; }
 .status-pill { display: inline-flex; align-items: center; gap: 6px;
   font-size: 13px; color: var(--muted); margin-left: auto; }
 .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); }
@@ -140,7 +145,7 @@ button.primary:disabled { opacity: .5; cursor: default; }
 
 <header>
   <button class="menu-toggle" id="menuToggle" aria-label="Toggle menu">&#9776;</button>
-  <h1>SamWhispers</h1>
+  <h1><img class="brand-logo" src="/static/logo/samwhispers-wordmark-dark.png" alt="SamWhispers" height="24" /></h1>
   <span class="status-pill"><span class="dot" id="statusDot"></span><span id="statusText">…</span></span>
 </header>
 

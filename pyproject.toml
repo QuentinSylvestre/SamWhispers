@@ -33,7 +33,7 @@ samwhispers-autostart = "samwhispers.autostart:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-samwhispers = ["web/*.html"]
+samwhispers = ["web/*.html", "web/**/*", "assets/**/*"]
 
 [tool.ruff]
 target-version = "py311"

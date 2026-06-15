@@ -14,7 +14,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.staticfiles import StaticFiles
 
 from samwhispers.history import HistoryStore, default_db_path
 from samwhispers.webconfig import (
@@ -70,9 +71,26 @@ def create_app(
 
     store = history_store if history_store is not None else HistoryStore(default_db_path())
 
+    # Serve bundled brand assets (favicon, logo, PWA icons) under /static.
+    app.mount("/static", StaticFiles(directory=_WEB_DIR), name="static")
+
     @app.get("/", response_class=HTMLResponse)
     def index() -> str:
         return (_WEB_DIR / "index.html").read_text(encoding="utf-8")
+
+    @app.get("/favicon.ico", include_in_schema=False)
+    def favicon() -> FileResponse:
+        return FileResponse(_WEB_DIR / "favicon" / "favicon.ico")
+
+    @app.get("/apple-touch-icon.png", include_in_schema=False)
+    def apple_touch_icon() -> FileResponse:
+        return FileResponse(_WEB_DIR / "pwa" / "apple-touch-icon.png")
+
+    @app.get("/site.webmanifest", include_in_schema=False)
+    def webmanifest() -> FileResponse:
+        return FileResponse(
+            _WEB_DIR / "site.webmanifest", media_type="application/manifest+json"
+        )
 
     @app.get("/api/meta")
     def meta() -> dict[str, Any]:
