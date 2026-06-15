@@ -28,11 +28,12 @@ _COLORS: dict[WorkerState, tuple[int, int, int]] = {
     WorkerState.STOPPED: (158, 158, 158),
 }
 
-# Map each worker state to one of the bundled tray artwork variants.
+# Map each worker state to one of the bundled tray artwork variants:
+# running=green, paused=amber, stopped=red, starting=grey.
 _TRAY_ASSET: dict[WorkerState, str] = {
     WorkerState.RUNNING: "running",
     WorkerState.PAUSED: "warning",
-    WorkerState.STOPPED: "not_running",
+    WorkerState.STOPPED: "error",
     WorkerState.STARTING: "not_running",
 }
 
