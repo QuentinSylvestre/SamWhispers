@@ -11,9 +11,9 @@
 <meta name="theme-color" content="#0D0D14" />
 <style>
 :root {
-  --bg: #0f1115; --surface: #181b22; --surface2: #1e222b; --border: #2a2f3a;
-  --fg: #e6e9ef; --muted: #9aa3b2; --accent: #4caf50; --accent2: #2d6cdf;
-  --danger: #e25555; --amber: #ffc107; --radius: 10px; --sidebar-w: 220px;
+  --bg: #0D0D14; --surface: #171326; --surface2: #211d36; --border: #2f2a45;
+  --fg: #F0EEFF; --muted: #8D8D96; --accent: #42D86B; --accent2: #6F63C6;
+  --danger: #FF4B55; --amber: #FFB238; --radius: 10px; --sidebar-w: 220px;
 }
 * { box-sizing: border-box; margin: 0; }
 body { background: var(--bg); color: var(--fg);
@@ -31,7 +31,7 @@ header h1 { font-size: 18px; font-weight: 600; }
   font-size: 13px; color: var(--muted); margin-left: auto; }
 .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); }
 .dot.running { background: var(--accent); }
-.dot.starting { background: var(--accent2); }
+.dot.starting { background: var(--muted); }
 .dot.paused { background: var(--amber); }
 .dot.stopped { background: var(--danger); }
 
@@ -80,7 +80,7 @@ input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--accent2); 
 .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; }
 button { font: inherit; cursor: pointer; border: 1px solid var(--border);
   background: var(--surface); color: var(--fg); padding: 8px 14px; border-radius: 8px; }
-button:hover { border-color: #3a4150; background: var(--surface2); }
+button:hover { border-color: color-mix(in srgb, var(--border) 65%, #fff); background: var(--surface2); }
 button.primary { background: var(--accent2); border-color: var(--accent2); }
 button.primary:hover { background: color-mix(in srgb, var(--accent2) 85%, white); }
 button.primary:disabled { opacity: .5; cursor: default; }
