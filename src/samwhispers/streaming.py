@@ -16,6 +16,7 @@ from __future__ import annotations
 import logging
 import re
 import threading
+import unicodedata
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 from typing import TYPE_CHECKING
@@ -30,7 +31,10 @@ if TYPE_CHECKING:
 
 log = logging.getLogger("samwhispers.streaming")
 
-_PUNCT_ONLY_RE = re.compile(r"^[^\w]+$", re.UNICODE)
+PUNCT_ONLY_RE = re.compile(r"^[^\w]+$", re.UNICODE)
+
+# Minimum RMS energy to bother decoding (prevents hallucination on silence)
+_MIN_ENERGY = 0.005
 
 
 def split_words(text: str) -> list[str]:
@@ -41,25 +45,33 @@ def split_words(text: str) -> list[str]:
 def _norm(word: str) -> str:
     """Normalize a word for agreement comparison.
 
-    Strips leading/trailing punctuation and lowercases. Preserves internal
-    apostrophes so "don't" != "do nt".
+    Unicode-normalizes (NFKC), strips leading/trailing punctuation, lowercases.
+    Preserves internal apostrophes so "don't" != "do nt".
     """
-    # Strip non-alphanumeric from edges only
-    stripped = re.sub(r"^\W+|\W+$", "", word.lower())
-    return stripped if stripped else word.lower()
+    w = unicodedata.normalize("NFKC", word).lower()
+    stripped = re.sub(r"^\W+|\W+$", "", w)
+    return stripped if stripped else w
 
 
 def _detect_repetition(words: list[str], min_repeat: int = 3) -> bool:
-    """Detect Whisper hallucination loops (same phrase repeated N+ times at the tail)."""
-    n = len(words)
+    """Detect Whisper hallucination loops (same phrase repeated N+ times at tail).
+
+    Only checks the last 20 words to avoid false positives on legitimate
+    repeated structure in longer text. Short phrases (1-4 words) use min_repeat=3;
+    longer phrases (5+) are almost certainly real content and are skipped.
+    """
+    # Only examine the tail to reduce false positives on legitimate content
+    tail = words[-20:] if len(words) > 20 else words
+    n = len(tail)
     if n < min_repeat:
         return False
-    # Check for repeated phrases of length 1..n//min_repeat at the tail
-    for phrase_len in range(1, n // min_repeat + 1):
-        tail_phrase = words[-phrase_len:]
+    # Only check phrase lengths 1-4 (hallucination loops are short phrases)
+    max_phrase = min(4, n // min_repeat)
+    for phrase_len in range(1, max_phrase + 1):
+        tail_phrase = tail[-phrase_len:]
         repeats = 0
         for i in range(n - phrase_len, -1, -phrase_len):
-            segment = words[i : i + phrase_len]
+            segment = tail[i : i + phrase_len]
             if [_norm(w) for w in segment] == [_norm(w) for w in tail_phrase]:
                 repeats += 1
             else:
@@ -207,7 +219,9 @@ class StreamingSession:
     ``on_commit`` receives newly-stabilized words (output mode B / progressive).
     ``on_preview`` receives the full current hypothesis text (output mode A).
 
-    Thread-safe: ``tick`` and ``finalize`` are protected by an internal lock.
+    Thread-safe: ``tick`` and ``finalize`` use an internal lock for state mutation.
+    The engine transcription call (HTTP/compute) runs outside the lock to avoid
+    blocking finalize behind a long-running tick.
     """
 
     def __init__(
@@ -236,17 +250,29 @@ class StreamingSession:
         """Decode the current audio (windowed), stabilize, emit updates."""
         if self._cancelled:
             return ""
-        with self._lock:
-            max_samples = int(self._window_seconds * self._sample_rate)
-            word_offset = 0
-            if audio.size > max_samples:
-                # Estimate how many words were in the trimmed portion by using
-                # the committed count as the floor (those words are stable)
-                word_offset = len(self.agreement.committed)
-                audio = audio[-max_samples:]
 
-            text = self._engine.transcribe(audio, self._sample_rate)
-            words = split_words(text)
+        max_samples = int(self._window_seconds * self._sample_rate)
+        word_offset = 0
+        if audio.size > max_samples:
+            # Use committed count as the offset floor — these words are stable
+            # and correspond to the trimmed portion of audio
+            word_offset = len(self.agreement.committed)
+            audio = audio[-max_samples:]
+
+        # Energy gate: skip decode if recent audio is silence (prevents hallucination)
+        check_samples = min(self._sample_rate, audio.size)
+        rms = float(np.sqrt(np.mean(np.square(audio[-check_samples:], dtype=np.float64))))
+        if rms < _MIN_ENERGY:
+            return " ".join(self.agreement.committed)
+
+        # Transcribe OUTSIDE the lock (pure function, no shared state)
+        text = self._engine.transcribe(audio, self._sample_rate)
+        words = split_words(text)
+
+        # Acquire lock only for state mutation
+        with self._lock:
+            if self._cancelled:
+                return ""
 
             # Hallucination guard: reject hypotheses with repetition loops
             if words and _detect_repetition(words):
@@ -254,27 +280,60 @@ class StreamingSession:
                 return " ".join(self.agreement.committed)
 
             newly = self.agreement.update(words, word_offset)
-            if newly and self._on_commit is not None:
+
+        # Callbacks outside lock to avoid holding lock during IO
+        if newly and self._on_commit is not None:
+            try:
                 self._on_commit(newly)
-            preview = " ".join(words)
-            if self._on_preview is not None:
+            except Exception:
+                log.exception("on_commit callback failed (words lost: %s)", " ".join(newly))
+
+        preview = " ".join(words)
+        if self._on_preview is not None:
+            try:
                 self._on_preview(preview)
-            return preview
+            except Exception:
+                log.debug("on_preview callback failed", exc_info=True)
+        return preview
 
     def finalize(self, audio: np.ndarray) -> str:
         """Final decode: commit everything and return the full text."""
-        with self._lock:
-            # Cap finalize audio to window_seconds to avoid server timeout
-            max_samples = int(self._window_seconds * self._sample_rate)
-            if audio.size > max_samples:
-                audio = audio[-max_samples:]
+        # Cap finalize audio to window_seconds to avoid server timeout
+        max_samples = int(self._window_seconds * self._sample_rate)
+        if audio.size > max_samples:
+            audio = audio[-max_samples:]
 
-            text = self._engine.transcribe(audio, self._sample_rate)
-            words = split_words(text)
+        # Energy gate: if final audio is silence, use what we already have
+        rms = float(np.sqrt(np.mean(np.square(audio, dtype=np.float64))))
+        if rms < _MIN_ENERGY:
+            with self._lock:
+                return " ".join(self.agreement.committed)
+
+        # Transcribe outside lock
+        text = self._engine.transcribe(audio, self._sample_rate)
+        words = split_words(text)
+
+        with self._lock:
+            # Hallucination guard on finalize too
+            if words and _detect_repetition(words):
+                log.debug("Repetition loop in finalize, using committed text")
+                return " ".join(self.agreement.committed)
+
             tail = self.agreement.commit_all(words)
-            if tail and self._on_commit is not None:
+
+        # Callback outside lock
+        if tail and self._on_commit is not None:
+            try:
                 self._on_commit(tail)
+            except Exception:
+                log.exception("on_commit callback failed in finalize (words lost: %s)", " ".join(tail))
+
+        with self._lock:
             final = " ".join(self.agreement.committed)
-            if self._on_preview is not None:
+
+        if self._on_preview is not None:
+            try:
                 self._on_preview(final)
-            return final
+            except Exception:
+                log.debug("on_preview callback failed", exc_info=True)
+        return final

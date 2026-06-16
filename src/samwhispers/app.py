@@ -378,7 +378,9 @@ class SamWhispers:
             if session is None:
                 return
             try:
-                audio = self.recorder.snapshot()
+                # Pass enough audio for the window plus margin for offset calculation
+                max_snap = int(self.config.streaming.window_seconds * self.config.audio.sample_rate * 1.1)
+                audio = self.recorder.snapshot(max_samples=max_snap)
                 if audio.size:
                     session.tick(audio)
                 consecutive_errors = 0
@@ -442,7 +444,8 @@ class SamWhispers:
             log.exception("Streaming finalize failed")
         finally:
             with self._lock:
-                self._state = State.IDLE
+                if self._state == State.PROCESSING:
+                    self._state = State.IDLE
             self._set_overlay("idle")
             if self.overlay is not None:
                 self.overlay.set_preview("")
@@ -485,7 +488,7 @@ class SamWhispers:
         """Output mode B: inject newly-stabilized words into the active app."""
         if not words:
             return
-        from samwhispers.streaming import _PUNCT_ONLY_RE
+        from samwhispers.streaming import PUNCT_ONLY_RE
 
         parts: list[str] = []
         for word in words:
@@ -493,7 +496,7 @@ class SamWhispers:
                 # Very first word: no leading space
                 parts.append(word)
                 self._stream_injected_any = True
-            elif _PUNCT_ONLY_RE.match(word):
+            elif PUNCT_ONLY_RE.match(word):
                 # Punctuation-only token: no leading space
                 parts.append(word)
             else:

@@ -258,38 +258,28 @@ class AudioRecorder:
         log.debug("Recording stopped: %.1fs, %d bytes", len(audio) / self._sample_rate, len(wav))
         return wav
 
-    def snapshot(self) -> np.ndarray:
-        """Return a copy of the audio captured so far (for streaming decode)."""
+    def snapshot(self, max_samples: int = 0) -> np.ndarray:
+        """Return a copy of the audio captured so far (for streaming decode).
+
+        If ``max_samples`` > 0, only return the last N samples (avoids
+        concatenating the full recording when only a window is needed).
+        """
         with self._lock:
             if not self._frames:
                 return np.zeros(0, dtype=np.float32)
-            frames = list(self._frames)
+            if max_samples <= 0:
+                frames = list(self._frames)
+            else:
+                # Walk backwards to collect enough frames for max_samples
+                frames: list[np.ndarray] = []
+                total = 0
+                for f in reversed(self._frames):
+                    frames.append(f)
+                    total += f.size
+                    if total >= max_samples:
+                        break
+                frames.reverse()
         # Concatenate outside the lock to avoid blocking the audio callback
-        return np.concatenate(frames)
-
-    def stop_float32(self) -> np.ndarray:
-        """Stop recording and return raw float32 audio (avoids WAV round-trip)."""
-        with self._lock:
-            if not self._recording:
-                return np.zeros(0, dtype=np.float32)
-            self._recording = False
-            stream = self._stream
-            if not self._keep_stream_open:
-                self._stream = None
-            timer = self._timer
-            self._timer = None
-            frames = self._frames
-            self._frames = []
-            keep = self._keep_stream_open
-
-        if timer:
-            timer.cancel()
-        if stream is not None:
-            stream.stop()
-            if not keep:
-                stream.close()
-        if not frames:
-            return np.zeros(0, dtype=np.float32)
         return np.concatenate(frames)
 
     def is_recording(self) -> bool:

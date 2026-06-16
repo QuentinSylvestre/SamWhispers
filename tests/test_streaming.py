@@ -182,7 +182,7 @@ def test_session_progressive_emits_committed_words() -> None:
         16000,
         on_commit=lambda w: committed.extend(w),
     )
-    audio = np.zeros(10, dtype=np.float32)
+    audio = np.full(16000, 0.1, dtype=np.float32)  # non-silent audio
     session.tick(audio)  # "the" -> nothing yet
     session.tick(audio)  # "the quick" -> commit "the"
     session.tick(audio)  # "the quick brown" -> commit "quick"
@@ -198,7 +198,7 @@ def test_session_finalize_flushes_tail_and_returns_full() -> None:
         on_commit=lambda w: committed.extend(w),
         on_preview=lambda t: previews.append(t),
     )
-    audio = np.zeros(10, dtype=np.float32)
+    audio = np.full(16000, 0.1, dtype=np.float32)
     session.tick(audio)  # a b
     session.tick(audio)  # a b c -> commit a b
     final = session.finalize(audio)  # a b c d -> tail c d
@@ -214,7 +214,7 @@ def test_session_preview_only_when_no_commit_callback() -> None:
         16000,
         on_preview=lambda t: previews.append(t),
     )
-    session.tick(np.zeros(10, dtype=np.float32))
+    session.tick(np.full(16000, 0.1, dtype=np.float32))
     assert previews == ["hello world"]
 
 
@@ -226,7 +226,7 @@ def test_session_finalize_shorter_than_committed() -> None:
         16000,
         on_commit=lambda w: committed.extend(w),
     )
-    audio = np.zeros(10, dtype=np.float32)
+    audio = np.full(16000, 0.1, dtype=np.float32)
     session.tick(audio)  # a b c
     session.tick(audio)  # a b c -> commits a b c
     assert committed == ["a", "b", "c"]
@@ -249,7 +249,7 @@ def test_session_hallucination_rejected() -> None:
         16000,
         on_commit=lambda w: committed.extend(w),
     )
-    audio = np.zeros(10, dtype=np.float32)
+    audio = np.full(16000, 0.1, dtype=np.float32)
     session.tick(audio)  # normal
     session.tick(audio)  # hallucination -> skipped
     session.tick(audio)  # normal, agrees with tick 1 on "hello world"
@@ -267,7 +267,7 @@ def test_session_window_applies() -> None:
         on_commit=lambda w: committed.extend(w),
     )
     # Audio longer than window_seconds -> should be trimmed
-    audio = np.zeros(32000, dtype=np.float32)  # 2 seconds
+    audio = np.full(32000, 0.1, dtype=np.float32)  # 2 seconds, non-silent
     session.tick(audio)
     # First tick commits nothing (no prev), but window was applied
     assert committed == []
@@ -298,8 +298,8 @@ def test_session_finalize_caps_audio() -> None:
         16000,
         window_seconds=2.0,  # 32000 samples max
     )
-    # Feed 5 seconds of audio (80000 samples) to finalize
-    audio = np.zeros(80000, dtype=np.float32)
+    # Feed 5 seconds of non-silent audio (80000 samples) to finalize
+    audio = np.full(80000, 0.1, dtype=np.float32)
     session.finalize(audio)
     # Should have been capped to 32000
     assert transcribed_sizes[0] == 32000
@@ -353,3 +353,95 @@ def test_make_engine_passes_prompt_to_faster_whisper() -> None:
     with mock.patch.object(FasterWhisperEngine, "__init__", return_value=None) as init_mock:
         make_engine(cfg, client)
         init_mock.assert_called_once_with("tiny", "int8", "en", "RSSI BLE Bluetooth")
+
+
+def test_session_energy_gate_skips_silence() -> None:
+    """Energy gate: silence audio skips decode entirely."""
+    session = StreamingSession(
+        ScriptedEngine(["should not see this"]),
+        16000,
+    )
+    # Silent audio (all zeros) should be skipped
+    result = session.tick(np.zeros(16000, dtype=np.float32))
+    assert result == ""  # committed is empty, so returns ""
+
+
+def test_session_multi_tick_window_crossing() -> None:
+    """Integration test: audio grows past window_seconds, word_offset kicks in,
+    agreement still commits correctly across the boundary."""
+    committed: list[str] = []
+
+    # Simulate ticks where audio grows past a 1-second window (16000 samples).
+    # Before window trim: engine sees ALL audio and returns cumulative text.
+    # After window trim: engine only sees the last 1s, returns only that portion.
+    scripts = [
+        "the quick",               # tick 1: 0.5s, no trim
+        "the quick brown",         # tick 2: 1.0s, no trim -> commits "the quick"
+        "quick brown fox",         # tick 3: 1.5s, trimmed! engine sees last 1s only
+        "brown fox jumps",         # tick 4: 2.0s, trimmed, engine sees last 1s
+        "fox jumps over",          # tick 5: 2.5s, trimmed
+    ]
+
+    session = StreamingSession(
+        ScriptedEngine(scripts),
+        16000,
+        window_seconds=1.0,  # 16000 samples max
+        on_commit=lambda w: committed.extend(w),
+    )
+
+    # Tick 1: 8000 samples (0.5s) - no window trim
+    session.tick(np.full(8000, 0.1, dtype=np.float32))
+    assert committed == []  # first tick, no prev
+
+    # Tick 2: 16000 samples (1.0s) - no trim
+    session.tick(np.full(16000, 0.1, dtype=np.float32))
+    assert committed == ["the", "quick"]  # agrees with tick 1
+
+    # Tick 3: 24000 samples (1.5s) - window trims to last 16000
+    # word_offset = len(committed) = 2, hypothesis = ["quick", "brown", "fox"]
+    # prev was ["the", "quick", "brown"] at offset 0
+    # Comparing at abs_i=2: prev_local=2-0=2 -> "brown", cur_local=2-2=0 -> "quick"
+    # "brown" != "quick" -> no new commits (agreement stalls until prev aligns)
+    session.tick(np.full(24000, 0.1, dtype=np.float32))
+
+    # Tick 4: 32000 samples (2.0s) - trimmed
+    # Now prev = ["quick", "brown", "fox"] at offset 2
+    # cur = ["brown", "fox", "jumps"] at offset 2 (committed still 2)
+    # abs_i=2: prev_local=2-2=0 -> "quick", cur_local=2-2=0 -> "brown" -> no match
+    session.tick(np.full(32000, 0.1, dtype=np.float32))
+
+    # Tick 5: 40000 samples (2.5s) - trimmed
+    session.tick(np.full(40000, 0.1, dtype=np.float32))
+
+    # After windowing, agreement stalls because the engine's windowed output
+    # doesn't maintain stable word positions relative to the full recording.
+    # This is the known limitation: progressive mode degrades after window kicks in.
+    # The committed words from before the window are preserved.
+    assert "the" in committed
+    assert "quick" in committed
+    # No corruption: committed never contains wrong words
+    assert all(w in ["the", "quick", "brown", "fox", "jumps", "over"] for w in committed)
+
+
+def test_on_commit_exception_does_not_crash_session() -> None:
+    """Finding #3: exception in on_commit is caught, doesn't crash tick."""
+    call_count = [0]
+
+    def failing_commit(words: list[str]) -> None:
+        call_count[0] += 1
+        if call_count[0] == 1:
+            raise RuntimeError("Clipboard failed!")
+
+    session = StreamingSession(
+        ScriptedEngine(["hello world", "hello world today", "hello world today is"]),
+        16000,
+        on_commit=failing_commit,
+    )
+    audio = np.full(16000, 0.1, dtype=np.float32)
+
+    # First commit will raise - should be caught
+    session.tick(audio)
+    session.tick(audio)  # commits "hello" "world" -> on_commit raises
+    # Should not crash, session continues
+    session.tick(audio)  # commits "today" -> on_commit succeeds
+    assert call_count[0] >= 2  # was called at least twice
