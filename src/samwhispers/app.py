@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 from samwhispers.audio import AudioRecorder, min_wav_size
 from samwhispers.cleanup import CleanupProvider
 from samwhispers.config import AppConfig, LANGUAGE_NAMES
-from samwhispers.exceptions import ShutdownRequested
+from samwhispers.exceptions import ShutdownRequested, StreamingUnavailableError
 from samwhispers.history import HistoryStore
 from samwhispers.overlay import OverlayController
 from samwhispers.postprocess import TextPostprocessor
@@ -131,6 +131,7 @@ class SamWhispers:
         self._stream_thread: threading.Thread | None = None
         self._stream_stop = threading.Event()
         self._stream_injected_any = False
+        self._stream_disabled = False  # set True on StreamingUnavailableError
         self._finalize_thread: threading.Thread | None = None
         if config.streaming.enabled:
             try:
@@ -299,7 +300,7 @@ class SamWhispers:
                 self._state = State.IDLE
             return
         self._set_overlay("recording")
-        if self._stream_engine is not None:
+        if self._stream_engine is not None and not self._stream_disabled:
             self._start_stream()
         log.info("Recording...")
 
@@ -383,6 +384,21 @@ class SamWhispers:
             try:
                 session.tick()
                 consecutive_errors = 0
+            except StreamingUnavailableError:
+                log.error(
+                    "Streaming unavailable: whisper server cannot provide word "
+                    "timestamps. Disabling streaming for this session and falling "
+                    "back to batch mode."
+                )
+                self._stream_disabled = True
+                with self._lock:
+                    self._stream_session = None
+                from samwhispers.notify import notify
+                notify(
+                    "SamWhispers",
+                    "Streaming disabled: timestamps unavailable. Using batch mode.",
+                )
+                return
             except Exception:
                 consecutive_errors += 1
                 log.exception("Streaming tick failed (%d/%d)", consecutive_errors, max_errors)
@@ -401,6 +417,16 @@ class SamWhispers:
         with self._lock:
             session = self._stream_session
             self._stream_session = None
+
+        # If streaming was disabled (StreamingUnavailableError), fall back to batch
+        if self._stream_disabled:
+            if from_auto_stop:
+                batch_wav = wav_bytes
+            else:
+                batch_wav = self.recorder.stop()
+            self._work_queue.put(batch_wav)
+            return
+
         if session is None:
             return  # Already finalized by a concurrent call
 

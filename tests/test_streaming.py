@@ -822,3 +822,102 @@ def test_commit_all_stores_timestamps() -> None:
     assert tail == ["c"]
     assert len(la.committed_timestamps) == 3
     assert la.committed_timestamps[2].word == "c"
+
+
+# --- Phase 4: Fail-loud and batch fallback tests ---------------------------
+
+
+def test_streaming_unavailable_error_stops_stream_loop() -> None:
+    """StreamingUnavailableError in tick stops the loop and disables streaming."""
+    from unittest.mock import patch
+    from samwhispers.exceptions import StreamingUnavailableError
+
+    class FailingEngine:
+        def transcribe(self, audio: np.ndarray, sample_rate: int) -> TranscribeResult:
+            raise StreamingUnavailableError("no timestamps")
+
+        def update_prompt(self, prompt: str) -> None:
+            pass
+
+    # Build a minimal SamWhispers-like scenario via StreamingSession
+    session = StreamingSession(
+        FailingEngine(),
+        16000,
+    )
+    # tick should raise, which the app's _stream_loop catches
+    import pytest
+    with pytest.raises(StreamingUnavailableError):
+        session.tick(np.full(16000, 0.1, dtype=np.float32))
+
+
+def test_app_stream_loop_catches_streaming_unavailable(tmp_path: Any) -> None:
+    """App._stream_loop catches StreamingUnavailableError and disables streaming."""
+    from unittest.mock import MagicMock, patch
+    from samwhispers.exceptions import StreamingUnavailableError
+    from samwhispers.app import SamWhispers, State
+    import threading
+    import queue
+
+    class FailOnTickEngine:
+        def transcribe(self, audio: np.ndarray, sample_rate: int) -> TranscribeResult:
+            raise StreamingUnavailableError("timestamps unavailable")
+
+        def update_prompt(self, prompt: str) -> None:
+            pass
+
+        def close(self) -> None:
+            pass
+
+    # Build minimal app object via __new__ (skip __init__)
+    app = SamWhispers.__new__(SamWhispers)
+    app.config = MagicMock()
+    app.config.streaming.interval_seconds = 0.01
+    app._state = State.RECORDING
+    app._lock = threading.Lock()
+    app._stream_stop = threading.Event()
+    app._stream_disabled = False
+    app._stream_engine = FailOnTickEngine()
+    app._stream_injected_any = False
+
+    # Create a session that will raise on tick
+    recorder_mock = MagicMock()
+    recorder_mock.snapshot.return_value = np.full(16000, 0.1, dtype=np.float32)
+
+    session = StreamingSession(
+        FailOnTickEngine(), 16000, recorder=recorder_mock
+    )
+    app._stream_session = session
+
+    # Run the stream loop (will catch the error and return)
+    with patch("samwhispers.notify.notify"):
+        app._stream_loop()
+
+    assert app._stream_disabled is True
+    assert app._stream_session is None
+
+
+def test_app_finalize_streaming_batch_fallback() -> None:
+    """When streaming is disabled, _finalize_streaming puts audio on work queue."""
+    from unittest.mock import MagicMock, patch
+    from samwhispers.app import SamWhispers, State
+    import queue
+    import threading
+
+    app = SamWhispers.__new__(SamWhispers)
+    app._lock = threading.Lock()
+    app._state = State.PROCESSING
+    app._stream_stop = threading.Event()
+    app._stream_thread = None
+    app._stream_session = None
+    app._stream_disabled = True
+    app._work_queue = queue.Queue()
+    app.recorder = MagicMock()
+    app.recorder.stop.return_value = b"fake-wav-data"
+
+    # Call finalize (not from auto-stop, so recorder.stop() is called)
+    app._finalize_streaming(from_auto_stop=False)
+
+    # Should have put audio on work queue for batch processing
+    assert not app._work_queue.empty()
+    assert app._work_queue.get() == b"fake-wav-data"
+    app.recorder.stop.assert_called_once()
