@@ -1,7 +1,7 @@
 # Runtime Hardening And UI Reliability
 
 > **Date**: 2026-06-16
-> **Status**: Draft  <!-- Status lifecycle: Exploring -> Draft -> In Progress -> Complete -->
+> **Status**: In Progress  <!-- Status lifecycle: Exploring -> Draft -> In Progress -> Complete -->
 > **Scope**: Fix qtest-drive findings across local web security, lifecycle control, downloads, history, destructive actions, and UI reliability/accessibility.
 > **Estimated effort**: 1-2 weeks
 
@@ -331,23 +331,33 @@ Phase 2 before exposing the security boundary as complete.
   secret-safe failed config load/validation/save paths.
 
 **Exit criteria**:
-- [ ] Non-lifecycle mutating API calls without the CSRF header return 403.
-- [ ] Valid UI-tokened non-lifecycle mutating API calls continue to work.
-- [ ] Supervisor shutdown/restart temporary CSRF exemption is documented in
+- [x] Non-lifecycle mutating API calls without the CSRF header return 403.
+- [x] Valid UI-tokened non-lifecycle mutating API calls continue to work.
+- [x] Supervisor shutdown/restart temporary CSRF exemption is documented in
   Phase 1 notes, is not treated as a release boundary, and is removed by Phase 2.
-- [ ] Supervisor shutdown/restart reject hostile browser Host/Origin/Referer
+- [x] Supervisor shutdown/restart reject hostile browser Host/Origin/Referer
   inputs in Phase 1 despite the temporary CSRF-token exemption.
-- [ ] CORS origins match the configured web port and no longer hard-code 7891.
-- [ ] `GET /api/config` never returns provider API key values.
-- [ ] Config load/validation/save error responses and toasts never echo
+- [x] CORS origins match the configured web port and no longer hard-code 7891.
+- [x] `GET /api/config` never returns provider API key values.
+- [x] Config load/validation/save error responses and toasts never echo
   persisted or newly submitted provider key values.
-- [ ] Saving redacted config preserves existing secrets; clearing/replacing
+- [x] Saving redacted config preserves existing secrets; clearing/replacing
   secrets is explicit and tested.
-- [ ] Default local UI still loads with no login prompt.
-- [ ] Transcription cleanup/translation failures still return original text
+- [x] Default local UI still loads with no login prompt.
+- [x] Transcription cleanup/translation failures still return original text
   after secret redaction/preserve-on-write changes.
-- [ ] `README.md` documents local web control constraints and config secret
+- [x] `README.md` documents local web control constraints and config secret
   redaction/preserve-on-write behavior.
+
+**Phase 1 notes**:
+
+- Supervisor shutdown/restart retain only the planned temporary CSRF-token
+  exemption for Phase 1 CLI compatibility. They still reject untrusted
+  Host/Origin/Referer inputs, this exemption is not a release boundary, and
+  Phase 2 removes it when runtime metadata token discovery lands.
+
+Implementation (2026-06-16, code: d9f35b7)
+Added per-process CSRF token generation, Host/Origin/Referer validation middleware, and CSRF enforcement to all non-lifecycle mutating API routes. Supervisor shutdown/restart retain a temporary CSRF exemption but enforce Host/Origin/Referer checks. Config API redacts provider API keys via sentinel-based preserve-on-write. Browser JS api() helper sends X-SamWhispers-CSRF on mutations. CORS origins dynamically match the configured web port. Tests cover hostile host, hostile/null origins, missing/invalid CSRF, valid mutations, custom-port CORS, config redaction, preserve-on-write, explicit clear/replace, secret-safe error paths, and cleanup/translation fallback after changes. README documents local web control constraints and secret behavior.
 
 ### Phase 2: Add Runtime Metadata And Fix Lifecycle Topology [QA]
 
@@ -809,7 +819,7 @@ user-facing docs in line with the changed behavior.
 
 | # | Phase/Task | Status | Notes |
 |---|---|---|---|
-| 1 | Harden local web requests and config secrets | Pending | Atomic with Phase 2 for supervisor lifecycle CSRF. |
+| 1 | Harden local web requests and config secrets | Complete | Atomic with Phase 2 for supervisor lifecycle CSRF. |
 | 2 | Add runtime metadata and fix lifecycle topology | Pending | Completes the first security boundary checkpoint. |
 | 3 | Implement download integrity and model discovery | Pending | Uses security/API patterns from Phase 1. |
 | 4 | Stabilize history API and destructive history actions | Pending | Uses security/API patterns from Phase 1. |
