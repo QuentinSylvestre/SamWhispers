@@ -242,9 +242,10 @@ def create_app(
     app.mount("/static", StaticFiles(directory=_WEB_DIR), name="static")
 
     @app.get("/", response_class=HTMLResponse)
-    def index() -> str:
+    def index() -> Response:
         html = (_WEB_DIR / "index.html").read_text(encoding="utf-8")
-        return html.replace("__SAMWHISPERS_CSRF_TOKEN__", app.state.csrf_token)
+        content = html.replace("__SAMWHISPERS_CSRF_TOKEN__", app.state.csrf_token)
+        return HTMLResponse(content, headers={"Cache-Control": "no-store, private"})
 
     @app.get("/favicon.ico", include_in_schema=False)
     def favicon() -> FileResponse:

@@ -97,28 +97,28 @@ WHISPER_MANIFEST: dict[str, ModelArtifact] = {
         name="large-v1", filename="ggml-large-v1.bin",
         url=f"https://huggingface.co/{_WHISPER_REPO}/resolve/{_WHISPER_REVISION}/ggml-large-v1.bin",
         revision=_WHISPER_REVISION,
-        sha256="0f4c8c0f0c4c24e4c12c56e5b8e2c2f6a1c0e4c0c4c0e4c0c4c0e4c0c4c0e4c0",
+        sha256="",  # UNVERIFIED — needs real hash from HF LFS metadata
         size=3094623691,
     ),
     "large-v2": ModelArtifact(
         name="large-v2", filename="ggml-large-v2.bin",
         url=f"https://huggingface.co/{_WHISPER_REPO}/resolve/{_WHISPER_REVISION}/ggml-large-v2.bin",
         revision=_WHISPER_REVISION,
-        sha256="1f085af32e15d0ce3a1a59e7e394bdd4a03dce5d7d3bded42c3f04e8c8cc685c",
+        sha256="",  # UNVERIFIED — needs real hash from HF LFS metadata
         size=3094623691,
     ),
     "large-v3": ModelArtifact(
         name="large-v3", filename="ggml-large-v3.bin",
         url=f"https://huggingface.co/{_WHISPER_REPO}/resolve/{_WHISPER_REVISION}/ggml-large-v3.bin",
         revision=_WHISPER_REVISION,
-        sha256="ad82bf6a9043ceed055076d0fd39f5f186f3c72b56b6e2c0b8a49e28f8e2ee7c",
+        sha256="",  # UNVERIFIED — needs real hash from HF LFS metadata
         size=3094623691,
     ),
     "large-v3-turbo": ModelArtifact(
         name="large-v3-turbo", filename="ggml-large-v3-turbo.bin",
         url=f"https://huggingface.co/{_WHISPER_REPO}/resolve/{_WHISPER_REVISION}/ggml-large-v3-turbo.bin",
         revision=_WHISPER_REVISION,
-        sha256="4f566fcab43760a85c8a5e4e2e3b7e6c1b8e3f4a7c6d9e2b1a0f8c7d6e5a4b3c",
+        sha256="",  # UNVERIFIED — needs real hash from HF LFS metadata
         size=1621098497,
     ),
 }

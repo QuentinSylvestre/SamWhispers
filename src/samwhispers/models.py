@@ -101,8 +101,8 @@ class ModelDownloader:
                         for chunk in resp.iter_bytes(_CHUNK):
                             f.write(chunk)
                             self._set(downloaded=self.status()["downloaded"] + len(chunk))
-            # Verify hash before accepting
-            if artifact and not verify_file(tmp, artifact.sha256):
+            # Verify hash before accepting (skip for unverified manifest entries)
+            if artifact and artifact.sha256 and not verify_file(tmp, artifact.sha256):
                 tmp.unlink(missing_ok=True)
                 self._set(
                     error=f"Hash mismatch for {name}: file does not match expected SHA256",

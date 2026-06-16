@@ -104,7 +104,7 @@ def _win_set_private(path: Path) -> bool:
             return False
         result = subprocess.run(
             ["icacls", str(path), "/inheritance:r",
-             "/grant:r", f"{username}:F",
+             "/grant:r", f'"{username}":F',
              "/grant:r", "SYSTEM:F",
              "/grant:r", "Administrators:F"],
             capture_output=True, text=True, timeout=5,
