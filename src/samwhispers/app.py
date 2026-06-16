@@ -408,14 +408,20 @@ class SamWhispers:
         # Cancel session to prevent any stale tick from running
         session.cancel()
 
-        if from_auto_stop:
-            # Recorder already stopped — use raw float32 from the WAV to avoid
-            # an extra WAV encode→decode round-trip precision loss
-            from samwhispers.audio import wav_to_float32
-            final_audio = wav_to_float32(wav_bytes)
-        else:
-            final_audio = self.recorder.snapshot()
-            self.recorder.stop()
+        try:
+            if from_auto_stop:
+                from samwhispers.audio import wav_to_float32
+                final_audio = wav_to_float32(wav_bytes)
+            else:
+                final_audio = self.recorder.snapshot()
+                self.recorder.stop()
+        except Exception:
+            log.exception("Failed to prepare audio for finalize")
+            with self._lock:
+                if self._state == State.PROCESSING:
+                    self._state = State.IDLE
+            self._set_overlay("idle")
+            return
 
         t = threading.Thread(
             target=self._finalize_stream_worker,
