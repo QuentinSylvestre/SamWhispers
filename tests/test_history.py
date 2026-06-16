@@ -36,8 +36,8 @@ def test_list_pagination(tmp_path: Path) -> None:
     store = _store(tmp_path)
     for i in range(5):
         store.add(f"entry {i}")
-    page1 = store.list(limit=2, offset=0)
-    page2 = store.list(limit=2, offset=2)
+    page1 = store.list(limit=2)
+    page2 = store.list(limit=2, before_id=page1[-1]["id"])
     assert [e["text"] for e in page1] == ["entry 4", "entry 3"]
     assert [e["text"] for e in page2] == ["entry 2", "entry 1"]
     assert store.count() == 5

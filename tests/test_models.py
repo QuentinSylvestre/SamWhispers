@@ -8,7 +8,8 @@ import httpx
 import pytest
 import respx
 
-from samwhispers.models import WHISPER_CPP_MODELS, ModelDownloader, _HF_BASE
+from samwhispers.models import WHISPER_CPP_MODELS, ModelDownloader
+from samwhispers.model_manifest import WHISPER_MANIFEST
 from samwhispers.webconfig import list_whisper_models, save_config_dict
 
 
@@ -35,13 +36,17 @@ def test_start_rejects_concurrent_download(tmp_path: Path) -> None:
 
 @respx.mock
 def test_download_writes_file_and_tracks_progress(tmp_path: Path) -> None:
+    from unittest.mock import patch
+
+    artifact = WHISPER_MANIFEST["base.en"]
     data = b"ggml-model-bytes" * 500
-    respx.get(f"{_HF_BASE}/ggml-base.en.bin").mock(
+    respx.get(artifact.url).mock(
         return_value=httpx.Response(200, content=data, headers={"content-length": str(len(data))})
     )
     d = ModelDownloader()
     d._state["downloading"] = True
-    d._download("base.en", tmp_path)  # run synchronously
+    with patch("samwhispers.models.verify_file", return_value=True):
+        d._download("base.en", tmp_path)
     st = d.status()
     assert st["done"] is True and st["downloading"] is False
     assert st["downloaded"] == len(data)
@@ -53,7 +58,8 @@ def test_download_writes_file_and_tracks_progress(tmp_path: Path) -> None:
 
 @respx.mock
 def test_download_error_sets_state_and_cleans_up(tmp_path: Path) -> None:
-    respx.get(f"{_HF_BASE}/ggml-base.en.bin").mock(return_value=httpx.Response(404))
+    artifact = WHISPER_MANIFEST["base.en"]
+    respx.get(artifact.url).mock(return_value=httpx.Response(404))
     d = ModelDownloader()
     d._state["downloading"] = True
     d._download("base.en", tmp_path)

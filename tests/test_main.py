@@ -84,8 +84,8 @@ def test_stop_uses_metadata_http(tmp_path: Path) -> None:
         created_at=1.0,
     )
     with (
-        patch("samwhispers.__main__.read_metadata", return_value=meta),
-        patch("samwhispers.__main__.validate_metadata", return_value=True),
+        patch("samwhispers.runtime.read_metadata", return_value=meta),
+        patch("samwhispers.runtime.validate_metadata", return_value=True),
         patch("samwhispers.__main__._http_post", return_value=True) as hp,
         patch("samwhispers.singleinstance.is_running", return_value=False),
         patch("samwhispers.runtime.delete_metadata"),
@@ -108,8 +108,8 @@ def test_stop_falls_back_to_pid_kill(tmp_path: Path) -> None:
         created_at=1.0,
     )
     with (
-        patch("samwhispers.__main__.read_metadata", return_value=meta),
-        patch("samwhispers.__main__.validate_metadata", return_value=True),
+        patch("samwhispers.runtime.read_metadata", return_value=meta),
+        patch("samwhispers.runtime.validate_metadata", return_value=True),
         patch("samwhispers.__main__._http_post", return_value=False),
         patch("samwhispers.runtime.is_pid_alive", return_value=True),
         patch("samwhispers.runtime.is_samwhispers_process", return_value=True),
@@ -132,8 +132,8 @@ def test_stop_no_web_uses_pid(tmp_path: Path) -> None:
         created_at=1.0,
     )
     with (
-        patch("samwhispers.__main__.read_metadata", return_value=meta),
-        patch("samwhispers.__main__.validate_metadata", return_value=True),
+        patch("samwhispers.runtime.read_metadata", return_value=meta),
+        patch("samwhispers.runtime.validate_metadata", return_value=True),
         patch("samwhispers.runtime.is_pid_alive", return_value=True),
         patch("samwhispers.runtime.is_samwhispers_process", return_value=True),
         patch("samwhispers.__main__._force_kill") as fk,
@@ -157,8 +157,8 @@ def test_restart_uses_metadata_http() -> None:
         created_at=1.0,
     )
     with (
-        patch("samwhispers.__main__.read_metadata", return_value=meta),
-        patch("samwhispers.__main__.validate_metadata", return_value=True),
+        patch("samwhispers.runtime.read_metadata", return_value=meta),
+        patch("samwhispers.runtime.validate_metadata", return_value=True),
         patch("samwhispers.__main__._http_post", return_value=True) as hp,
     ):
         entry._do_restart()
