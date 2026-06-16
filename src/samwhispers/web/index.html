@@ -23,10 +23,10 @@ body { background: var(--bg); color: var(--fg);
 
 /* Header */
 header { grid-column: 1 / -1; display: flex; align-items: center; gap: 12px;
-  padding: 14px 24px; border-bottom: 1px solid var(--border);
+  padding: 4px 24px; border-bottom: 1px solid var(--border);
   background: var(--bg); position: sticky; top: 0; z-index: 10; }
-header h1 { font-size: 18px; font-weight: 600; }
-.brand-logo { height: 24px; width: auto; display: block; }
+header h1 { font-size: 18px; font-weight: 600; margin: 0; }
+.brand-logo { height: 96px; width: auto; display: block; cursor: pointer; }
 .status-pill { display: inline-flex; align-items: center; gap: 6px;
   font-size: 13px; color: var(--muted); margin-left: auto; }
 .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); }
@@ -145,7 +145,7 @@ button.primary:disabled { opacity: .5; cursor: default; }
 
 <header>
   <button class="menu-toggle" id="menuToggle" aria-label="Toggle menu">&#9776;</button>
-  <h1><img class="brand-logo" src="/static/logo/samwhispers-wordmark-dark.png" alt="SamWhispers" height="24" /></h1>
+  <h1><img class="brand-logo" src="/static/logo/samwhispers-wordmark-dark.png" alt="SamWhispers" height="96" onclick="document.querySelector('.nav-item[data-page=&quot;general&quot;]').click()" /></h1>
   <span class="status-pill"><span class="dot" id="statusDot"></span><span id="statusText">…</span></span>
 </header>
 
