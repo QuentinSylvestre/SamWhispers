@@ -41,10 +41,6 @@ DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 7891
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
 CSRF_HEADER = "x-samwhispers-csrf"
-SUPERVISOR_CSRF_EXEMPT_PATHS = {
-    "/api/supervisor/shutdown",
-    "/api/supervisor/restart",
-}
 
 
 def expected_origins(host: str, port: int) -> set[str]:
@@ -232,7 +228,6 @@ def create_app(
         if (
             is_api
             and request.method not in SAFE_METHODS
-            and request.url.path not in SUPERVISOR_CSRF_EXEMPT_PATHS
             and request.headers.get(CSRF_HEADER) != request.app.state.csrf_token
         ):
             return JSONResponse({"detail": "Missing or invalid CSRF token"}, status_code=403)

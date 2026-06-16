@@ -19,10 +19,12 @@ import collections
 import enum
 import json
 import logging
+import os
 import signal
 import subprocess
 import sys
 import threading
+import time
 from collections.abc import Callable
 from types import FrameType
 from typing import TYPE_CHECKING, Any
@@ -91,6 +93,9 @@ class WorkerSupervisor:
         self._whisper_manager: WhisperServerManager | None = None
         self._whisper_lock = threading.Lock()
 
+        # Startup ticks counter for STARTING→RUNNING transition
+        self._startup_ticks = 0
+
         # Startup overlay: shown during launch, dismissed once worker is running.
         self._startup_overlay: OverlayController | None = None
 
@@ -134,6 +139,7 @@ class WorkerSupervisor:
         log.info("Restarting worker...")
         with self._lock:
             self._terminate_proc()
+            self._startup_ticks = 0
             if not self._paused and not self._stop_event.is_set():
                 self._spawn()
 
@@ -170,6 +176,7 @@ class WorkerSupervisor:
             if not self._paused:
                 return
             self._paused = False
+            self._startup_ticks = 0
             if not self._stop_event.is_set():
                 self._spawn()
         log.info("Worker resumed")
@@ -344,7 +351,6 @@ class WorkerSupervisor:
     def _monitor_loop(self) -> None:
         """Watch the worker; auto-restart on unexpected exit with capped backoff."""
         restart_count = 0
-        startup_ticks = 0
         while not self._stop_event.wait(timeout=_POLL_INTERVAL):
             with self._lock:
                 proc = self._proc
@@ -353,8 +359,8 @@ class WorkerSupervisor:
                     continue
             if proc.poll() is None:
                 if self._state == WorkerState.STARTING:
-                    startup_ticks += 1
-                    if startup_ticks >= 3:
+                    self._startup_ticks += 1
+                    if self._startup_ticks >= 3:
                         with self._lock:
                             self._set_state(WorkerState.RUNNING)
                 restart_count = 0
@@ -409,7 +415,7 @@ class WorkerSupervisor:
                 # while we were backing off.
                 if self._stop_event.is_set() or self._paused or self._proc is not proc:
                     continue
-                startup_ticks = 0
+                self._startup_ticks = 0
                 self._spawn()
 
 
@@ -582,6 +588,29 @@ def main() -> None:
     web_handle = _start_web(supervisor, args.config, args.no_web, args.web_port, stop_callback=_stop_main_loop)
     settings_url = web_handle.url if web_handle else None
 
+    # Write runtime metadata now that web topology and CSRF token are known
+    from samwhispers.runtime import RuntimeMetadata, write_metadata
+    from samwhispers.webserver import DEFAULT_PORT
+
+    effective_port = args.web_port or DEFAULT_PORT
+    csrf_token = web_handle.server.config.app.state.csrf_token if web_handle else None
+    meta = RuntimeMetadata(
+        pid=os.getpid(),
+        web_enabled=not args.no_web and web_handle is not None,
+        web_host="127.0.0.1",
+        web_port=effective_port if not args.no_web and web_handle else None,
+        config_path=str(args.config) if args.config else None,
+        launch_args=sys.argv[:],
+        executable=sys.executable,
+        cwd=os.getcwd(),
+        created_at=time.time(),
+        csrf_token=csrf_token,
+    )
+    try:
+        write_metadata(meta)
+    except Exception:
+        log.warning("Failed to write runtime metadata; CLI lifecycle may be limited")
+
     use_tray = not args.no_tray
     if use_tray:
         from samwhispers.tray import tray_available
@@ -617,6 +646,9 @@ def main() -> None:
         supervisor.shutdown()
         if web_handle is not None:
             web_handle.shutdown()
+        from samwhispers.runtime import delete_metadata
+
+        delete_metadata()
         lock.release()
 
     # Post-loop: check if a relaunch was requested

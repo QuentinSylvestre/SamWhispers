@@ -459,18 +459,48 @@ def test_dynamic_custom_port_cors() -> None:
     assert rejected.status_code == 403
 
 
-def test_supervisor_lifecycle_keeps_temporary_csrf_exemption(
+def test_supervisor_lifecycle_requires_csrf(
     client_and_sup: tuple[TestClient, FakeSupervisor, Path],
 ) -> None:
     client, sup, _ = client_and_sup
+    # Without CSRF token, supervisor lifecycle is rejected
     assert (
         client.post(
             "/api/supervisor/restart",
             headers={"Origin": "http://127.0.0.1:7891"},
         ).status_code
+        == 403
+    )
+    # With valid CSRF token, it works
+    assert (
+        client.post(
+            "/api/supervisor/restart",
+            headers=_csrf_headers(client),
+        ).status_code
         == 200
     )
     assert sup.calls == ["relaunch"]
+
+
+def test_supervisor_shutdown_requires_csrf(
+    client_and_sup: tuple[TestClient, FakeSupervisor, Path],
+) -> None:
+    client, sup, _ = client_and_sup
+    assert (
+        client.post(
+            "/api/supervisor/shutdown",
+            headers={"Origin": "http://127.0.0.1:7891"},
+        ).status_code
+        == 403
+    )
+    assert (
+        client.post(
+            "/api/supervisor/shutdown",
+            headers=_csrf_headers(client),
+        ).status_code
+        == 200
+    )
+    assert sup.calls == ["shutdown"]
 
 
 def test_supervisor_lifecycle_rejects_hostile_browser_inputs(

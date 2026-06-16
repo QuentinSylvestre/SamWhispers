@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import os
 import sys
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import httpx
@@ -46,6 +48,18 @@ def test_supervisor_args_pass_through() -> None:
     sup_main.assert_called_once()  # supervisor parses its own args
 
 
+def test_start_subcommand_strips_start_token() -> None:
+    """'samwhispers start --foreground' passes args to supervisor without 'start'."""
+    with (
+        patch.object(sys, "argv", ["samwhispers", "start", "--foreground", "-v"]),
+        patch("samwhispers.supervisor.main") as sup_main,
+    ):
+        entry.main()
+    sup_main.assert_called_once()
+    # sys.argv should not contain 'start'
+    assert "start" not in sys.argv
+
+
 def test_worker_subcommand_dispatches() -> None:
     with (
         patch.object(sys, "argv", ["samwhispers", "worker", "--unmanaged-server"]),
@@ -55,6 +69,100 @@ def test_worker_subcommand_dispatches() -> None:
     run_worker.assert_called_once()
     args = run_worker.call_args[0][0]
     assert args.unmanaged_server is True
+
+
+def test_stop_uses_metadata_http(tmp_path: Path) -> None:
+    """Stop reads metadata and uses HTTP when web enabled."""
+    from samwhispers.runtime import RuntimeMetadata
+
+    meta = RuntimeMetadata(
+        pid=os.getpid(),
+        web_enabled=True,
+        web_host="127.0.0.1",
+        web_port=7891,
+        csrf_token="tok",
+        created_at=1.0,
+    )
+    with (
+        patch("samwhispers.__main__.read_metadata", return_value=meta),
+        patch("samwhispers.__main__.validate_metadata", return_value=True),
+        patch("samwhispers.__main__._http_post", return_value=True) as hp,
+        patch("samwhispers.singleinstance.is_running", return_value=False),
+        patch("samwhispers.runtime.delete_metadata"),
+    ):
+        result = entry._do_stop()
+    assert result is True
+    hp.assert_called_once_with("127.0.0.1", 7891, "/api/supervisor/shutdown", "tok")
+
+
+def test_stop_falls_back_to_pid_kill(tmp_path: Path) -> None:
+    """Stop falls back to PID kill when HTTP fails."""
+    from samwhispers.runtime import RuntimeMetadata
+
+    meta = RuntimeMetadata(
+        pid=12345,
+        web_enabled=True,
+        web_host="127.0.0.1",
+        web_port=7891,
+        csrf_token="tok",
+        created_at=1.0,
+    )
+    with (
+        patch("samwhispers.__main__.read_metadata", return_value=meta),
+        patch("samwhispers.__main__.validate_metadata", return_value=True),
+        patch("samwhispers.__main__._http_post", return_value=False),
+        patch("samwhispers.runtime.is_pid_alive", return_value=True),
+        patch("samwhispers.runtime.is_samwhispers_process", return_value=True),
+        patch("samwhispers.__main__._force_kill") as fk,
+        patch("samwhispers.runtime.delete_metadata"),
+    ):
+        result = entry._do_stop()
+    assert result is True
+    fk.assert_called_once_with(12345)
+
+
+def test_stop_no_web_uses_pid(tmp_path: Path) -> None:
+    """Stop on --no-web instance goes straight to PID kill."""
+    from samwhispers.runtime import RuntimeMetadata
+
+    meta = RuntimeMetadata(
+        pid=12345,
+        web_enabled=False,
+        web_port=None,
+        created_at=1.0,
+    )
+    with (
+        patch("samwhispers.__main__.read_metadata", return_value=meta),
+        patch("samwhispers.__main__.validate_metadata", return_value=True),
+        patch("samwhispers.runtime.is_pid_alive", return_value=True),
+        patch("samwhispers.runtime.is_samwhispers_process", return_value=True),
+        patch("samwhispers.__main__._force_kill") as fk,
+        patch("samwhispers.runtime.delete_metadata"),
+    ):
+        result = entry._do_stop()
+    assert result is True
+    fk.assert_called_once_with(12345)
+
+
+def test_restart_uses_metadata_http() -> None:
+    """Restart uses HTTP endpoint when web enabled."""
+    from samwhispers.runtime import RuntimeMetadata
+
+    meta = RuntimeMetadata(
+        pid=os.getpid(),
+        web_enabled=True,
+        web_host="127.0.0.1",
+        web_port=9000,
+        csrf_token="tok",
+        created_at=1.0,
+    )
+    with (
+        patch("samwhispers.__main__.read_metadata", return_value=meta),
+        patch("samwhispers.__main__.validate_metadata", return_value=True),
+        patch("samwhispers.__main__._http_post", return_value=True) as hp,
+    ):
+        entry._do_restart()
+    hp.assert_called_once_with("127.0.0.1", 9000, "/api/supervisor/restart", "tok")
 
 
 @respx.mock

@@ -281,6 +281,27 @@ is used internally — you don't run it directly.)
 Only **one instance runs at a time** — launching `samwhispers` again won't start a
 second copy; it just opens the running instance's config UI.
 
+`stop` and `restart` use runtime metadata to discover the running instance's
+web port and CSRF token automatically. This works with default settings, custom
+`--web-port`, and `--no-web`:
+
+- With web enabled (default): `stop`/`restart` use an HTTP call to the
+  instance's actual port, authenticated with the per-process CSRF token.
+- With `--no-web`: falls back to verified process termination (PID check +
+  process identity verification).
+- `restart` reconstructs launch arguments from the running instance's metadata,
+  so a custom-port instance restarts with the same port.
+
+Runtime metadata is written to the user's data directory after launch and
+cleaned up on normal shutdown. If a crash leaves stale metadata, the next
+`stop`/`start` safely ignores it (dead PID detection).
+
+**Environment fidelity**: `restart` from an external terminal inherits the
+*invoking* terminal's environment, not the original instance's. If the original
+instance was started with specific environment variables, a `restart` from a
+different shell may not preserve them. For fully reproducible restarts, use the
+same shell or a service manager.
+
 Once running, open any text editor or input field, hold the hotkey, speak, and release.
 
 Quit from the tray's **Quit** item (or `Ctrl+C` if you ran it with `-f`).

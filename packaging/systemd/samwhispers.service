@@ -10,7 +10,10 @@ Type=simple
 # Adjust this path to wherever `samwhispers-supervisor` was installed:
 #   pipx / pip --user -> %h/.local/bin/samwhispers-supervisor
 #   a virtualenv      -> /path/to/.venv/bin/samwhispers-supervisor
-ExecStart=%h/.local/bin/samwhispers-supervisor
+# --foreground is required for Type=simple (systemd expects the main process
+# to stay in the foreground; without it the supervisor detaches and systemd
+# loses track of the process).
+ExecStart=%h/.local/bin/samwhispers-supervisor --foreground
 Restart=on-failure
 RestartSec=5
 

@@ -60,6 +60,10 @@ for customization (and macOS).
 A user service starts on login and has access to your graphical session
 (display, audio, clipboard) — that's what the worker needs.
 
+The service unit uses `Type=simple` with `--foreground` so systemd tracks the
+supervisor process directly. Without `--foreground`, the supervisor detaches to
+the background and systemd loses track of it.
+
 1. Install the unit:
 
    ```bash
@@ -143,3 +147,15 @@ The simplest approach is Task Scheduler with an "At log on" trigger:
 
 Alternatively, drop a shortcut to `samwhispers-supervisor.exe` in the Startup
 folder (`shell:startup`).
+
+## Lifecycle commands and service managers
+
+`samwhispers stop` and `samwhispers restart` discover the running instance via
+runtime metadata (PID, web port, CSRF token) written at launch. This works
+whether the instance was started manually, by a service manager, or by the
+autostart entry.
+
+**Environment fidelity**: `restart` from a different terminal inherits that
+terminal's environment, not the original instance's. Service managers (systemd,
+launchd, Task Scheduler) provide consistent environments — prefer them over
+manual `restart` when environment matters.

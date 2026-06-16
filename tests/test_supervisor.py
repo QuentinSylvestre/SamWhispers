@@ -31,6 +31,7 @@ def _running_proc() -> MagicMock:
     proc = MagicMock()
     proc.poll.return_value = None
     proc.pid = 4242
+    proc.stderr = iter([])  # empty iterable so _read_worker_logs exits immediately
     return proc
 
 
@@ -185,11 +186,13 @@ def test_pause_terminates_and_resume_respawns() -> None:
     with patch.object(sup.subprocess, "Popen", side_effect=[proc1, proc2]) as popen:
         s = WorkerSupervisor()
         s.start()
+        s._startup_ticks = 5  # simulate accumulated ticks
         s.pause()
         assert s.state == WorkerState.PAUSED
         proc1.terminate.assert_called_once()
         s.resume()
         assert s.state == WorkerState.STARTING
+        assert s._startup_ticks == 0  # reset on resume
         assert popen.call_count == 2
         s.shutdown()
 
@@ -209,10 +212,12 @@ def test_restart_swaps_process() -> None:
     with patch.object(sup.subprocess, "Popen", side_effect=[proc1, proc2]):
         s = WorkerSupervisor()
         s.start()
+        s._startup_ticks = 5  # simulate accumulated ticks
         s.restart()
         proc1.terminate.assert_called_once()
         assert s._proc is proc2
         assert s.state == WorkerState.STARTING
+        assert s._startup_ticks == 0  # reset on restart
         s.shutdown()
 
 
