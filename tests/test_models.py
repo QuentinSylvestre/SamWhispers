@@ -45,7 +45,7 @@ def test_download_writes_file_and_tracks_progress(tmp_path: Path) -> None:
     )
     d = ModelDownloader()
     d._state["downloading"] = True
-    with patch("samwhispers.models.verify_file", return_value=True):
+    with patch("samwhispers.model_manifest.verify_file", return_value=True):
         d._download("base.en", tmp_path)
     st = d.status()
     assert st["done"] is True and st["downloading"] is False
