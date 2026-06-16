@@ -249,8 +249,7 @@ Phase 2 before exposing the security boundary as complete.
 
 **File scope**: `src/samwhispers/webserver.py`, `src/samwhispers/webconfig.py`,
 `src/samwhispers/web/index.html`, `tests/test_webserver.py`,
-`tests/test_webconfig.py`, `tests/test_main.py`, `README.md`,
-`docs/TEST_PLAN.md`
+`tests/test_webconfig.py`, `tests/test_main.py`, `README.md`
 
 **Detailed changes**:
 
@@ -320,9 +319,9 @@ Phase 2 before exposing the security boundary as complete.
   newly submitted provider key values.
 - Update the browser `api()` helper to attach `X-SamWhispers-CSRF` on mutating
   calls and show 403 failures as actionable toasts.
-- Update README and the manual test plan for local web control constraints,
-  rejected non-local origins/hosts, CSRF-protected mutations, redacted secrets,
-  and preserve-on-write behavior.
+- Update README for local web control constraints, rejected non-local
+  origins/hosts, CSRF-protected mutations, redacted secrets, and
+  preserve-on-write behavior.
 - Add regression coverage that transcription cleanup/translation provider
   failures still return the original text after config redaction/preserve-on-
   write changes.
@@ -349,8 +348,6 @@ Phase 2 before exposing the security boundary as complete.
   after secret redaction/preserve-on-write changes.
 - [ ] `README.md` documents local web control constraints and config secret
   redaction/preserve-on-write behavior.
-- [ ] `docs/TEST_PLAN.md` includes manual checks for Host/Origin rejection,
-  CSRF-protected mutations, and redacted secret saves.
 
 ### Phase 2: Add Runtime Metadata And Fix Lifecycle Topology [QA]
 
@@ -476,8 +473,8 @@ allowing users to discover new Hugging Face models without SamWhispers releases.
 `src/samwhispers/model_manifest.py` (new), `src/samwhispers/config.py`,
 `src/samwhispers/webserver.py`, `src/samwhispers/webconfig.py`,
 `src/samwhispers/web/index.html`, `README.md`, `config.example.toml`,
-`docs/TEST_PLAN.md`, `tests/test_models.py`,
-`tests/test_bootstrap.py`, `tests/test_webserver.py`, `tests/test_config.py`,
+`tests/test_models.py`, `tests/test_bootstrap.py`, `tests/test_webserver.py`,
+`tests/test_config.py`,
 `tests/test_model_manifest.py` (new)
 
 **Detailed changes**:
@@ -556,9 +553,6 @@ allowing users to discover new Hugging Face models without SamWhispers releases.
 - Update README model-download docs, including hash mismatch remediation and how
   users can add Hugging Face models without a SamWhispers release.
 - Update `config.example.toml` comments if model/VAD path guidance changes.
-- Update `docs/TEST_PLAN.md` for SHA256 verification, hash mismatch, Hugging
-  Face discovery pinning, manual URL+SHA256, manual path support, and VAD
-  download/delete checks.
 
 **Exit criteria**:
 - [ ] Built-in Whisper and VAD artifacts use immutable revisions and SHA256.
@@ -586,8 +580,6 @@ allowing users to discover new Hugging Face models without SamWhispers releases.
   local model behavior.
 - [ ] `config.example.toml` comments describe local path and managed download
   expectations accurately.
-- [ ] `docs/TEST_PLAN.md` covers model/VAD integrity, discovery, mismatch, and
-  deletion flows.
 
 ### Phase 4: Stabilize History API And Destructive History Actions [QA]
 
@@ -595,8 +587,8 @@ allowing users to discover new Hugging Face models without SamWhispers releases.
 confirmed, and state-safe.
 
 **File scope**: `src/samwhispers/history.py`, `src/samwhispers/webserver.py`,
-`src/samwhispers/web/index.html`, `README.md`, `docs/TEST_PLAN.md`,
-`tests/test_history.py`, `tests/test_webserver.py`
+`src/samwhispers/web/index.html`, `README.md`, `tests/test_history.py`,
+`tests/test_webserver.py`
 
 **Detailed changes**:
 
@@ -625,8 +617,6 @@ confirmed, and state-safe.
 - Fix empty messages: distinguish no history, no search matches, and model list
   no matches where applicable.
 - Update README history section if it describes retention, search, or clearing.
-- Update `docs/TEST_PLAN.md` for cursor pagination, bounded list behavior,
-  confirmation flows, and atomic batch-delete failure behavior.
 
 **Exit criteria**:
 - [ ] History API rejects negative/unbounded pagination parameters.
@@ -638,8 +628,6 @@ confirmed, and state-safe.
 - [ ] Single delete, selected delete, and clear history require confirmation.
 - [ ] Empty-history controls are disabled and state resets after rerender.
 - [ ] `README.md` reflects any user-visible history behavior changes.
-- [ ] `docs/TEST_PLAN.md` covers cursor pagination, bounded list, confirmation,
-  and atomic batch-delete checks.
 
 ### Phase 5: Refactor Web UI State, Saves, Polling, And Accessibility [QA]
 
@@ -647,7 +635,7 @@ confirmed, and state-safe.
 accessible, and easier to verify without adding a frontend build system.
 
 **File scope**: `src/samwhispers/web/index.html`, `README.md`,
-`docs/TEST_PLAN.md`, `tests/test_webserver.py`
+`tests/test_webserver.py`
 
 **Detailed changes**:
 
@@ -694,9 +682,7 @@ accessible, and easier to verify without adding a frontend build system.
 - Ensure model inventory refreshes after config saves that affect model paths and
   after downloads/deletes, including reload/navigation cases.
 - Keep the file as a single packaged HTML asset. Do not introduce build tooling.
-- Update `docs/TEST_PLAN.md` for keyboard/accessibility, save/reload state,
-  focus behavior, buttons, and semantic controls. Update README only if visible
-  settings UI instructions change.
+- Update README only if visible settings UI instructions change.
 
 **Exit criteria**:
 - [ ] No duplicate save requests from any save button.
@@ -714,8 +700,6 @@ accessible, and easier to verify without adding a frontend build system.
 - [ ] Accessibility acceptance covers keyboard destructive flows, focus after
   modal/async actions, labels, live regions, and semantic assertions.
 - [ ] Model inventory stays current after relevant saves/downloads/deletes.
-- [ ] `docs/TEST_PLAN.md` covers keyboard/accessibility and save/reload state
-  checks.
 - [ ] `README.md` reflects any visible settings UI flow changes.
 
 ### Phase 6: Final Integration, Runtime Verification, And Documentation
@@ -813,17 +797,13 @@ user-facing docs in line with the changed behavior.
 | Document | Update needed | Phase |
 |---|---|---|
 | `README.md` | Document local control constraints after host/origin hardening, plus secret redaction and preserve-on-write behavior for API keys. | 1 |
-| `docs/TEST_PLAN.md` | Add manual checks for CSRF-protected mutating requests, rejected non-local origins/hosts, redacted secrets, failed save redaction, and unchanged secrets after save. | 1 |
 | `README.md` | Document lifecycle command behavior for explicit start, stop, restart, custom port, `--no-web`, restart environment fidelity limits, and local control constraints. | 2 |
 | `docs/STARTUP.md` | Reconcile service/autostart guidance with lifecycle CLI/runtime metadata behavior, restart, custom port, `--no-web`, and environment inheritance limits. | 2 |
 | `packaging/systemd/samwhispers.service` | Update `ExecStart` and comments for `--foreground` under `Type=simple`. | 2 |
 | `README.md` | Document model integrity, curated pinned downloads, Hugging Face discovery, temp-download hash confirmation, manual URL+SHA256, manual local paths, and hash mismatch remediation. | 3 |
 | `config.example.toml` | Refresh model and VAD path comments for pinned built-ins, manual URLs with SHA256, and local paths. | 3 |
-| `docs/TEST_PLAN.md` | Add model/VAD checks for SHA256 verification, mismatch failures, fixture-backed discovery, bounded real probe skip/cleanup, manual URL+SHA256, manual path support, and VAD delete. | 3 |
 | `README.md` | Document user-visible history changes if existing README history guidance is affected. | 4 |
-| `docs/TEST_PLAN.md` | Add history checks for cursor pagination, bounded list behavior, confirmations, and atomic batch-delete failure handling. | 4 |
 | `README.md` | Document destructive-action behavior where settings/model/history UI usage is described if visible instructions change. | 5 |
-| `docs/TEST_PLAN.md` | Add keyboard/accessibility floor, destructive action, save/reload state, failed config-load recovery, focus, buttons, and semantic-control checks. | 5 |
 
 ## Progress Tracker
 
