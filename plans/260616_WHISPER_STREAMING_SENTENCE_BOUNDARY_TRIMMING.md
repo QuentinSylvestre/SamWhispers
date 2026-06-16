@@ -355,3 +355,27 @@ Manual: run `samwhispers` with streaming enabled, speak for >60s, verify words a
 | 8 | Medium | Language detection resets on each decode with `language=auto` | Documented as limitation; recommend explicit language codes for streaming |
 | 9 | Medium | `_frames.pop(0)` is O(n) on a list — slow for many frames | Phase 2 now converts `_frames` to `collections.deque` (O(1) popleft) |
 | 10 | Low | Missing test for timestamp continuity across multiple consecutive trims | Added exit criterion: 3+ trim integration test with monotonic absolute timestamps |
+
+### 2026-06-16 -- Implementation Review (after Phase 1, persona: Senior engineer, Reliability engineer, Maintainability reviewer, Performance engineer)
+
+Implementation health: Green.
+5 findings (0 High, 1 Medium, 3 Low, 1 Info). Effort: High.
+
+| # | Severity | Finding | Resolution |
+|---|---|---|---|
+| 1 | Medium | `transcribe_verbose()` has no retry logic; stream loop 5-error tolerance is the only safety net | User: accepted — stream loop tolerance sufficient; retry adds latency |
+| 2 | Low | `PUNCT_ONLY_RE` duplicated between streaming.py and transcribe.py | Fixed — transcribe.py now imports from streaming.py |
+| 3 | Low | `SizeTrackingEngine` in tests missing `update_prompt()` stub | Fixed — added one-line stub |
+| 4 | Low | No monotonic timestamp validation in `transcribe_verbose()` | User: accepted — whisper.cpp guarantees monotonic; worst case is under-trim |
+| 5 | Info | Edge case: all-punctuation transcription raises StreamingUnavailableError | Acceptable — whisper.cpp never produces this in practice |
+
+### 2026-06-16 -- Implementation Review (after Phase 2, persona: Senior engineer, Reliability engineer, Performance engineer, Maintainability reviewer)
+
+Implementation health: Green.
+3 findings (0 High, 0 Medium, 3 Low). Effort: High.
+
+| # | Severity | Finding | Resolution |
+|---|---|---|---|
+| 1 | Low | Older tests assign `_frames` as plain list instead of deque | Fixed — converted all test assignments to deque |
+| 2 | Low | `trim_front` does not guard against negative `n_samples` | Fixed — added `n_samples <= 0` early return |
+| 3 | Low | No concurrent trim stress test | User: accepted — same lock pattern proven by existing concurrency test |
