@@ -543,11 +543,12 @@ def test_history_list_and_search(history_client: tuple[TestClient, HistoryStore]
     store.add("meeting notes", language="en")
 
     res = client.get("/api/history").json()
-    assert res["total"] == 2
+    assert len(res["items"]) == 2
     assert res["items"][0]["text"] == "meeting notes"  # recent first
+    assert res["next_before_id"] is not None
 
     filtered = client.get("/api/history", params={"q": "milk"}).json()
-    assert filtered["total"] == 1
+    assert len(filtered["items"]) == 1
     assert filtered["items"][0]["text"] == "buy milk"
 
 
@@ -555,8 +556,12 @@ def test_history_pagination(history_client: tuple[TestClient, HistoryStore]) -> 
     client, store = history_client
     for i in range(5):
         store.add(f"e{i}")
-    page = client.get("/api/history", params={"limit": 2, "offset": 0}).json()
-    assert len(page["items"]) == 2 and page["total"] == 5
+    page1 = client.get("/api/history", params={"limit": 2}).json()
+    assert len(page1["items"]) == 2
+    # Cursor-based: use next_before_id for page 2
+    page2 = client.get("/api/history", params={"limit": 2, "before_id": page1["next_before_id"]}).json()
+    assert len(page2["items"]) == 2
+    assert page2["items"][0]["id"] < page1["items"][-1]["id"]
 
 
 def test_history_delete_entry(history_client: tuple[TestClient, HistoryStore]) -> None:
@@ -566,9 +571,33 @@ def test_history_delete_entry(history_client: tuple[TestClient, HistoryStore]) -
     assert client.delete(f"/api/history/{rid}", headers=_csrf_headers(client)).status_code == 404
 
 
+def test_history_batch_delete(history_client: tuple[TestClient, HistoryStore]) -> None:
+    client, store = history_client
+    ids = [store.add(f"batch{i}") for i in range(3)]
+    resp = client.post(
+        "/api/history/delete-batch",
+        json={"ids": ids},
+        headers=_csrf_headers(client),
+    )
+    assert resp.json()["deleted"] == 3
+
+
+def test_history_batch_delete_missing_id(history_client: tuple[TestClient, HistoryStore]) -> None:
+    client, store = history_client
+    rid = store.add("x")
+    resp = client.post(
+        "/api/history/delete-batch",
+        json={"ids": [rid, 99999]},
+        headers=_csrf_headers(client),
+    )
+    assert resp.status_code == 409
+    # Original entry should still exist (atomic rollback)
+    assert store.get(rid) is not None
+
+
 def test_history_clear(history_client: tuple[TestClient, HistoryStore]) -> None:
     client, store = history_client
     store.add("a")
     store.add("b")
     assert client.delete("/api/history", headers=_csrf_headers(client)).json()["deleted"] == 2
-    assert client.get("/api/history").json()["total"] == 0
+    assert client.get("/api/history").json()["items"] == []

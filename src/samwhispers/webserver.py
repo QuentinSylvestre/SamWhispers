@@ -439,17 +439,30 @@ def create_app(
         return {"saved": True, "restarted": restarted, "whisper_restarted": whisper_restarted}
 
     @app.get("/api/history")
-    def get_history(limit: int = 50, offset: int = 0, q: str | None = None) -> dict[str, Any]:
-        return {
-            "items": store.list(limit=limit, offset=offset, search=q),
-            "total": store.count(search=q),
-        }
+    def get_history(
+        limit: int = 50, before_id: int | None = None, q: str | None = None
+    ) -> dict[str, Any]:
+        items = store.list(limit=limit, before_id=before_id, search=q)
+        next_before_id = items[-1]["id"] if items else None
+        return {"items": items, "next_before_id": next_before_id}
 
     @app.delete("/api/history/{entry_id}")
     def delete_history_entry(entry_id: int) -> dict[str, Any]:
         if not store.delete(entry_id):
             raise HTTPException(status_code=404, detail="Entry not found")
         return {"deleted": True}
+
+    @app.post("/api/history/delete-batch")
+    async def delete_history_batch(request: Request) -> dict[str, Any]:
+        body: dict[str, Any] = await request.json()
+        ids = body.get("ids", [])
+        if not isinstance(ids, list) or not all(isinstance(i, int) for i in ids):
+            raise HTTPException(status_code=400, detail="ids must be a list of integers")
+        try:
+            count = store.delete_batch(ids)
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return {"deleted": count}
 
     @app.delete("/api/history")
     def clear_history() -> dict[str, Any]:

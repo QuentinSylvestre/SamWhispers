@@ -94,14 +94,34 @@ class HistoryStore:
         return row_id
 
     def list(
-        self, limit: int = 50, offset: int = 0, search: str | None = None
+        self,
+        limit: int = 50,
+        before_id: int | None = None,
+        search: str | None = None,
     ) -> list[dict[str, Any]]:
-        """Most-recent-first list, optionally filtered by a text/translation substring."""
-        where, params = self._search_clause(search)
+        """Most-recent-first list with cursor pagination.
+
+        ``before_id`` returns entries with ``id < before_id`` for stable paging.
+        """
+        limit = min(max(limit, 1), 100)
+        where_parts: list[str] = []
+        params: list[Any] = []
+
+        if before_id is not None:
+            where_parts.append("id < ?")
+            params.append(before_id)
+
+        search_where, search_params = self._search_clause(search)
+        if search_where:
+            # Strip the leading "WHERE "
+            where_parts.append(search_where[6:])
+            params.extend(search_params)
+
+        where = ("WHERE " + " AND ".join(where_parts)) if where_parts else ""
         with self._connect() as conn:
             rows = conn.execute(
-                f"SELECT * FROM transcriptions {where} ORDER BY id DESC LIMIT ? OFFSET ?",
-                (*params, limit, offset),
+                f"SELECT * FROM transcriptions {where} ORDER BY id DESC LIMIT ?",
+                (*params, limit),
             ).fetchall()
         return [self._row_to_dict(r) for r in rows]
 
@@ -122,6 +142,29 @@ class HistoryStore:
         with self._connect() as conn:
             cur = conn.execute("DELETE FROM transcriptions WHERE id = ?", (entry_id,))
         return cur.rowcount > 0
+
+    def delete_batch(self, ids: list[int]) -> int:  # type: ignore[valid-type]
+        """Atomically delete multiple entries. Raises ValueError if any ID is missing."""
+        if not ids:
+            raise ValueError("Empty ID list")
+        unique_ids: list[int] = list(set(ids))
+        if len(unique_ids) > 500:
+            raise ValueError("Batch size exceeds maximum (500)")
+        with self._connect() as conn:
+            placeholders = ",".join("?" * len(unique_ids))
+            existing = conn.execute(
+                f"SELECT id FROM transcriptions WHERE id IN ({placeholders})",
+                unique_ids,
+            ).fetchall()
+            if len(existing) != len(unique_ids):
+                found = {row["id"] for row in existing}
+                missing = [i for i in unique_ids if i not in found]
+                raise ValueError(f"IDs not found: {missing}")
+            cur = conn.execute(
+                f"DELETE FROM transcriptions WHERE id IN ({placeholders})",
+                unique_ids,
+            )
+            return cur.rowcount
 
     def clear(self) -> int:
         with self._connect() as conn:
