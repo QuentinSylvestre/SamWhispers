@@ -8,13 +8,16 @@ exposed beyond ``127.0.0.1``.
 from __future__ import annotations
 
 import logging
+import secrets
 import threading
 from dataclasses import dataclass
+from ipaddress import ip_address
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Awaitable, Callable
+from urllib.parse import urlsplit
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from samwhispers.history import HistoryStore, default_db_path
@@ -24,6 +27,7 @@ from samwhispers.webconfig import (
     list_whisper_models,
     load_config_dict,
     requires_restart,
+    sanitize_secret_values,
     save_config_dict,
 )
 
@@ -35,6 +39,146 @@ log = logging.getLogger("samwhispers.web")
 _WEB_DIR = Path(__file__).parent / "web"
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 7891
+SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
+CSRF_HEADER = "x-samwhispers-csrf"
+SUPERVISOR_CSRF_EXEMPT_PATHS = {
+    "/api/supervisor/shutdown",
+    "/api/supervisor/restart",
+}
+
+
+def expected_origins(host: str, port: int) -> set[str]:
+    """Same-origin browser origins that may talk to the local web UI."""
+    origins = {
+        f"http://127.0.0.1:{port}",
+        f"http://localhost:{port}",
+        f"http://[::1]:{port}",
+    }
+    normalized_host = host.strip().lower().strip("[]")
+    if _is_loopback_host(normalized_host):
+        display_host = f"[{normalized_host}]" if ":" in normalized_host else normalized_host
+        origins.add(f"http://{display_host}:{port}")
+    return origins
+
+
+def _is_loopback_host(host: str) -> bool:
+    if host == "localhost":
+        return True
+    try:
+        return ip_address(host).is_loopback
+    except ValueError:
+        return False
+
+
+def _split_host_header(host_header: str) -> tuple[str, int | None]:
+    host = host_header.strip()
+    if not host or any(ch in host for ch in "/\\@"):
+        return "", None
+    if host.startswith("["):
+        end = host.find("]")
+        if end < 0:
+            return "", None
+        hostname = host[1:end]
+        rest = host[end + 1 :]
+        if not rest:
+            return hostname.lower(), None
+        if not rest.startswith(":"):
+            return "", None
+        port_text = rest[1:]
+    elif host.count(":") == 1:
+        hostname, port_text = host.rsplit(":", 1)
+    elif ":" in host:
+        return host.lower(), None
+    else:
+        return host.lower(), None
+    try:
+        port = int(port_text)
+    except ValueError:
+        return "", None
+    return hostname.lower().rstrip("."), port
+
+
+def _host_is_trusted(host_header: str | None, port: int) -> bool:
+    if not host_header:
+        return False
+    host, host_port = _split_host_header(host_header)
+    return host_port == port and _is_loopback_host(host)
+
+
+def _origin_from_referer(value: str) -> str | None:
+    try:
+        parsed = urlsplit(value)
+        port = parsed.port
+    except ValueError:
+        return None
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname or port is None:
+        return None
+    hostname = parsed.hostname.lower()
+    display_host = f"[{hostname}]" if ":" in hostname else hostname
+    return f"{parsed.scheme}://{display_host}:{port}"
+
+
+def _origin_or_referer_error(request: Request, port: int) -> str | None:
+    expected = expected_origins(str(request.app.state.web_host), port)
+    origin = request.headers.get("origin")
+    if origin is not None:
+        if origin == "null" or origin.rstrip("/") not in expected:
+            return "Untrusted browser origin"
+        return None
+    referer = request.headers.get("referer")
+    if referer:
+        referer_origin = _origin_from_referer(referer)
+        if referer_origin not in expected:
+            return "Untrusted browser referer"
+    return None
+
+
+def _apply_cors_headers(request: Request, response: Response, port: int) -> None:
+    origin = request.headers.get("origin")
+    if origin is None or origin.rstrip("/") not in expected_origins(
+        str(request.app.state.web_host), port
+    ):
+        return
+    response.headers["Access-Control-Allow-Origin"] = origin
+    response.headers["Access-Control-Allow-Methods"] = "GET, HEAD, OPTIONS, POST, PUT, DELETE"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type, X-SamWhispers-CSRF"
+    response.headers["Vary"] = "Origin"
+
+
+def _config_redaction_context(config_path: str | Path | None) -> dict[str, Any]:
+    try:
+        return load_config_dict(config_path, redact=False)
+    except Exception:
+        pass
+    if config_path is None:
+        return {}
+    context: dict[str, Any] = {"cleanup": {"openai": {}, "anthropic": {}}}
+    section: tuple[str, str] | None = None
+    try:
+        for line in Path(config_path).read_text(encoding="utf-8").splitlines():
+            stripped = line.strip()
+            if stripped == "[cleanup.openai]":
+                section = ("cleanup", "openai")
+                continue
+            if stripped == "[cleanup.anthropic]":
+                section = ("cleanup", "anthropic")
+                continue
+            if stripped.startswith("["):
+                section = None
+                continue
+            if section is None or not stripped.startswith("api_key"):
+                continue
+            _, _, raw_value = stripped.partition("=")
+            value = raw_value.strip().strip("\"'")
+            if value:
+                context[section[0]][section[1]]["api_key"] = value
+    except OSError:
+        return {}
+    return context
+
+
+def _safe_config_error(message: str, config_path: str | Path | None, *posted: dict[str, Any]) -> str:
+    return sanitize_secret_values(message, _config_redaction_context(config_path), *posted)
 
 
 def _vad_server_changed(old: Any, new: Any) -> bool:
@@ -56,18 +200,46 @@ def create_app(
     config_path: str | Path | None = None,
     history_store: HistoryStore | None = None,
     stop_callback: Any | None = None,
+    web_host: str = DEFAULT_HOST,
+    web_port: int = DEFAULT_PORT,
 ) -> FastAPI:
     """Build the FastAPI app. ``supervisor`` may be None for API-only testing."""
     app = FastAPI(title="SamWhispers", docs_url=None, redoc_url=None)
+    app.state.csrf_token = secrets.token_urlsafe(32)
+    app.state.web_host = web_host
+    app.state.web_port = web_port
 
-    from fastapi.middleware.cors import CORSMiddleware
+    @app.middleware("http")
+    async def local_web_guard(
+        request: Request,
+        call_next: Callable[[Request], Awaitable[Response]],
+    ) -> Response:
+        port = int(request.app.state.web_port)
+        if not _host_is_trusted(request.headers.get("host"), port):
+            return JSONResponse({"detail": "Untrusted Host header"}, status_code=403)
 
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=[f"http://127.0.0.1:{DEFAULT_PORT}", f"http://localhost:{DEFAULT_PORT}"],
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
+        is_api = request.url.path.startswith("/api/")
+        if is_api:
+            origin_error = _origin_or_referer_error(request, port)
+            if origin_error:
+                return JSONResponse({"detail": origin_error}, status_code=403)
+
+        if is_api and request.method == "OPTIONS":
+            response = Response(status_code=204)
+            _apply_cors_headers(request, response, port)
+            return response
+
+        if (
+            is_api
+            and request.method not in SAFE_METHODS
+            and request.url.path not in SUPERVISOR_CSRF_EXEMPT_PATHS
+            and request.headers.get(CSRF_HEADER) != request.app.state.csrf_token
+        ):
+            return JSONResponse({"detail": "Missing or invalid CSRF token"}, status_code=403)
+
+        response = await call_next(request)
+        _apply_cors_headers(request, response, port)
+        return response
 
     store = history_store if history_store is not None else HistoryStore(default_db_path())
 
@@ -76,7 +248,8 @@ def create_app(
 
     @app.get("/", response_class=HTMLResponse)
     def index() -> str:
-        return (_WEB_DIR / "index.html").read_text(encoding="utf-8")
+        html = (_WEB_DIR / "index.html").read_text(encoding="utf-8")
+        return html.replace("__SAMWHISPERS_CSRF_TOKEN__", app.state.csrf_token)
 
     @app.get("/favicon.ico", include_in_schema=False)
     def favicon() -> FileResponse:
@@ -215,16 +388,24 @@ def create_app(
 
     @app.get("/api/config")
     def get_config() -> dict[str, Any]:
-        return load_config_dict(config_path)
+        try:
+            return load_config_dict(config_path)
+        except Exception as exc:
+            detail = _safe_config_error(str(exc), config_path)
+            raise HTTPException(status_code=500, detail=f"Config load failed: {detail}") from exc
 
     @app.put("/api/config")
     async def put_config(request: Request) -> dict[str, Any]:
         payload: dict[str, Any] = await request.json()
-        old_cfg = current_app_config(config_path)
         try:
+            old_cfg = current_app_config(config_path)
             new_cfg = save_config_dict(payload, config_path)
         except ValueError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
+            detail = _safe_config_error(str(exc), config_path, payload)
+            raise HTTPException(status_code=400, detail=detail) from exc
+        except OSError as exc:
+            detail = _safe_config_error(str(exc), config_path, payload)
+            raise HTTPException(status_code=500, detail=f"Config save failed: {detail}") from exc
 
         restarted = False
         whisper_restarted = False
@@ -315,6 +496,8 @@ def serve(
     """Start the app with uvicorn in a daemon thread; return a stop handle."""
     import uvicorn
 
+    app.state.web_host = host
+    app.state.web_port = port
     config = uvicorn.Config(app, host=host, port=port, log_level="warning")
     server = uvicorn.Server(config)
     # uvicorn skips installing signal handlers when not on the main thread,

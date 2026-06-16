@@ -4,6 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>SamWhispers</title>
+<script>window.SAMWHISPERS_BOOTSTRAP = { csrfToken: "__SAMWHISPERS_CSRF_TOKEN__" };</script>
 <link rel="icon" href="/favicon.ico" sizes="any" />
 <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon/favicon-32x32.png" />
 <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
@@ -467,6 +468,10 @@ button.primary:disabled { opacity: .5; cursor: default; }
 
 <script>
 const state = { config: null, meta: null, models: null };
+const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
+const SECRET_SENTINEL = "__SAMWHISPERS_SECRET_SET__";
+const SECRET_PATHS = ["cleanup.openai.api_key", "cleanup.anthropic.api_key"];
+const CSRF_TOKEN = window.SAMWHISPERS_BOOTSTRAP?.csrfToken || "";
 
 function getPath(obj, path) {
   return path.split(".").reduce((o, k) => (o == null ? undefined : o[k]), obj);
@@ -483,16 +488,43 @@ function setPath(obj, path, value) {
 
 async function api(method, url, body) {
   const opts = { method, headers: { "Content-Type": "application/json" } };
+  if (!SAFE_METHODS.has(method.toUpperCase())) {
+    opts.headers["X-SamWhispers-CSRF"] = CSRF_TOKEN;
+  }
   if (body !== undefined) opts.body = JSON.stringify(body);
   const res = await fetch(url, opts);
   const data = res.headers.get("content-type")?.includes("json") ? await res.json() : null;
-  if (!res.ok) throw new Error(data?.detail || `${res.status} ${res.statusText}`);
+  if (!res.ok) {
+    const detail = res.status === 403
+      ? "Request blocked by local web protection. Reload this SamWhispers page and try again."
+      : (data?.detail || `${res.status} ${res.statusText}`);
+    throw new Error(redactSecrets(detail));
+  }
   return data;
+}
+
+function currentSecretValues() {
+  const values = [];
+  for (const path of SECRET_PATHS) {
+    const configured = getPath(state.config || {}, path);
+    if (typeof configured === "string") values.push(configured);
+    const el = document.querySelector(`[data-path="${path}"]`);
+    if (el && typeof el.value === "string") values.push(el.value);
+  }
+  return values.filter(v => v && v !== SECRET_SENTINEL);
+}
+
+function redactSecrets(msg) {
+  let safe = String(msg);
+  for (const value of currentSecretValues().sort((a, b) => b.length - a.length)) {
+    safe = safe.split(value).join("[redacted]");
+  }
+  return safe;
 }
 
 function toast(msg, kind) {
   const t = document.getElementById("toast");
-  t.textContent = msg;
+  t.textContent = redactSecrets(msg);
   t.className = `toast show ${kind || ""}`;
   setTimeout(() => (t.className = "toast"), kind === "err" ? 4000 : 2000);
 }
@@ -555,6 +587,11 @@ function render() {
     if (el.type === "checkbox") el.checked = !!val;
     else if (type === "list") el.value = Array.isArray(val) ? val.join(", ") : "";
     else el.value = val == null ? "" : val;
+    if (SECRET_PATHS.includes(el.dataset.path)) {
+      el.placeholder = val === SECRET_SENTINEL
+        ? "Saved secret; leave unchanged or clear to remove"
+        : "Enter a new secret";
+    }
   }
   applyVisibility();
   renderSnippets();

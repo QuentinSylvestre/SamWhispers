@@ -327,6 +327,18 @@ samwhispers-supervisor --web-port 9000  # use a different port
 samwhispers-supervisor --no-web         # disable the UI
 ```
 
+The web UI is intended for same-machine control only. The server binds to
+loopback, accepts only loopback `Host` headers for its configured port, rejects
+non-local browser `Origin`/`Referer` values, and requires a per-process CSRF
+header on state-changing API calls made by the browser UI. Changing
+`--web-port` updates the allowed local origins to that port.
+
+Provider API keys are redacted in config API responses and in the settings UI.
+If a saved OpenAI or Anthropic key already exists, the password field shows a
+saved-secret placeholder: leaving it unchanged preserves the key, clearing the
+field removes it, and entering a new value replaces it. Config load,
+validation, and save errors do not echo provider key values.
+
 The Whisper section lets you pick a model from the ones detected on disk (or
 enter a custom path), and **download** any standard whisper.cpp model on demand
 with a progress indicator — handy for grabbing a model you don't have yet.
@@ -334,8 +346,8 @@ with a progress indicator — handy for grabbing a model you don't have yet.
 The **Logs** tab shows recent supervisor and worker log output for diagnosing
 issues without `--foreground` mode.
 
-The server binds to loopback only and has no authentication, so don't expose
-the port beyond `127.0.0.1`.
+The local CSRF token is a browser safety mechanism, not a multi-user
+authentication boundary, so do not proxy or expose the port beyond loopback.
 
 ### Transcription history
 

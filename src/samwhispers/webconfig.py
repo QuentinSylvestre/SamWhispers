@@ -9,6 +9,7 @@ daemon would reject.
 from __future__ import annotations
 
 import logging
+from copy import deepcopy
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
@@ -18,6 +19,11 @@ from samwhispers.config import AppConfig, build_config, find_config
 log = logging.getLogger("samwhispers.web")
 
 _DEFAULT_CONFIG_PATH = Path.home() / ".config" / "samwhispers" / "config.toml"
+REDACTED = "__SAMWHISPERS_SECRET_SET__"
+SECRET_PATHS = (
+    ("cleanup", "openai", "api_key"),
+    ("cleanup", "anthropic", "api_key"),
+)
 
 # Standard faster-whisper model names (downloaded on first use).
 FASTER_WHISPER_MODELS = [
@@ -79,6 +85,62 @@ def _read_raw(path: Path | str | None) -> dict[str, Any]:
     return {}
 
 
+def _get_path(data: dict[str, Any], path: tuple[str, ...], default: Any = None) -> Any:
+    cur: Any = data
+    for key in path:
+        if not isinstance(cur, dict) or key not in cur:
+            return default
+        cur = cur[key]
+    return cur
+
+
+def _set_path(data: dict[str, Any], path: tuple[str, ...], value: Any) -> None:
+    cur: dict[str, Any] = data
+    for key in path[:-1]:
+        next_value = cur.get(key)
+        if not isinstance(next_value, dict):
+            next_value = {}
+            cur[key] = next_value
+        cur = next_value
+    cur[path[-1]] = value
+
+
+def redact_config_secrets(data: dict[str, Any]) -> dict[str, Any]:
+    """Return a copy suitable for UI/API responses with provider keys redacted."""
+    redacted = deepcopy(data)
+    for path in SECRET_PATHS:
+        value = _get_path(redacted, path, "")
+        if isinstance(value, str) and value:
+            _set_path(redacted, path, REDACTED)
+    return redacted
+
+
+def merge_redacted_secrets(
+    posted: dict[str, Any],
+    existing: dict[str, Any],
+) -> dict[str, Any]:
+    """Preserve existing secrets when the UI posts the redacted sentinel."""
+    merged = deepcopy(posted)
+    for path in SECRET_PATHS:
+        if _get_path(merged, path) == REDACTED:
+            _set_path(merged, path, _get_path(existing, path, ""))
+    return merged
+
+
+def sanitize_secret_values(message: str, *configs: dict[str, Any]) -> str:
+    """Remove provider key values from an error string before returning it."""
+    safe = str(message)
+    values: set[str] = set()
+    for config in configs:
+        for path in SECRET_PATHS:
+            value = _get_path(config, path, "")
+            if isinstance(value, str) and value and value != REDACTED:
+                values.add(value)
+    for value in sorted(values, key=len, reverse=True):
+        safe = safe.replace(value, "[redacted]")
+    return safe
+
+
 def current_app_config(path: Path | str | None = None) -> AppConfig:
     """The on-disk config as an AppConfig, *without* strict validation.
 
@@ -88,16 +150,16 @@ def current_app_config(path: Path | str | None = None) -> AppConfig:
     return build_config(_read_raw(path), validate=False)
 
 
-def load_config_dict(path: Path | str | None = None) -> dict[str, Any]:
+def load_config_dict(path: Path | str | None = None, *, redact: bool = True) -> dict[str, Any]:
     """Load the effective config (defaults + file) as a TOML-shaped nested dict.
 
     The shape matches what ``save_config_dict`` writes and what the loader
     expects, so the UI can round-trip the whole object (GET then PUT) without
     dropping fields such as per-language vocabulary. Returns defaults if no
-    file exists yet. Note: this includes any configured API keys -- the server
-    is bound to loopback only.
+    file exists yet. Provider API keys are redacted by default for UI/API use.
     """
-    return to_toml_dict(current_app_config(path))
+    data = to_toml_dict(current_app_config(path))
+    return redact_config_secrets(data) if redact else data
 
 
 def to_toml_dict(config: AppConfig) -> dict[str, Any]:
@@ -148,7 +210,9 @@ def save_config_dict(raw: dict[str, Any], path: Path | str | None = None) -> App
     """Validate then atomically write the config to TOML. Returns the AppConfig."""
     import tomli_w
 
-    config = validate_config_dict(raw)
+    existing = load_config_dict(path, redact=False)
+    merged = merge_redacted_secrets(raw, existing)
+    config = validate_config_dict(merged)
     p = Path(path) if path is not None else resolve_config_path()
     p.parent.mkdir(parents=True, exist_ok=True)
 

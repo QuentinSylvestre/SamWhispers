@@ -2,15 +2,19 @@
 
 from __future__ import annotations
 
+import tomllib
 from pathlib import Path
 
 import pytest
 
 from samwhispers.config import build_config
 from samwhispers.webconfig import (
+    REDACTED,
     load_config_dict,
+    merge_redacted_secrets,
     requires_restart,
     save_config_dict,
+    sanitize_secret_values,
     to_toml_dict,
     validate_config_dict,
 )
@@ -23,6 +27,116 @@ def test_load_defaults_when_no_file(tmp_path: Path) -> None:
     # Vocabulary is laid out in TOML shape (no "languages" key).
     assert "languages" not in data["vocabulary"]
     assert data["history"]["enabled"] is True
+
+
+def test_load_config_redacts_existing_provider_keys(tmp_path: Path) -> None:
+    path = tmp_path / "config.toml"
+    path.write_text(
+        "\n".join(
+            [
+                "[whisper]",
+                "managed = false",
+                "[cleanup.openai]",
+                'api_key = "sk-secret"',
+                "[cleanup.anthropic]",
+                'api_key = "ant-secret"',
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    data = load_config_dict(path)
+
+    assert data["cleanup"]["openai"]["api_key"] == REDACTED
+    assert data["cleanup"]["anthropic"]["api_key"] == REDACTED
+
+
+def test_merge_redacted_secrets_preserves_existing_values() -> None:
+    posted = {"cleanup": {"openai": {"api_key": REDACTED}, "anthropic": {"api_key": ""}}}
+    existing = {
+        "cleanup": {
+            "openai": {"api_key": "sk-existing"},
+            "anthropic": {"api_key": "ant-existing"},
+        }
+    }
+
+    merged = merge_redacted_secrets(posted, existing)
+
+    assert merged["cleanup"]["openai"]["api_key"] == "sk-existing"
+    assert merged["cleanup"]["anthropic"]["api_key"] == ""
+
+
+def test_save_redacted_config_preserves_existing_secret(tmp_path: Path) -> None:
+    path = tmp_path / "config.toml"
+    path.write_text(
+        "\n".join(
+            [
+                "[whisper]",
+                "managed = false",
+                "[cleanup.openai]",
+                'api_key = "sk-existing"',
+            ]
+        ),
+        encoding="utf-8",
+    )
+    data = load_config_dict(path)
+    data["hotkey"]["key"] = "ctrl+alt+s"
+
+    save_config_dict(data, path)
+
+    raw = tomllib.loads(path.read_text(encoding="utf-8"))
+    assert raw["cleanup"]["openai"]["api_key"] == "sk-existing"
+    assert raw["hotkey"]["key"] == "ctrl+alt+s"
+
+
+def test_save_config_explicitly_clears_secret(tmp_path: Path) -> None:
+    path = tmp_path / "config.toml"
+    path.write_text(
+        "\n".join(
+            [
+                "[whisper]",
+                "managed = false",
+                "[cleanup.openai]",
+                'api_key = "sk-existing"',
+            ]
+        ),
+        encoding="utf-8",
+    )
+    data = load_config_dict(path)
+    data["cleanup"]["openai"]["api_key"] = ""
+
+    save_config_dict(data, path)
+
+    raw = tomllib.loads(path.read_text(encoding="utf-8"))
+    assert raw["cleanup"]["openai"]["api_key"] == ""
+
+
+def test_save_config_explicitly_replaces_secret(tmp_path: Path) -> None:
+    path = tmp_path / "config.toml"
+    path.write_text(
+        "\n".join(
+            [
+                "[whisper]",
+                "managed = false",
+                "[cleanup.openai]",
+                'api_key = "sk-existing"',
+            ]
+        ),
+        encoding="utf-8",
+    )
+    data = load_config_dict(path)
+    data["cleanup"]["openai"]["api_key"] = "sk-replacement"
+
+    save_config_dict(data, path)
+
+    raw = tomllib.loads(path.read_text(encoding="utf-8"))
+    assert raw["cleanup"]["openai"]["api_key"] == "sk-replacement"
+
+
+def test_sanitize_secret_values_removes_provider_keys() -> None:
+    data = {"cleanup": {"openai": {"api_key": "sk-secret"}, "anthropic": {"api_key": ""}}}
+
+    assert sanitize_secret_values("bad sk-secret value", data) == "bad [redacted] value"
 
 
 def test_history_settings_roundtrip(tmp_path: Path) -> None:
