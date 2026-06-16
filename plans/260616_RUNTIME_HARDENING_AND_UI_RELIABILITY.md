@@ -449,30 +449,33 @@ security-complete checkpoint.
   once CLI lifecycle commands can read a private token from validated metadata.
 
 **Exit criteria**:
-- [ ] `samwhispers start` and bare `samwhispers` both launch with existing flags.
-- [ ] `samwhispers stop` and `samwhispers restart` work on the default port.
-- [ ] Stop/restart use metadata to control a custom-port instance.
-- [ ] Stop/restart handle `--no-web` through verified non-HTTP fallback.
-- [ ] Restart never reparses `restart` inside supervisor startup.
-- [ ] Runtime metadata is atomic, user-private where supported, versioned, and
+- [x] `samwhispers start` and bare `samwhispers` both launch with existing flags.
+- [x] `samwhispers stop` and `samwhispers restart` work on the default port.
+- [x] Stop/restart use metadata to control a custom-port instance.
+- [x] Stop/restart handle `--no-web` through verified non-HTTP fallback.
+- [x] Restart never reparses `restart` inside supervisor startup.
+- [x] Runtime metadata is atomic, user-private where supported, versioned, and
   cleaned up on normal shutdown.
-- [ ] Token-bearing metadata permission checks are explicit and tested for
+- [x] Token-bearing metadata permission checks are explicit and tested for
   Windows ACLs and POSIX owner/mode behavior.
-- [ ] Token-backed HTTP lifecycle control fails closed when metadata privacy
+- [x] Token-backed HTTP lifecycle control fails closed when metadata privacy
   cannot be verified.
-- [ ] Stale metadata cleanup is tested for PID reuse, unreadable process
+- [x] Stale metadata cleanup is tested for PID reuse, unreadable process
   inspection, wrong config path, lock disagreement, custom port, and `--no-web`.
-- [ ] Windows detached relaunch remains import-based `-c`.
-- [ ] One-instance locking and second-instance behavior remain intact.
-- [ ] Supervisor shutdown/restart CSRF exemption from Phase 1 is removed.
-- [ ] Phases 1 and 2 together satisfy the web security success criterion:
+- [x] Windows detached relaunch remains import-based `-c`.
+- [x] One-instance locking and second-instance behavior remain intact.
+- [x] Supervisor shutdown/restart CSRF exemption from Phase 1 is removed.
+- [x] Phases 1 and 2 together satisfy the web security success criterion:
   browser-origin requests cannot trigger any state-changing local API action.
-- [ ] `README.md` documents lifecycle topology behavior, restart environment
+- [x] `README.md` documents lifecycle topology behavior, restart environment
   fidelity limits, and local control constraints.
-- [ ] `docs/STARTUP.md` reconciles service/autostart guidance with lifecycle
+- [x] `docs/STARTUP.md` reconciles service/autostart guidance with lifecycle
   command, runtime metadata behavior, and external-restart environment limits.
-- [ ] `packaging/systemd/samwhispers.service` uses foreground supervisor mode
+- [x] `packaging/systemd/samwhispers.service` uses foreground supervisor mode
   for `Type=simple`.
+
+Implementation (2026-06-16, code: 74e0f80)
+Created runtime.py with versioned RuntimeMetadata dataclass, atomic write/read/delete, and platform-specific permission enforcement (POSIX mode checks, Windows icacls ACL inspection). Token is omitted if privacy cannot be verified. Fixed `samwhispers start` to strip the `start` token before forwarding to supervisor. Rewrote stop/restart to read metadata for topology-aware HTTP+CSRF control with PID-kill fallback. Removed Phase 1 temporary CSRF exemption from webserver.py — all mutating routes now require the token. Added startup_ticks reset on restart/resume for STARTING→RUNNING invariant. Updated systemd service to use --foreground. Added README lifecycle topology docs and STARTUP.md environment fidelity notes. Tests cover metadata roundtrip, permissions, stale cleanup, and lifecycle commands.
 
 ### Phase 3: Implement Download Integrity And Model Discovery [QA]
 
@@ -820,7 +823,7 @@ user-facing docs in line with the changed behavior.
 | # | Phase/Task | Status | Notes |
 |---|---|---|---|
 | 1 | Harden local web requests and config secrets | Complete | Atomic with Phase 2 for supervisor lifecycle CSRF. |
-| 2 | Add runtime metadata and fix lifecycle topology | Pending | Completes the first security boundary checkpoint. |
+| 2 | Add runtime metadata and fix lifecycle topology | Complete | Completes the first security boundary checkpoint. |
 | 3 | Implement download integrity and model discovery | Pending | Uses security/API patterns from Phase 1. |
 | 4 | Stabilize history API and destructive history actions | Pending | Uses security/API patterns from Phase 1. |
 | 5 | Refactor web UI state, saves, polling, and accessibility | Pending | Integrates UI changes from Phases 1, 3, and 4. |
