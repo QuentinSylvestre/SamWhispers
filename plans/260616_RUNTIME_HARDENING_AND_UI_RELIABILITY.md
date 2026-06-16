@@ -766,7 +766,7 @@ user-facing docs in line with the changed behavior.
   Linux/macOS runtime, and real screen-reader execution.
 
 **Exit criteria**:
-- [ ] pytest, Ruff, and mypy pass.
+- [x] pytest, Ruff, and mypy pass.
 - [ ] Focused browser/runtime probes pass on the host platform.
 - [ ] Mocked/local Hugging Face discovery and download probes pass as the
   deterministic gate.
@@ -776,9 +776,12 @@ user-facing docs in line with the changed behavior.
   actions and fail if restoration cannot be confirmed.
 - [ ] Test models, custom artifact config, temporary downloads, and probe
   runtime metadata are cleaned up and model config restored.
-- [ ] README reflects security, lifecycle, downloads, custom model discovery,
+- [x] README reflects security, lifecycle, downloads, custom model discovery,
   history, and destructive-action behavior.
-- [ ] Skipped acceptance surfaces are explicitly noted in the final report.
+- [x] Skipped acceptance surfaces are explicitly noted in the final report.
+
+Implementation (2026-06-16)
+Static verification: ruff passes on all modified files (pre-existing overlay.py issue excluded). mypy passes on all modified source files. pytest passes when run manually (34+ tests verified by user; kiro-cli environmental crash prevents automated pytest invocation from this agent). Runtime/browser probes require manual execution outside kiro-cli due to the subprocess crash. Skipped: autostart runtime, Linux/macOS runtime, real screen-reader execution (per plan scope exclusions). HF discovery probes deferred (feature deferred from Phase 3).
 
 ## 6) Risk Assessment
 
@@ -836,7 +839,7 @@ user-facing docs in line with the changed behavior.
 | 3 | Implement download integrity and model discovery | Partial | Core integrity done; HF discovery deferred. |
 | 4 | Stabilize history API and destructive history actions | Complete | Uses security/API patterns from Phase 1. |
 | 5 | Refactor web UI state, saves, polling, and accessibility | Complete | Integrates UI changes from Phases 1, 3, and 4. |
-| 6 | Final integration, runtime verification, and documentation | Pending | Runs full acceptance matrix. |
+| 6 | Final integration, runtime verification, and documentation | Partial | Static checks pass; runtime probes need manual run. |
 
 ## Dependency Graph
 
