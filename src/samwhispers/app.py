@@ -7,6 +7,7 @@ import logging
 import queue
 import signal
 import threading
+import time
 from types import FrameType
 from typing import TYPE_CHECKING, Any
 
@@ -286,6 +287,10 @@ class SamWhispers:
                 log.warning("Busy (%s), ignoring hotkey", self._state.value)
                 return
             self._state = State.RECORDING
+        # Join stale finalize thread from prior session before starting new stream
+        if self._finalize_thread is not None:
+            self._finalize_thread.join(timeout=2.0)
+            self._finalize_thread = None
         try:
             self.recorder.start()
         except Exception:
@@ -303,8 +308,9 @@ class SamWhispers:
             if self._state != State.RECORDING:
                 return
             self._state = State.PROCESSING
+            has_stream = self._stream_session is not None
         self._set_overlay("processing")
-        if self._stream_session is not None:
+        if has_stream:
             self._finalize_streaming(from_auto_stop=False)
             return
         wav_bytes = self.recorder.stop()
@@ -316,6 +322,7 @@ class SamWhispers:
             if self._state != State.RECORDING:
                 return
             self._state = State.PROCESSING
+            has_stream = self._stream_session is not None
         self._set_overlay("processing")
         # Determine stop reason for notification
         from samwhispers.notify import notify
@@ -323,7 +330,7 @@ class SamWhispers:
             notify("SamWhispers", "Recording stopped (silence detected)")
         else:
             notify("SamWhispers", "Recording stopped (max duration reached)")
-        if self._stream_session is not None:
+        if has_stream:
             self._finalize_streaming(from_auto_stop=True, wav_bytes=wav_bytes)
             return
         log.info("Auto-stop triggered, processing recorded audio")
@@ -339,13 +346,15 @@ class SamWhispers:
         self._stream_stop.clear()
         self._stream_injected_any = False
         mode = self.config.streaming.output_mode
-        self._stream_session = StreamingSession(
+        session = StreamingSession(
             self._stream_engine,
             self.config.audio.sample_rate,
             window_seconds=self.config.streaming.window_seconds,
             on_commit=self._inject_committed if mode == "progressive" else None,
             on_preview=self._preview_text if mode == "preview" else None,
         )
+        with self._lock:
+            self._stream_session = session
         self._stream_thread = threading.Thread(
             target=self._stream_loop, daemon=True, name="stream-loop"
         )
@@ -353,7 +362,17 @@ class SamWhispers:
 
     def _stream_loop(self) -> None:
         interval = self.config.streaming.interval_seconds
-        while not self._stream_stop.wait(interval):
+        consecutive_errors = 0
+        max_errors = 5
+        next_tick = time.monotonic() + interval
+        while not self._stream_stop.is_set():
+            # Deadline-based sleep to avoid drift
+            now = time.monotonic()
+            sleep_time = max(0.0, next_tick - now)
+            if self._stream_stop.wait(sleep_time):
+                break
+            next_tick = time.monotonic() + interval
+
             with self._lock:
                 session = self._stream_session
             if session is None:
@@ -362,16 +381,21 @@ class SamWhispers:
                 audio = self.recorder.snapshot()
                 if audio.size:
                     session.tick(audio)
+                consecutive_errors = 0
             except Exception:
-                log.exception("Streaming tick failed")
+                consecutive_errors += 1
+                log.exception("Streaming tick failed (%d/%d)", consecutive_errors, max_errors)
+                if consecutive_errors >= max_errors:
+                    log.error("Streaming tick failed %d times consecutively, stopping loop", max_errors)
+                    return
 
     def _finalize_streaming(self, from_auto_stop: bool, wav_bytes: bytes = b"") -> None:
         """Stop the decode loop and run the final decode + output off-thread."""
-        from samwhispers.audio import wav_to_float32
-
         self._stream_stop.set()
         if self._stream_thread is not None:
             self._stream_thread.join(timeout=5.0)
+            if self._stream_thread.is_alive():
+                log.warning("Stream loop thread did not stop within timeout")
 
         with self._lock:
             session = self._stream_session
@@ -379,8 +403,14 @@ class SamWhispers:
         if session is None:
             return  # Already finalized by a concurrent call
 
+        # Cancel session to prevent any stale tick from running
+        session.cancel()
+
         if from_auto_stop:
-            final_audio = wav_to_float32(wav_bytes)  # recorder already stopped
+            # Recorder already stopped — use raw float32 from the WAV to avoid
+            # an extra WAV encode→decode round-trip precision loss
+            from samwhispers.audio import wav_to_float32
+            final_audio = wav_to_float32(wav_bytes)
         else:
             final_audio = self.recorder.snapshot()
             self.recorder.stop()
@@ -394,12 +424,8 @@ class SamWhispers:
         self._finalize_thread = t
         t.start()
 
-    def _finalize_stream_worker(self, session: StreamingSession | None, final_audio: Any) -> None:
-        import time
-
+    def _finalize_stream_worker(self, session: StreamingSession, final_audio: Any) -> None:
         try:
-            if session is None:
-                return
             t0 = time.monotonic()
             final_text = session.finalize(final_audio)
             log.info("Streaming finalize took %.0fms", (time.monotonic() - t0) * 1000)
@@ -408,13 +434,18 @@ class SamWhispers:
             if self.config.streaming.output_mode == "preview":
                 self._inject_final_paragraph(final_text, duration_ms)
             else:
-                self._finish_progressive(final_text, duration_ms)
+                # In progressive mode, store the committed words for history
+                # consistency (what was actually typed, not the re-decode)
+                committed_text = " ".join(session.agreement.committed)
+                self._finish_progressive(committed_text, duration_ms)
         except Exception:
             log.exception("Streaming finalize failed")
         finally:
             with self._lock:
                 self._state = State.IDLE
             self._set_overlay("idle")
+            if self.overlay is not None:
+                self.overlay.set_preview("")
 
     def _inject_final_paragraph(self, raw_text: str, duration_ms: int) -> None:
         """Output mode A: clean/translate the full text and inject it once."""
@@ -452,14 +483,28 @@ class SamWhispers:
 
     def _inject_committed(self, words: list[str]) -> None:
         """Output mode B: inject newly-stabilized words into the active app."""
-        chunk = " ".join(words)
+        if not words:
+            return
+        from samwhispers.streaming import _PUNCT_ONLY_RE
+
+        parts: list[str] = []
+        for word in words:
+            if not self._stream_injected_any:
+                # Very first word: no leading space
+                parts.append(word)
+                self._stream_injected_any = True
+            elif _PUNCT_ONLY_RE.match(word):
+                # Punctuation-only token: no leading space
+                parts.append(word)
+            else:
+                parts.append(" " + word)
+
+        chunk = "".join(parts)
         if not chunk:
             return
-        prefix = "" if not self._stream_injected_any else " "
-        self._stream_injected_any = True
         self.hotkey_listener.suppress()
         try:
-            self.injector.inject(prefix + chunk)
+            self.injector.inject(chunk)
         finally:
             self.hotkey_listener.resume()
 

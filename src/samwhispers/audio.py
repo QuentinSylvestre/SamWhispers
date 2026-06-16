@@ -187,6 +187,15 @@ class AudioRecorder:
                     callback=self._callback,
                 )
                 stream.start()
+                # Validate negotiated sample rate matches config
+                actual_rate = int(stream.samplerate)
+                if actual_rate != self._sample_rate:
+                    log.warning(
+                        "Audio device negotiated %dHz instead of %dHz; "
+                        "transcription quality may be affected",
+                        actual_rate,
+                        self._sample_rate,
+                    )
                 break
             except Exception:
                 if attempt == 0:
@@ -254,7 +263,34 @@ class AudioRecorder:
         with self._lock:
             if not self._frames:
                 return np.zeros(0, dtype=np.float32)
-            return np.concatenate(self._frames)
+            frames = list(self._frames)
+        # Concatenate outside the lock to avoid blocking the audio callback
+        return np.concatenate(frames)
+
+    def stop_float32(self) -> np.ndarray:
+        """Stop recording and return raw float32 audio (avoids WAV round-trip)."""
+        with self._lock:
+            if not self._recording:
+                return np.zeros(0, dtype=np.float32)
+            self._recording = False
+            stream = self._stream
+            if not self._keep_stream_open:
+                self._stream = None
+            timer = self._timer
+            self._timer = None
+            frames = self._frames
+            self._frames = []
+            keep = self._keep_stream_open
+
+        if timer:
+            timer.cancel()
+        if stream is not None:
+            stream.stop()
+            if not keep:
+                stream.close()
+        if not frames:
+            return np.zeros(0, dtype=np.float32)
+        return np.concatenate(frames)
 
     def is_recording(self) -> bool:
         with self._lock:
