@@ -413,7 +413,17 @@ class StreamingSession:
         return preview
 
     def _try_trim(self, audio: np.ndarray) -> None:
-        """Attempt to trim at a sentence boundary if conditions are met."""
+        """Attempt to trim at a sentence boundary if conditions are met.
+
+        Lock ordering: session._lock is acquired here BEFORE recorder._lock
+        (inside trim_front). No reverse acquisition path exists; maintain this
+        invariant if adding new lock-taking code paths.
+
+        After trim, surviving committed_timestamps have start/end values relative
+        to the pre-trim buffer origin. This is safe because the next tick's
+        transcribe() produces fresh timestamps relative to the new (post-trim)
+        buffer, overwriting stale entries via the update() call.
+        """
         with self._lock:
             boundary_idx = self._find_trim_boundary()
             if boundary_idx is None:
