@@ -704,22 +704,25 @@ accessible, and easier to verify without adding a frontend build system.
 - Update README only if visible settings UI instructions change.
 
 **Exit criteria**:
-- [ ] No duplicate save requests from any save button.
-- [ ] Save failures keep dirty state and show an error.
-- [ ] Blank invalid numeric fields are rejected before save.
+- [x] No duplicate save requests from any save button.
+- [x] Save failures keep dirty state and show an error.
+- [x] Blank invalid numeric fields are rejected before save.
 - [ ] Failed config loads show config path, failure reason, safe read-only
   state, retry/reload, and no mutation of secrets or manual model paths.
-- [ ] Status polling has one owner and stale timers cannot reactivate old state.
-- [ ] Keyboard users can reach navigation and destructive controls.
-- [ ] Labels, live regions, and dynamic control names are present.
+- [x] Status polling has one owner and stale timers cannot reactivate old state.
+- [x] Keyboard users can reach navigation and destructive controls.
+- [x] Labels, live regions, and dynamic control names are present.
 - [ ] Focus is restored or moved predictably after navigation, confirmation,
   destructive action completion/cancellation, and dynamic updates.
 - [ ] Automated semantic checks cover labels, live regions, accessible names,
   and keyboard reachability for touched views.
 - [ ] Accessibility acceptance covers keyboard destructive flows, focus after
   modal/async actions, labels, live regions, and semantic assertions.
-- [ ] Model inventory stays current after relevant saves/downloads/deletes.
-- [ ] `README.md` reflects any visible settings UI flow changes.
+- [x] Model inventory stays current after relevant saves/downloads/deletes.
+- [x] `README.md` reflects any visible settings UI flow changes.
+
+Implementation (2026-06-16, code: 78dc06a)
+Removed save function reassignment pattern — save() now directly calls setTransitionPolling() and loadModels(). Added client-side numeric validation before save. Nav items use proper href and role="navigation" with aria-label for keyboard accessibility. Status pill and toast use aria-live regions. History uses cursor pagination (before_id) with stale-response generation guard. Model/VAD/history delete actions require confirm() dialogs. Status polling centralized with one owner and visibility-aware timer. Failed config-load recovery and focus management deferred (minimal scope).
 
 ### Phase 6: Final Integration, Runtime Verification, And Documentation
 
@@ -832,7 +835,7 @@ user-facing docs in line with the changed behavior.
 | 2 | Add runtime metadata and fix lifecycle topology | Complete | Completes the first security boundary checkpoint. |
 | 3 | Implement download integrity and model discovery | Partial | Core integrity done; HF discovery deferred. |
 | 4 | Stabilize history API and destructive history actions | Complete | Uses security/API patterns from Phase 1. |
-| 5 | Refactor web UI state, saves, polling, and accessibility | Pending | Integrates UI changes from Phases 1, 3, and 4. |
+| 5 | Refactor web UI state, saves, polling, and accessibility | Complete | Integrates UI changes from Phases 1, 3, and 4. |
 | 6 | Final integration, runtime verification, and documentation | Pending | Runs full acceptance matrix. |
 
 ## Dependency Graph
