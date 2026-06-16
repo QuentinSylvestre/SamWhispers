@@ -8,6 +8,7 @@ import math
 import threading
 import time
 import wave
+from collections import deque
 from collections.abc import Callable
 from typing import Any
 
@@ -71,7 +72,7 @@ class AudioRecorder:
         self._on_level = on_level
         self._lock = threading.Lock()
         self._recording = False
-        self._frames: list[np.ndarray] = []
+        self._frames: deque[np.ndarray] = deque()
         self._stream: Any = None
         self._timer: threading.Timer | None = None
         self._error: bool = False
@@ -151,7 +152,7 @@ class AudioRecorder:
         with self._lock:
             if self._recording or self._closed:
                 return
-            self._frames = []
+            self._frames = deque()
             self._vad_fired = False
             self._silence_start = None
 
@@ -235,8 +236,8 @@ class AudioRecorder:
                 self._stream = None
             timer = self._timer
             self._timer = None
-            frames = self._frames
-            self._frames = []
+            frames = list(self._frames)
+            self._frames = deque()
             keep = self._keep_stream_open
 
         if timer:
@@ -281,6 +282,23 @@ class AudioRecorder:
                 frames.reverse()
         # Concatenate outside the lock to avoid blocking the audio callback
         return np.concatenate(frames)
+
+    def trim_front(self, n_samples: int) -> int:
+        """Discard the first n_samples from the buffer. Returns actual samples trimmed."""
+        with self._lock:
+            if not self._recording or n_samples <= 0:
+                return 0
+            trimmed = 0
+            while self._frames and trimmed < n_samples:
+                frame = self._frames[0]
+                if trimmed + frame.size <= n_samples:
+                    self._frames.popleft()
+                    trimmed += frame.size
+                else:
+                    cut = n_samples - trimmed
+                    self._frames[0] = frame[cut:]
+                    trimmed = n_samples
+            return trimmed
 
     def is_recording(self) -> bool:
         with self._lock:
