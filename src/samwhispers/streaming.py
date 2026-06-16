@@ -19,6 +19,7 @@ import threading
 import unicodedata
 from abc import ABC, abstractmethod
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -35,6 +36,23 @@ PUNCT_ONLY_RE = re.compile(r"^[^\w]+$", re.UNICODE)
 
 # Minimum RMS energy to bother decoding (prevents hallucination on silence)
 _MIN_ENERGY = 0.005
+
+
+@dataclass
+class WordTimestamp:
+    """A single word with its start/end timestamp relative to audio chunk start."""
+
+    word: str
+    start: float  # seconds
+    end: float
+
+
+@dataclass
+class TranscribeResult:
+    """Structured transcription result with optional word-level timestamps."""
+
+    text: str
+    words: list[WordTimestamp]
 
 
 def split_words(text: str) -> list[str]:
@@ -162,7 +180,10 @@ class StreamingEngine(ABC):
     """Transcribes a buffer of mono float32 audio to text."""
 
     @abstractmethod
-    def transcribe(self, audio: np.ndarray, sample_rate: int) -> str: ...
+    def transcribe(self, audio: np.ndarray, sample_rate: int) -> TranscribeResult: ...
+
+    @abstractmethod
+    def update_prompt(self, prompt: str) -> None: ...
 
     def close(self) -> None:  # noqa: B027 - optional override
         """Release any resources (no-op by default)."""
@@ -174,10 +195,13 @@ class ChunkedEngine(StreamingEngine):
     def __init__(self, client: WhisperClient) -> None:
         self._client = client
 
-    def transcribe(self, audio: np.ndarray, sample_rate: int) -> str:
+    def transcribe(self, audio: np.ndarray, sample_rate: int) -> TranscribeResult:
         if audio.size == 0:
-            return ""
-        return self._client.transcribe(numpy_to_wav(audio, sample_rate)).strip()
+            return TranscribeResult(text="", words=[])
+        return self._client.transcribe_verbose(numpy_to_wav(audio, sample_rate))
+
+    def update_prompt(self, prompt: str) -> None:
+        self._client.prompt = prompt
 
 
 class FasterWhisperEngine(StreamingEngine):
@@ -192,16 +216,33 @@ class FasterWhisperEngine(StreamingEngine):
         self._language = None if language in ("", "auto") else language
         self._prompt = prompt or None
 
-    def transcribe(self, audio: np.ndarray, sample_rate: int) -> str:
+    def transcribe(self, audio: np.ndarray, sample_rate: int) -> TranscribeResult:
         if audio.size == 0:
-            return ""
+            return TranscribeResult(text="", words=[])
         segments, _ = self._model.transcribe(
             audio.astype(np.float32),
             language=self._language,
             beam_size=1,
             initial_prompt=self._prompt,
+            word_timestamps=True,
         )
-        return "".join(seg.text for seg in segments).strip()
+        words: list[WordTimestamp] = []
+        text_parts: list[str] = []
+        for seg in segments:
+            text_parts.append(seg.text)
+            if seg.words:
+                for w in seg.words:
+                    word_str = w.word.strip()
+                    if not word_str:
+                        continue
+                    # Skip zero-duration punctuation-only tokens
+                    if w.start == w.end and PUNCT_ONLY_RE.match(word_str):
+                        continue
+                    words.append(WordTimestamp(word=word_str, start=w.start, end=w.end))
+        return TranscribeResult(text="".join(text_parts).strip(), words=words)
+
+    def update_prompt(self, prompt: str) -> None:
+        self._prompt = prompt or None
 
 
 def make_engine(config: StreamingConfig, whisper_client: WhisperClient) -> StreamingEngine:
@@ -266,7 +307,8 @@ class StreamingSession:
             return " ".join(self.agreement.committed)
 
         # Transcribe OUTSIDE the lock (pure function, no shared state)
-        text = self._engine.transcribe(audio, self._sample_rate)
+        result = self._engine.transcribe(audio, self._sample_rate)
+        text = result.text
         words = split_words(text)
 
         # Acquire lock only for state mutation
@@ -310,7 +352,8 @@ class StreamingSession:
                 return " ".join(self.agreement.committed)
 
         # Transcribe outside lock
-        text = self._engine.transcribe(audio, self._sample_rate)
+        result = self._engine.transcribe(audio, self._sample_rate)
+        text = result.text
         words = split_words(text)
 
         with self._lock:

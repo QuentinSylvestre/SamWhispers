@@ -153,3 +153,146 @@ def test_prompt_not_sent_when_empty() -> None:
     client.transcribe(b"fake-wav")
     body = route.calls[0].request.content.decode()
     assert "prompt" not in body
+
+
+# --- Phase 1: transcribe_verbose tests ---
+
+
+@respx.mock
+def test_transcribe_verbose_parses_word_timestamps() -> None:
+    """transcribe_verbose returns TranscribeResult with word timestamps."""
+    from samwhispers.streaming import TranscribeResult
+
+    response_json = {
+        "text": "hello world",
+        "segments": [
+            {
+                "text": "hello world",
+                "words": [
+                    {"word": " hello", "start": 0.0, "end": 0.5},
+                    {"word": " world", "start": 0.5, "end": 1.0},
+                ],
+            }
+        ],
+    }
+    respx.post("http://localhost:8080/inference").mock(
+        return_value=httpx.Response(200, json=response_json)
+    )
+    client = WhisperClient("http://localhost:8080", language="en")
+    result = client.transcribe_verbose(b"fake-wav")
+    assert isinstance(result, TranscribeResult)
+    assert result.text == "hello world"
+    assert len(result.words) == 2
+    assert result.words[0].word == "hello"
+    assert result.words[0].start == 0.0
+    assert result.words[0].end == 0.5
+    assert result.words[1].word == "world"
+
+
+@respx.mock
+def test_transcribe_verbose_skips_zero_duration_punctuation() -> None:
+    """Zero-duration punctuation-only tokens are filtered out."""
+
+    response_json = {
+        "text": "hello, world",
+        "segments": [
+            {
+                "text": "hello, world",
+                "words": [
+                    {"word": " hello", "start": 0.0, "end": 0.5},
+                    {"word": ",", "start": 0.5, "end": 0.5},  # zero-duration punct
+                    {"word": " world", "start": 0.5, "end": 1.0},
+                ],
+            }
+        ],
+    }
+    respx.post("http://localhost:8080/inference").mock(
+        return_value=httpx.Response(200, json=response_json)
+    )
+    client = WhisperClient("http://localhost:8080", language="en")
+    result = client.transcribe_verbose(b"fake-wav")
+    assert len(result.words) == 2
+    assert result.words[0].word == "hello"
+    assert result.words[1].word == "world"
+
+
+@respx.mock
+def test_transcribe_verbose_raises_on_non_numeric_timestamps() -> None:
+    """Non-numeric timestamps raise StreamingUnavailableError."""
+    from samwhispers.exceptions import StreamingUnavailableError
+
+    response_json = {
+        "text": "hello",
+        "segments": [
+            {
+                "text": "hello",
+                "words": [
+                    {"word": "hello", "start": None, "end": None},
+                ],
+            }
+        ],
+    }
+    respx.post("http://localhost:8080/inference").mock(
+        return_value=httpx.Response(200, json=response_json)
+    )
+    client = WhisperClient("http://localhost:8080", language="en")
+    with pytest.raises(StreamingUnavailableError, match="non-numeric"):
+        client.transcribe_verbose(b"fake-wav")
+
+
+@respx.mock
+def test_transcribe_verbose_raises_when_no_words() -> None:
+    """Raises StreamingUnavailableError when text exists but no words array."""
+    from samwhispers.exceptions import StreamingUnavailableError
+
+    response_json = {
+        "text": "hello world",
+        "segments": [{"text": "hello world"}],  # no 'words' key
+    }
+    respx.post("http://localhost:8080/inference").mock(
+        return_value=httpx.Response(200, json=response_json)
+    )
+    client = WhisperClient("http://localhost:8080", language="en")
+    with pytest.raises(StreamingUnavailableError, match="no word timestamps"):
+        client.transcribe_verbose(b"fake-wav")
+
+
+@respx.mock
+def test_transcribe_verbose_empty_text_no_error() -> None:
+    """Empty transcription with no words does not raise."""
+
+    response_json = {"text": "", "segments": []}
+    respx.post("http://localhost:8080/inference").mock(
+        return_value=httpx.Response(200, json=response_json)
+    )
+    client = WhisperClient("http://localhost:8080", language="en")
+    result = client.transcribe_verbose(b"fake-wav")
+    assert result.text == ""
+    assert result.words == []
+
+
+@respx.mock
+def test_transcribe_verbose_multi_segment() -> None:
+    """Words from multiple segments are concatenated."""
+
+    response_json = {
+        "text": "hello world foo bar",
+        "segments": [
+            {"text": "hello world", "words": [
+                {"word": " hello", "start": 0.0, "end": 0.5},
+                {"word": " world", "start": 0.5, "end": 1.0},
+            ]},
+            {"text": " foo bar", "words": [
+                {"word": " foo", "start": 1.0, "end": 1.5},
+                {"word": " bar", "start": 1.5, "end": 2.0},
+            ]},
+        ],
+    }
+    respx.post("http://localhost:8080/inference").mock(
+        return_value=httpx.Response(200, json=response_json)
+    )
+    client = WhisperClient("http://localhost:8080", language="en")
+    result = client.transcribe_verbose(b"fake-wav")
+    assert len(result.words) == 4
+    assert result.words[2].word == "foo"
+    assert result.words[3].start == 1.5

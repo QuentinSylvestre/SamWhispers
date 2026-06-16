@@ -11,6 +11,7 @@ from samwhispers.streaming import (
     ChunkedEngine,
     LocalAgreement,
     StreamingSession,
+    TranscribeResult,
     _detect_repetition,
     _norm,
     make_engine,
@@ -25,10 +26,13 @@ class ScriptedEngine:
         self._scripts = scripts
         self._i = 0
 
-    def transcribe(self, audio: np.ndarray, sample_rate: int) -> str:
+    def transcribe(self, audio: np.ndarray, sample_rate: int) -> TranscribeResult:
         text = self._scripts[min(self._i, len(self._scripts) - 1)]
         self._i += 1
-        return text
+        return TranscribeResult(text=text, words=[])
+
+    def update_prompt(self, prompt: str) -> None:
+        pass
 
 
 # --- LocalAgreement ---------------------------------------------------------
@@ -289,9 +293,12 @@ def test_session_finalize_caps_audio() -> None:
     transcribed_sizes: list[int] = []
 
     class SizeTrackingEngine:
-        def transcribe(self, audio: np.ndarray, sample_rate: int) -> str:
+        def transcribe(self, audio: np.ndarray, sample_rate: int) -> TranscribeResult:
             transcribed_sizes.append(audio.size)
-            return "hello"
+            return TranscribeResult(text="hello", words=[])
+
+        def update_prompt(self, prompt: str) -> None:
+            pass
 
     session = StreamingSession(
         SizeTrackingEngine(),
@@ -315,20 +322,22 @@ def test_split_words() -> None:
 
 def test_chunked_engine_uses_whisper_client() -> None:
     client = MagicMock()
-    client.transcribe.return_value = "  decoded text  "
+    client.transcribe_verbose.return_value = TranscribeResult(text="decoded text", words=[])
     engine = ChunkedEngine(client)
     out = engine.transcribe(np.ones(16000, dtype=np.float32), 16000)
-    assert out == "decoded text"
-    client.transcribe.assert_called_once()
+    assert out.text == "decoded text"
+    client.transcribe_verbose.assert_called_once()
     # was given WAV bytes
-    assert isinstance(client.transcribe.call_args.args[0], bytes)
+    assert isinstance(client.transcribe_verbose.call_args.args[0], bytes)
 
 
 def test_chunked_engine_empty_audio_skips_call() -> None:
     client = MagicMock()
     engine = ChunkedEngine(client)
-    assert engine.transcribe(np.zeros(0, dtype=np.float32), 16000) == ""
-    client.transcribe.assert_not_called()
+    result = engine.transcribe(np.zeros(0, dtype=np.float32), 16000)
+    assert result.text == ""
+    assert result.words == []
+    client.transcribe_verbose.assert_not_called()
 
 
 def test_make_engine_chunked() -> None:
