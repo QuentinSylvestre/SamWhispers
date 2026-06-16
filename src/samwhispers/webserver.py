@@ -330,7 +330,16 @@ def create_app(
 
         body: dict[str, Any] = await request.json()
         name = str(body.get("name", ""))
-        dest_dir = Path(current_app_config(config_path).whisper.model_path).parent
+        # Guard: block deletion of the active model
+        cfg = current_app_config(config_path)
+        active_path = Path(cfg.whisper.model_path)
+        dest_dir = active_path.parent
+        target = dest_dir / f"ggml-{name}.bin"
+        if target.resolve() == active_path.resolve():
+            raise HTTPException(
+                status_code=409,
+                detail="Cannot delete active model. Switch to a different model first.",
+            )
         try:
             deleted = delete_model(name, dest_dir)
         except ValueError as exc:
@@ -338,6 +347,22 @@ def create_app(
         except FileNotFoundError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         return {"deleted": True, "path": str(deleted)}
+
+    @app.delete("/api/vad")
+    async def delete_vad_model(request: Request) -> dict[str, Any]:
+        cfg = current_app_config(config_path)
+        # Guard: block deletion if VAD is enabled and path matches
+        models_dir = Path(cfg.whisper.model_path).parent
+        vad_path = models_dir / "ggml-silero-v6.2.0.bin"
+        if cfg.vad.enabled and Path(cfg.vad.model_path).resolve() == vad_path.resolve():
+            raise HTTPException(
+                status_code=409,
+                detail="Cannot delete active VAD model. Disable VAD or clear the path first.",
+            )
+        if not vad_path.is_file():
+            raise HTTPException(status_code=404, detail="VAD model not found")
+        vad_path.unlink()
+        return {"deleted": True, "path": str(vad_path)}
 
     @app.post("/api/vad/download")
     def download_vad_model() -> dict[str, Any]:

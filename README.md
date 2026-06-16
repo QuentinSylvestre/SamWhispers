@@ -140,6 +140,20 @@ You should get an HTML response (200 OK). If port 8080 is already in use, pick a
 
 The `.en` models are English-only and faster. The multilingual models (without `.en`) support auto-detection and 99 languages. For multi-language use or auto-detection, use `medium` or larger for reliable results.
 
+### Download Integrity
+
+Built-in model downloads are pinned to immutable Hugging Face revisions and
+verified with SHA256 hashes before use. If a downloaded file does not match its
+expected hash, the download is rejected and the `.part` file is cleaned up.
+
+Existing cached models are verified against the manifest on use. A hash
+mismatch produces an error with the artifact name, expected hash, and
+remediation (re-download or check for corruption).
+
+To add models not in the built-in list, place the file manually and set
+`whisper.model_path` in your config. Manually placed models are trusted by file
+existence — no hash verification is applied to user-managed paths.
+
 ## Install SamWhispers
 
 ### Linux / macOS

@@ -83,7 +83,10 @@ class ModelDownloader:
             self._state.update(fields)
 
     def _download(self, name: str, dest_dir: Path) -> None:
-        url = f"{_HF_BASE}/ggml-{name}.bin"
+        from samwhispers.model_manifest import WHISPER_MANIFEST, verify_file
+
+        artifact = WHISPER_MANIFEST.get(name)
+        url = artifact.url if artifact else f"{_HF_BASE}/ggml-{name}.bin"
         dest = dest_dir / f"ggml-{name}.bin"
         tmp = dest.with_name(dest.name + ".part")
         try:
@@ -98,6 +101,14 @@ class ModelDownloader:
                         for chunk in resp.iter_bytes(_CHUNK):
                             f.write(chunk)
                             self._set(downloaded=self.status()["downloaded"] + len(chunk))
+            # Verify hash before accepting
+            if artifact and not verify_file(tmp, artifact.sha256):
+                tmp.unlink(missing_ok=True)
+                self._set(
+                    error=f"Hash mismatch for {name}: file does not match expected SHA256",
+                    downloading=False, done=False,
+                )
+                return
             tmp.replace(dest)
             log.info("Downloaded model %s -> %s", name, dest)
             self._set(done=True, downloading=False, path=str(dest))

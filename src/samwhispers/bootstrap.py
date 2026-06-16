@@ -113,26 +113,46 @@ def ensure_whisper_server(whisper_dir: Path) -> Path:
     return build_whisper_from_source(whisper_dir)
 
 
+_vad_download_lock = __import__("threading").Lock()
+
+
 def ensure_vad_model(models_dir: Path) -> Path:
     """Download the Silero VAD model into ``models_dir`` if missing."""
     import httpx
 
+    from samwhispers.model_manifest import VAD_ARTIFACT, verify_file
+
     dest = models_dir / _VAD_MODEL_NAME
     if dest.exists():
         return dest
-    print("Downloading VAD model (Silero v6.2.0)...")
-    models_dir.mkdir(parents=True, exist_ok=True)
-    tmp = dest.with_name(dest.name + ".part")
-    timeout = httpx.Timeout(connect=15.0, read=120.0, write=30.0, pool=15.0)
-    with httpx.Client(follow_redirects=True, timeout=timeout) as client:
-        with client.stream("GET", _VAD_MODEL_URL) as resp:
-            resp.raise_for_status()
-            with open(tmp, "wb") as f:
-                for chunk in resp.iter_bytes(1 << 20):
-                    f.write(chunk)
-    tmp.replace(dest)
-    print(f"  VAD model: {dest}")
-    return dest
+    if not _vad_download_lock.acquire(blocking=False):
+        raise RuntimeError("VAD download already in progress")
+    try:
+        print("Downloading VAD model (Silero v6.2.0)...")
+        models_dir.mkdir(parents=True, exist_ok=True)
+        tmp = dest.with_name(dest.name + ".part")
+        try:
+            timeout = httpx.Timeout(connect=15.0, read=120.0, write=30.0, pool=15.0)
+            with httpx.Client(follow_redirects=True, timeout=timeout) as client:
+                with client.stream("GET", VAD_ARTIFACT.url) as resp:
+                    resp.raise_for_status()
+                    with open(tmp, "wb") as f:
+                        for chunk in resp.iter_bytes(1 << 20):
+                            f.write(chunk)
+            if not verify_file(tmp, VAD_ARTIFACT.sha256):
+                tmp.unlink(missing_ok=True)
+                raise RuntimeError(
+                    f"VAD model hash mismatch: file does not match expected SHA256 "
+                    f"({VAD_ARTIFACT.sha256})"
+                )
+            tmp.replace(dest)
+            print(f"  VAD model: {dest}")
+            return dest
+        except BaseException:
+            tmp.unlink(missing_ok=True)
+            raise
+    finally:
+        _vad_download_lock.release()
 
 
 def main() -> None:
