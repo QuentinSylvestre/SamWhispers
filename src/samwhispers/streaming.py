@@ -20,7 +20,7 @@ import unicodedata
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
@@ -114,19 +114,27 @@ class LocalAgreement:
 
     def __init__(self) -> None:
         self.committed: list[str] = []
+        self.committed_timestamps: list[WordTimestamp] = []
         self._prev: list[str] = []
         self._prev_offset: int = 0
 
-    def update(self, words: list[str], word_offset: int = 0) -> list[str]:
+    def update(
+        self,
+        words: list[str],
+        word_offset: int = 0,
+        words_with_ts: list[WordTimestamp] | None = None,
+    ) -> list[str]:
         """Feed a new hypothesis; return the words newly committed.
 
         ``word_offset`` is the number of words trimmed from the start due to
         windowing. Agreement comparison aligns by absolute position.
+        ``words_with_ts`` provides timestamps for each word in ``words``.
         """
         if not words:
             return []  # Preserve _prev from last non-empty hypothesis
 
         newly: list[str] = []
+        newly_indices: list[int] = []
         commit_len = len(self.committed)
 
         # Align previous and current hypotheses by absolute word index
@@ -145,15 +153,24 @@ class LocalAgreement:
                 break
             if _norm(self._prev[prev_local]) == _norm(words[cur_local]):
                 newly.append(words[cur_local])
+                newly_indices.append(cur_local)
             else:
                 break
 
         self.committed.extend(newly)
+        if words_with_ts:
+            for idx in newly_indices:
+                if idx < len(words_with_ts):
+                    self.committed_timestamps.append(words_with_ts[idx])
         self._prev = words
         self._prev_offset = word_offset
         return newly
 
-    def commit_all(self, words: list[str]) -> list[str]:
+    def commit_all(
+        self,
+        words: list[str],
+        words_with_ts: list[WordTimestamp] | None = None,
+    ) -> list[str]:
         """Commit everything in ``words`` beyond the current prefix (used at finalize).
 
         Never shrinks committed — if the final hypothesis is shorter than what
@@ -165,6 +182,8 @@ class LocalAgreement:
             return []
         tail = words[len(self.committed) :]
         self.committed = list(words)
+        if words_with_ts:
+            self.committed_timestamps = list(words_with_ts)
         self._prev = list(words)
         self._prev_offset = 0
         return tail
@@ -265,6 +284,9 @@ class StreamingSession:
     blocking finalize behind a long-running tick.
     """
 
+    _ABBREVIATIONS = {"dr", "mr", "mrs", "ms", "st", "jr", "sr", "inc", "ltd", "corp", "etc", "vs", "prof"}
+    _SENTENCE_END_RE = re.compile(r"[.!?]$")
+
     def __init__(
         self,
         engine: StreamingEngine,
@@ -273,40 +295,89 @@ class StreamingSession:
         window_seconds: float = 30.0,
         on_commit: Callable[[list[str]], None] | None = None,
         on_preview: Callable[[str], None] | None = None,
+        recorder: Any | None = None,
+        min_words_after_sentence: int = 1,
+        base_prompt: str = "",
     ) -> None:
         self._engine = engine
         self._sample_rate = sample_rate
         self._window_seconds = window_seconds
         self._on_commit = on_commit
         self._on_preview = on_preview
+        self._recorder = recorder
+        self._min_words_after_sentence = min_words_after_sentence
+        self._base_prompt = base_prompt
         self._lock = threading.Lock()
         self.agreement = LocalAgreement()
         self._cancelled = False
+        self._cumulative_trimmed_seconds: float = 0.0
 
     def cancel(self) -> None:
         """Signal that no more ticks should run (used when join times out)."""
         self._cancelled = True
 
-    def tick(self, audio: np.ndarray) -> str:
-        """Decode the current audio (windowed), stabilize, emit updates."""
+    def _is_sentence_boundary(self, word: str, next_word: str) -> bool:
+        if not self._SENTENCE_END_RE.search(word):
+            return False
+        stem = re.sub(r"[.!?]+$", "", word).lower()
+        if stem in self._ABBREVIATIONS:
+            return False
+        if re.match(r"\d", stem):
+            return False
+        if next_word and next_word[0].isupper():
+            return True
+        return True
+
+    def _find_trim_boundary(self) -> int | None:
+        """Find the index of the last committed word at a sentence boundary.
+
+        Returns the index in committed where trim should happen (inclusive),
+        or None if no valid boundary exists.
+        """
+        committed = self.agreement.committed
+        ts = self.agreement.committed_timestamps
+        if len(committed) < 2 or not ts:
+            return None
+
+        # Search backwards for a sentence boundary with enough words after it
+        # We need min_words_after_sentence words committed AFTER the boundary
+        min_after = self._min_words_after_sentence
+        search_end = len(committed) - min_after - 1
+        if search_end < 0:
+            return None
+
+        for i in range(search_end, -1, -1):
+            word = committed[i]
+            next_word = committed[i + 1] if i + 1 < len(committed) else ""
+            if self._is_sentence_boundary(word, next_word):
+                return i
+        return None
+
+    def tick(self, audio: np.ndarray | None = None) -> str:
+        """Decode the current audio, stabilize, emit updates, trim at sentences."""
         if self._cancelled:
+            return ""
+
+        # Get audio from recorder or parameter
+        if self._recorder is not None:
+            max_snap = int(self._window_seconds * self._sample_rate * 1.1)
+            audio = self._recorder.snapshot(max_samples=max_snap)
+        if audio is None or audio.size == 0:
             return ""
 
         max_samples = int(self._window_seconds * self._sample_rate)
         word_offset = 0
         if audio.size > max_samples:
-            # Use committed count as the offset floor — these words are stable
-            # and correspond to the trimmed portion of audio
             word_offset = len(self.agreement.committed)
             audio = audio[-max_samples:]
 
-        # Energy gate: skip decode if recent audio is silence (prevents hallucination)
+        # Energy gate: skip decode if recent audio is silence
         check_samples = min(self._sample_rate, audio.size)
         rms = float(np.sqrt(np.mean(np.square(audio[-check_samples:], dtype=np.float64))))
         if rms < _MIN_ENERGY:
             return " ".join(self.agreement.committed)
 
-        # Transcribe OUTSIDE the lock (pure function, no shared state)
+        # Transcribe OUTSIDE the lock
         result = self._engine.transcribe(audio, self._sample_rate)
         text = result.text
         words = split_words(text)
@@ -316,19 +387,22 @@ class StreamingSession:
             if self._cancelled:
                 return ""
 
-            # Hallucination guard: reject hypotheses with repetition loops
             if words and _detect_repetition(words):
                 log.debug("Repetition loop detected, skipping hypothesis")
                 return " ".join(self.agreement.committed)
 
-            newly = self.agreement.update(words, word_offset)
+            newly = self.agreement.update(words, word_offset, words_with_ts=result.words)
 
-        # Callbacks outside lock to avoid holding lock during IO
+        # Callbacks outside lock
         if newly and self._on_commit is not None:
             try:
                 self._on_commit(newly)
             except Exception:
                 log.exception("on_commit callback failed (words lost: %s)", " ".join(newly))
+
+        # Sentence-boundary trim (only if recorder available)
+        if self._recorder is not None:
+            self._try_trim(audio)
 
         preview = " ".join(words)
         if self._on_preview is not None:
@@ -338,14 +412,58 @@ class StreamingSession:
                 log.debug("on_preview callback failed", exc_info=True)
         return preview
 
-    def finalize(self, audio: np.ndarray) -> str:
+    def _try_trim(self, audio: np.ndarray) -> None:
+        """Attempt to trim at a sentence boundary if conditions are met."""
+        with self._lock:
+            boundary_idx = self._find_trim_boundary()
+            if boundary_idx is None:
+                return
+
+            ts = self.agreement.committed_timestamps
+            if boundary_idx >= len(ts):
+                return
+
+            end_time = ts[boundary_idx].end  # relative to current buffer start
+            trim_samples = int(end_time * self._sample_rate)
+
+            # Minimum buffer check: at least 2s must remain after trim
+            remaining = audio.size - trim_samples
+            if remaining < 2 * self._sample_rate:
+                return
+
+            # Execute trim
+            actual = self._recorder.trim_front(trim_samples)
+            self._cumulative_trimmed_seconds += end_time
+
+            # Update prompt with context (last ~80 committed words + base)
+            context = self.agreement.committed[-80:]
+            context_str = " ".join(context)
+            prompt = (context_str + " " + self._base_prompt).strip() if self._base_prompt else context_str
+            self._engine.update_prompt(prompt)
+
+            # Clear timestamps up to trim point (they're now invalid)
+            self.agreement.committed_timestamps = ts[boundary_idx + 1 :]
+
+            log.debug(
+                "Trimmed %d samples (%.1fs) at sentence boundary, cumulative=%.1fs",
+                actual, end_time, self._cumulative_trimmed_seconds,
+            )
+
+    def finalize(self, audio: np.ndarray | None = None) -> str:
         """Final decode: commit everything and return the full text."""
-        # Cap finalize audio to window_seconds to avoid server timeout
+        # Get audio from recorder or parameter
+        if self._recorder is not None and audio is None:
+            audio = self._recorder.snapshot()
+        if audio is None:
+            with self._lock:
+                return " ".join(self.agreement.committed)
+
+        # Cap finalize audio to window_seconds
         max_samples = int(self._window_seconds * self._sample_rate)
         if audio.size > max_samples:
             audio = audio[-max_samples:]
 
-        # Energy gate: if final audio is silence, use what we already have
+        # Energy gate
         rms = float(np.sqrt(np.mean(np.square(audio, dtype=np.float64))))
         if rms < _MIN_ENERGY:
             with self._lock:
@@ -357,12 +475,11 @@ class StreamingSession:
         words = split_words(text)
 
         with self._lock:
-            # Hallucination guard on finalize too
             if words and _detect_repetition(words):
                 log.debug("Repetition loop in finalize, using committed text")
                 return " ".join(self.agreement.committed)
 
-            tail = self.agreement.commit_all(words)
+            tail = self.agreement.commit_all(words, words_with_ts=result.words)
 
         # Callback outside lock
         if tail and self._on_commit is not None:

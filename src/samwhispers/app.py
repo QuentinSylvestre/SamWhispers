@@ -352,6 +352,9 @@ class SamWhispers:
             window_seconds=self.config.streaming.window_seconds,
             on_commit=self._inject_committed if mode == "progressive" else None,
             on_preview=self._preview_text if mode == "preview" else None,
+            recorder=self.recorder,
+            min_words_after_sentence=self.config.streaming.min_words_after_sentence,
+            base_prompt=self._build_prompt(),
         )
         with self._lock:
             self._stream_session = session
@@ -378,11 +381,7 @@ class SamWhispers:
             if session is None:
                 return
             try:
-                # Pass enough audio for the window plus margin for offset calculation
-                max_snap = int(self.config.streaming.window_seconds * self.config.audio.sample_rate * 1.1)
-                audio = self.recorder.snapshot(max_samples=max_snap)
-                if audio.size:
-                    session.tick(audio)
+                session.tick()
                 consecutive_errors = 0
             except Exception:
                 consecutive_errors += 1

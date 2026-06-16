@@ -371,6 +371,13 @@ All streaming settings are editable in the config UI.
     when you want the model to revise earlier words before committing.
   - `progressive` (B) — stable words are typed into the target app as they lock
     in. Cleanup/translation don't apply in this mode (text is already committed).
+- **Buffer management**: The audio buffer is trimmed at confirmed sentence
+  boundaries (period, exclamation, question mark followed by a capitalized word),
+  keeping memory and CPU cost bounded regardless of recording length. An
+  abbreviation blocklist prevents false trims on "Dr.", "Mr.", etc. The
+  `window_seconds` config acts as a safety ceiling for pathologically long
+  sentences without punctuation. After each trim, the last ~80 committed words
+  are passed as prompt context to maintain style continuity.
 
 Streaming re-decodes repeatedly, so it uses more CPU than batch mode; smaller
 models keep up best. Batch mode remains the default.

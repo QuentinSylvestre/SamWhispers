@@ -353,6 +353,7 @@ class StreamingConfig:
     model: str = "base"  # faster-whisper model name or path
     compute_type: str = "int8"  # faster-whisper compute type
     window_seconds: float = 30.0  # max audio window per tick (caps CPU cost)
+    min_words_after_sentence: int = 1  # words after sentence-end before trim
 
 
 @dataclass

@@ -107,6 +107,7 @@ output_mode = "preview"     # "preview" (A: live panel, inject final paragraph)
                             #   or "progressive" (B: type stable words as you speak)
 interval_seconds = 0.8      # How often to re-decode while speaking
 window_seconds = 30.0       # Max audio window per tick (caps CPU cost for long recordings)
+min_words_after_sentence = 1  # Words committed after sentence-end before buffer trim
 model = "base"              # faster-whisper model name or path (faster_whisper engine)
 compute_type = "int8"       # faster-whisper compute type (int8, float16, ...)
 # The faster_whisper engine needs: pip install samwhispers[faster-whisper]
