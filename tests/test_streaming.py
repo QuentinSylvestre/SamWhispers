@@ -758,7 +758,7 @@ def test_finalize_does_not_trim() -> None:
 
     session.tick()
     # Now finalize — should NOT trim
-    trims_before = len(recorder.trims)
+    len(recorder.trims)
     final = session.finalize(np.full(80000, 0.1, dtype=np.float32))
     # finalize itself doesn't call _try_trim
     assert "Hello" in final or "Done." in final
@@ -829,7 +829,6 @@ def test_commit_all_stores_timestamps() -> None:
 
 def test_streaming_unavailable_error_stops_stream_loop() -> None:
     """StreamingUnavailableError in tick stops the loop and disables streaming."""
-    from unittest.mock import patch
     from samwhispers.exceptions import StreamingUnavailableError
 
     class FailingEngine:
@@ -850,13 +849,12 @@ def test_streaming_unavailable_error_stops_stream_loop() -> None:
         session.tick(np.full(16000, 0.1, dtype=np.float32))
 
 
-def test_app_stream_loop_catches_streaming_unavailable(tmp_path: Any) -> None:
+def test_app_stream_loop_catches_streaming_unavailable(tmp_path) -> None:
     """App._stream_loop catches StreamingUnavailableError and disables streaming."""
     from unittest.mock import MagicMock, patch
     from samwhispers.exceptions import StreamingUnavailableError
     from samwhispers.app import SamWhispers, State
     import threading
-    import queue
 
     class FailOnTickEngine:
         def transcribe(self, audio: np.ndarray, sample_rate: int) -> TranscribeResult:
@@ -898,7 +896,7 @@ def test_app_stream_loop_catches_streaming_unavailable(tmp_path: Any) -> None:
 
 def test_app_finalize_streaming_batch_fallback() -> None:
     """When streaming is disabled, _finalize_streaming puts audio on work queue."""
-    from unittest.mock import MagicMock, patch
+    from unittest.mock import MagicMock
     from samwhispers.app import SamWhispers, State
     import queue
     import threading
