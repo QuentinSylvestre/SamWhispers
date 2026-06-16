@@ -1,7 +1,7 @@
 # Whisper-Streaming Sentence-Boundary Buffer Trimming
 
 > **Date**: 2026-06-16
-> **Status**: In Progress  <!-- Status lifecycle: Exploring → Draft → In Progress → Complete -->
+> **Status**: Complete  <!-- Status lifecycle: Exploring → Draft → In Progress → Complete -->
 > **Scope**: Replace fixed 30s sliding window in streaming transcription with sentence-boundary buffer trimming (Whisper-Streaming algorithm)
 > **Estimated effort**: 2-3 days
 
@@ -415,3 +415,22 @@ Implementation health: Green.
 |---|---|---|---|
 | 1 | Low | `_stream_disabled` never reset — streaming stays off for entire app session | User: accepted — intentional; server caps don't change mid-session |
 | 2 | Low | No test for `from_auto_stop=True` batch fallback path | User: accepted — code path is trivial, follow-up material |
+
+### 2026-06-16 -- Post-Implementation Review
+
+Overall implementation health: Green.
+Personas: Senior engineer, Reliability engineer.
+7 findings (0 High, 0 Medium, 5 Low, 2 Info).
+QA verification: SKIP (runtime surface requires external whisper-server; library exports verified by 86-test suite).
+
+| # | Severity | Finding | Resolution |
+|---|---|---|---|
+| 1 | Low | [Senior] Lint issues in test_streaming.py (unused imports/vars) | Fixed — ruff --fix applied (commit fb5096b) |
+| 2 | Low | [Senior] `recorder: Any` type loses static safety | User: accepted — previously accepted in Phase 3 review |
+| 3 | Low | [Senior] `_stream_disabled` never reset for app lifecycle | User: accepted — intentional, previously accepted in Phase 4 |
+| 4 | Low | [Reliability] `_stream_disabled` read without lock (CPython GIL atomic) | User: accepted — theoretical; GIL guarantees atomicity |
+| 5 | Low | [Reliability] Deferred trim conservative behavior | User: accepted — errs on safe side |
+
+Cycle 2 skipped — cycle 1 findings all Low + auto-fixes purely mechanical (lint cleanup only).
+
+Cross-phase integration verified: TranscribeResult flows correctly from engines through tick() into LocalAgreement; trim_front deque is called from _try_trim atomically; fail-loud fallback routes to batch queue. Lock ordering (session → recorder) consistent everywhere. No deadlock vectors. All per-phase review findings resolved.
