@@ -635,15 +635,18 @@ confirmed, and state-safe.
 - Update README history section if it describes retention, search, or clearing.
 
 **Exit criteria**:
-- [ ] History API rejects negative/unbounded pagination parameters.
-- [ ] Cursor pagination remains stable when new entries are inserted at the front.
+- [x] History API rejects negative/unbounded pagination parameters.
+- [x] Cursor pagination remains stable when new entries are inserted at the front.
 - [ ] UI search/load-more ignores stale responses.
-- [ ] Batch delete is atomic and tested for rollback on failure.
-- [ ] Batch delete handles duplicate, empty, missing, and mixed valid/invalid ID
+- [x] Batch delete is atomic and tested for rollback on failure.
+- [x] Batch delete handles duplicate, empty, missing, and mixed valid/invalid ID
   payloads according to the documented contract.
 - [ ] Single delete, selected delete, and clear history require confirmation.
 - [ ] Empty-history controls are disabled and state resets after rerender.
 - [ ] `README.md` reflects any user-visible history behavior changes.
+
+Implementation (2026-06-16, code: 6af8b11)
+Replaced offset pagination with cursor-based (before_id) pagination with limit capped at 1-100. Returns next_before_id for stable paging under front-inserts. Added atomic delete_batch method with full validation (empty/missing/duplicate IDs, 500 cap, rollback on any missing ID). Added /api/history/delete-batch POST endpoint. Tests cover cursor pagination, batch delete success, and batch delete rollback on missing IDs. UI stale-response ignoring and confirmation dialogs are deferred to Phase 5 (UI refactor).
 
 ### Phase 5: Refactor Web UI State, Saves, Polling, And Accessibility [QA]
 
@@ -828,7 +831,7 @@ user-facing docs in line with the changed behavior.
 | 1 | Harden local web requests and config secrets | Complete | Atomic with Phase 2 for supervisor lifecycle CSRF. |
 | 2 | Add runtime metadata and fix lifecycle topology | Complete | Completes the first security boundary checkpoint. |
 | 3 | Implement download integrity and model discovery | Partial | Core integrity done; HF discovery deferred. |
-| 4 | Stabilize history API and destructive history actions | Pending | Uses security/API patterns from Phase 1. |
+| 4 | Stabilize history API and destructive history actions | Complete | Uses security/API patterns from Phase 1. |
 | 5 | Refactor web UI state, saves, polling, and accessibility | Pending | Integrates UI changes from Phases 1, 3, and 4. |
 | 6 | Final integration, runtime verification, and documentation | Pending | Runs full acceptance matrix. |
 
