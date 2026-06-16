@@ -303,13 +303,17 @@ Divergence: Consecutive trims test simplified to verify single trim + monotonic 
 - In `app.py` `_stream_loop`: catch `StreamingUnavailableError` on first tick, log clearly, disable streaming for this session, notify user via overlay/notification, fall back to batch mode (put remaining audio on work queue).
 
 **Exit criteria**:
-- [ ] `StreamingUnavailableError` defined
-- [ ] Engine raises it when timestamps missing or malformed
-- [ ] App catches it, logs clear message, disables streaming for session
-- [ ] User notified (overlay or notification)
-- [ ] Remaining audio captured and processed via batch path
-- [ ] Test: mock response without words → error raised
-- [ ] Test: app handles error gracefully (falls back to batch)
+- [x] `StreamingUnavailableError` defined
+- [x] Engine raises it when timestamps missing or malformed
+- [x] App catches it, logs clear message, disables streaming for session
+- [x] User notified (overlay or notification)
+- [x] Remaining audio captured and processed via batch path
+- [x] Test: mock response without words → error raised
+- [x] Test: app handles error gracefully (falls back to batch)
+
+#### Implementation (2026-06-16, code: 7a69b11)
+
+Added `StreamingUnavailableError` handling in `app.py`'s `_stream_loop`: when the error is raised (engine can't provide timestamps), streaming is disabled for the session via `_stream_disabled` flag, a clear error is logged, the user is notified via the existing `notify()` system, and the stream loop exits. In `_finalize_streaming`, when `_stream_disabled` is True, audio is routed to the batch processing work queue instead of attempting streaming finalization. The `_on_record_start` method checks the flag to prevent re-starting streaming after it's been disabled. Three new tests verify: the error propagates from the session tick, the app's stream loop catches it and sets the disabled flag, and finalize correctly falls back to batch by putting audio on the work queue.
 
 ## 6) Risk Assessment
 
@@ -401,3 +405,13 @@ Cycle 2 skipped — cycle 1 findings all Low after Medium auto-fixes (comments o
 | 5 | Low | Progressive mode test assertion allows up to 2 duplicates | User: accepted — test validates core invariant |
 | 6 | Low | Abbreviation test uses conditional assertion | User: accepted — passes meaningfully |
 | 7 | Info | Consecutive trims test divergence is reasonable | Acknowledged |
+
+### 2026-06-16 -- Implementation Review (after Phase 4, persona: Senior engineer, Reliability engineer)
+
+Implementation health: Green.
+4 findings (0 High, 0 Medium, 2 Low, 2 Info). Effort: High.
+
+| # | Severity | Finding | Resolution |
+|---|---|---|---|
+| 1 | Low | `_stream_disabled` never reset — streaming stays off for entire app session | User: accepted — intentional; server caps don't change mid-session |
+| 2 | Low | No test for `from_auto_stop=True` batch fallback path | User: accepted — code path is trivial, follow-up material |
