@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 import signal
 import sys
+from pathlib import Path
 from types import FrameType
 from typing import Any
 
@@ -19,12 +20,27 @@ from samwhispers.notify import notify
 log = logging.getLogger("samwhispers.tray")
 
 # Icon dot colour per state: blue=starting, green=running, amber=paused, grey=stopped.
+# Used only as a fallback when the bundled PNG artwork cannot be loaded.
 _COLORS: dict[WorkerState, tuple[int, int, int]] = {
     WorkerState.STARTING: (45, 108, 223),
     WorkerState.RUNNING: (0, 220, 0),
     WorkerState.PAUSED: (255, 193, 7),
     WorkerState.STOPPED: (158, 158, 158),
 }
+
+# Map each worker state to one of the bundled tray artwork variants:
+# running=green, paused=amber, stopped=red, starting=grey.
+_TRAY_ASSET: dict[WorkerState, str] = {
+    WorkerState.RUNNING: "running",
+    WorkerState.PAUSED: "warning",
+    WorkerState.STOPPED: "error",
+    WorkerState.STARTING: "not_running",
+}
+
+_TRAY_DIR = Path(__file__).parent / "assets" / "tray"
+# Sizes available on disk for each tray variant (see assets/tray/<state>/).
+_TRAY_SIZES = (16, 20, 24, 32, 48, 64, 128, 256)
+_image_cache: dict[tuple[WorkerState, int], Any] = {}
 
 
 def tray_available() -> bool:
@@ -42,8 +58,8 @@ def tray_available() -> bool:
     return True
 
 
-def _make_image(state: WorkerState, size: int = 64) -> Any:
-    """Render a simple coloured-dot icon for the given state."""
+def _draw_dot(state: WorkerState, size: int) -> Any:
+    """Render a simple coloured-dot icon (fallback when artwork is unavailable)."""
     from PIL import Image, ImageDraw
 
     color = _COLORS.get(state, _COLORS[WorkerState.STOPPED])
@@ -51,6 +67,33 @@ def _make_image(state: WorkerState, size: int = 64) -> Any:
     draw = ImageDraw.Draw(image)
     margin = size // 8
     draw.ellipse((margin, margin, size - margin, size - margin), fill=color)
+    return image
+
+
+def _make_image(state: WorkerState, size: int = 64) -> Any:
+    """Return the tray icon for ``state``, loading bundled artwork when possible.
+
+    Falls back to a coloured dot if the PNG cannot be read (e.g. missing asset
+    or a Pillow without PNG support), so the tray never fails to render.
+    """
+    cached = _image_cache.get((state, size))
+    if cached is not None:
+        return cached
+
+    from PIL import Image
+
+    variant = _TRAY_ASSET.get(state, "not_running")
+    asset_size = min(_TRAY_SIZES, key=lambda s: (s < size, abs(s - size)))
+    path = _TRAY_DIR / variant / f"samwhispers-tray-{variant}-{asset_size}.png"
+    try:
+        image = Image.open(path).convert("RGBA")
+        if image.size != (size, size):
+            image = image.resize((size, size), Image.LANCZOS)
+    except Exception:
+        log.debug("Falling back to drawn tray icon (could not load %s)", path, exc_info=True)
+        image = _draw_dot(state, size)
+
+    _image_cache[(state, size)] = image
     return image
 
 
