@@ -147,25 +147,25 @@ button.primary:disabled { opacity: .5; cursor: default; }
 <header>
   <button class="menu-toggle" id="menuToggle" aria-label="Toggle menu">&#9776;</button>
   <h1><img class="brand-logo" src="/static/logo/samwhispers-wordmark-dark.png" alt="SamWhispers" height="96" onclick="document.querySelector('.nav-item[data-page=&quot;general&quot;]').click()" /></h1>
-  <span class="status-pill"><span class="dot" id="statusDot"></span><span id="statusText">…</span></span>
+  <span class="status-pill" aria-live="polite"><span class="dot" id="statusDot"></span><span id="statusText">…</span></span>
 </header>
 
 <aside id="sidebar">
-  <nav>
+  <nav role="navigation" aria-label="Settings sections">
     <div class="nav-group">
       <div class="nav-group-label">Configuration</div>
-      <a class="nav-item active" data-page="general"><span class="nav-icon">⚙</span>General</a>
-      <a class="nav-item" data-page="whisper"><span class="nav-icon">🎙</span>Whisper engine</a>
-      <a class="nav-item" data-page="ai"><span class="nav-icon">✦</span>AI processing</a>
-      <a class="nav-item" data-page="output"><span class="nav-icon">⎘</span>Output &amp; text</a>
-      <a class="nav-item" data-page="snippets"><span class="nav-icon">✂</span>Snippets</a>
-      <a class="nav-item" data-page="vad"><span class="nav-icon">◉</span>VAD</a>
-      <a class="nav-item" data-page="streaming"><span class="nav-icon">⟳</span>Streaming</a>
+      <a class="nav-item active" href="#general" data-page="general"><span class="nav-icon">⚙</span>General</a>
+      <a class="nav-item" href="#whisper" data-page="whisper"><span class="nav-icon">🎙</span>Whisper engine</a>
+      <a class="nav-item" href="#ai" data-page="ai"><span class="nav-icon">✦</span>AI processing</a>
+      <a class="nav-item" href="#output" data-page="output"><span class="nav-icon">⎘</span>Output &amp; text</a>
+      <a class="nav-item" href="#snippets" data-page="snippets"><span class="nav-icon">✂</span>Snippets</a>
+      <a class="nav-item" href="#vad" data-page="vad"><span class="nav-icon">◉</span>VAD</a>
+      <a class="nav-item" href="#streaming" data-page="streaming"><span class="nav-icon">⟳</span>Streaming</a>
     </div>
     <div class="nav-group">
       <div class="nav-group-label">Data</div>
-      <a class="nav-item" data-page="history"><span class="nav-icon">⏱</span>History</a>
-      <a class="nav-item" data-page="logs"><span class="nav-icon">≡</span>Logs</a>
+      <a class="nav-item" href="#history" data-page="history"><span class="nav-icon">⏱</span>History</a>
+      <a class="nav-item" href="#logs" data-page="logs"><span class="nav-icon">≡</span>Logs</a>
     </div>
   </nav>
 </aside>
@@ -464,7 +464,7 @@ button.primary:disabled { opacity: .5; cursor: default; }
 
 </div><!-- /content -->
 
-<div class="toast" id="toast"></div>
+<div class="toast" id="toast" role="alert" aria-live="assertive"></div>
 
 <script>
 const state = { config: null, meta: null, models: null };
@@ -531,7 +531,8 @@ function toast(msg, kind) {
 
 // --- Navigation ---
 for (const item of document.querySelectorAll(".nav-item[data-page]")) {
-  item.addEventListener("click", () => {
+  item.addEventListener("click", (e) => {
+    e.preventDefault();
     document.querySelectorAll(".nav-item").forEach(n => n.classList.remove("active"));
     item.classList.add("active");
     document.querySelectorAll(".page").forEach(p => p.classList.remove("active"));
@@ -702,6 +703,7 @@ async function startModelDownload(name) {
 }
 
 async function deleteModel(name) {
+  if (!confirm(`Delete model "${name}"? This cannot be undone.`)) return;
   try {
     await api("DELETE", "/api/models", { name });
     toast(`Deleted ${name}.`, "ok");
@@ -780,11 +782,26 @@ function collect() {
 }
 
 async function save() {
+  // Validate blank numeric fields before save
+  for (const el of document.querySelectorAll("[data-path][data-type='number']")) {
+    if (el.value.trim() === "" && el.required) {
+      toast(`"${el.closest('.field')?.querySelector('label')?.textContent || el.dataset.path}" cannot be blank.`, "err");
+      el.focus();
+      return;
+    }
+    if (el.value.trim() !== "" && isNaN(Number(el.value))) {
+      toast(`"${el.closest('.field')?.querySelector('label')?.textContent || el.dataset.path}" must be a number.`, "err");
+      el.focus();
+      return;
+    }
+  }
   collect();
   try {
     const r = await api("PUT", "/api/config", state.config);
     toast(r.restarted ? "Saved \u2014 worker restarting\u2026" : "Saved.", "ok");
+    setTransitionPolling();
     loadStatus();
+    await loadModels();
   } catch (e) { toast("Error: " + e.message, "err"); }
 }
 
@@ -843,7 +860,7 @@ async function loadAll() {
 
 // --- History ---
 const HIST_PAGE = 50;
-let histOffset = 0, histTotal = 0;
+let histCursor = null, histGeneration = 0;
 
 function fmtTime(iso) {
   const d = new Date(iso);
@@ -868,6 +885,7 @@ function renderEntry(e) {
   div.querySelector("[data-copy]").addEventListener("click", () =>
     navigator.clipboard.writeText(e.text).then(() => toast("Copied.", "ok")));
   div.querySelector("[data-del]").addEventListener("click", async () => {
+    if (!confirm("Delete this entry?")) return;
     await api("DELETE", `/api/history/${e.id}`);
     loadHistory(true);
   });
@@ -875,17 +893,20 @@ function renderEntry(e) {
 }
 
 async function loadHistory(reset) {
-  if (reset) { histOffset = 0; document.getElementById("histList").innerHTML = ""; }
+  const gen = ++histGeneration;
+  if (reset) { histCursor = null; document.getElementById("histList").innerHTML = ""; }
   const q = document.getElementById("histSearch").value.trim();
-  const url = `/api/history?limit=${HIST_PAGE}&offset=${histOffset}` +
-    (q ? `&q=${encodeURIComponent(q)}` : "");
-  const { items, total } = await api("GET", url);
-  histTotal = total;
+  let url = `/api/history?limit=${HIST_PAGE}`;
+  if (histCursor) url += `&before_id=${histCursor}`;
+  if (q) url += `&q=${encodeURIComponent(q)}`;
+  const { items, next_before_id } = await api("GET", url);
+  // Ignore stale responses from superseded requests
+  if (gen !== histGeneration) return;
   const list = document.getElementById("histList");
   if (reset && items.length === 0) list.innerHTML = `<div class="empty">No transcriptions yet.</div>`;
   for (const e of items) list.appendChild(renderEntry(e));
-  histOffset += items.length;
-  document.getElementById("btnHistMore").hidden = histOffset >= histTotal;
+  histCursor = next_before_id;
+  document.getElementById("btnHistMore").hidden = !next_before_id;
 }
 
 let histTimer;
@@ -1031,8 +1052,9 @@ async function downloadVadModel() {
 }
 
 async function deleteVadModel() {
+  if (!confirm("Delete the VAD model?")) return;
   try {
-    await api("DELETE", "/api/vad/model");
+    await api("DELETE", "/api/vad");
     toast("VAD model deleted.", "ok");
     await loadModels();
   } catch (e) { toast("Delete failed: " + e.message, "err"); }
@@ -1048,7 +1070,7 @@ document.getElementById("btnSaveVad").addEventListener("click", save);
 loadAll().catch(e => toast("Failed to load config: " + e.message, "err"));
 loadStatus();
 
-// #6 Smart status polling: 5s stable, 2s during transitions, pause when hidden
+// Status polling: 5s stable, 2s during transitions, pause when hidden
 let statusInterval = 5000;
 let statusTimer = setInterval(loadStatus, statusInterval);
 let inTransition = false;
@@ -1064,10 +1086,6 @@ document.addEventListener("visibilitychange", () => {
   clearInterval(statusTimer);
   if (!document.hidden) statusTimer = setInterval(loadStatus, inTransition ? 2000 : 5000);
 });
-
-// Hook transitions into restart/save actions
-const origSave = save;
-save = async function() { await origSave(); setTransitionPolling(); };
 
 setInterval(() => { if (document.getElementById('page-logs').classList.contains('active') && !document.hidden) loadLogs(); }, 5000);
 
