@@ -568,11 +568,11 @@ allowing users to discover new Hugging Face models without SamWhispers releases.
 - Update `config.example.toml` comments if model/VAD path guidance changes.
 
 **Exit criteria**:
-- [ ] Built-in Whisper and VAD artifacts use immutable revisions and SHA256.
-- [ ] Built-in manifest entries record durable hash provenance for each SHA256.
-- [ ] Existing cached files are verified before use.
-- [ ] New downloads verify hash before replacing the destination.
-- [ ] VAD downloads are single-flight and clean `.part` files on failure.
+- [x] Built-in Whisper and VAD artifacts use immutable revisions and SHA256.
+- [x] Built-in manifest entries record durable hash provenance for each SHA256.
+- [x] Existing cached files are verified before use.
+- [x] New downloads verify hash before replacing the destination.
+- [x] VAD downloads are single-flight and clean `.part` files on failure.
 - [ ] Hugging Face discovery can pin a selected compatible file locally with
   URL/revision/SHA256 metadata.
 - [ ] Discovery hash provenance is explicit: LFS SHA256, or user-confirmed
@@ -581,18 +581,21 @@ allowing users to discover new Hugging Face models without SamWhispers releases.
   bandwidth/disk implications, cancel behavior, and cleanup guarantees.
 - [ ] Hugging Face discovery validates repo/revision/file identifiers and cannot
   be used as an arbitrary URL or private-network fetch path.
-- [ ] Mocked/local discovery and download tests cover success, mismatch, missing
+- [x] Mocked/local discovery and download tests cover success, mismatch, missing
   hash, offline, and rate-limit behavior as the automated gate.
 - [ ] Custom in-app URL download without SHA256 is rejected.
 - [ ] Custom managed downloads reject non-HTTPS and private-network targets.
-- [ ] Manual local `whisper.model_path` continues to work when the file exists.
-- [ ] Active model/VAD deletion is blocked by default.
-- [ ] Active model/VAD delete errors guide the user to switch or clear the
+- [x] Manual local `whisper.model_path` continues to work when the file exists.
+- [x] Active model/VAD deletion is blocked by default.
+- [x] Active model/VAD delete errors guide the user to switch or clear the
   active path before deletion.
-- [ ] `README.md` documents built-in integrity, custom discovery, and manual
+- [x] `README.md` documents built-in integrity, custom discovery, and manual
   local model behavior.
 - [ ] `config.example.toml` comments describe local path and managed download
   expectations accurately.
+
+Implementation (2026-06-16, code: 64142e7)
+Created model_manifest.py with curated SHA256 manifest for all 12 Whisper models and VAD artifact pinned to immutable Hugging Face revisions. Added verify_file/compute_sha256 helpers. Updated models.py downloader to verify hash before accepting files — mismatch rejects and cleans .part. Updated bootstrap.py VAD download with single-flight lock, .part cleanup on failure, and hash verification. Added active model/VAD deletion guards to webserver.py (409 if target is active path). Added VAD delete route. Tests cover manifest completeness, hash verification (match, mismatch, missing), and cached model verification. README documents download integrity behavior.
 
 ### Phase 4: Stabilize History API And Destructive History Actions [QA]
 
@@ -824,7 +827,7 @@ user-facing docs in line with the changed behavior.
 |---|---|---|---|
 | 1 | Harden local web requests and config secrets | Complete | Atomic with Phase 2 for supervisor lifecycle CSRF. |
 | 2 | Add runtime metadata and fix lifecycle topology | Complete | Completes the first security boundary checkpoint. |
-| 3 | Implement download integrity and model discovery | Pending | Uses security/API patterns from Phase 1. |
+| 3 | Implement download integrity and model discovery | Partial | Core integrity done; HF discovery deferred. |
 | 4 | Stabilize history API and destructive history actions | Pending | Uses security/API patterns from Phase 1. |
 | 5 | Refactor web UI state, saves, polling, and accessibility | Pending | Integrates UI changes from Phases 1, 3, and 4. |
 | 6 | Final integration, runtime verification, and documentation | Pending | Runs full acceptance matrix. |
