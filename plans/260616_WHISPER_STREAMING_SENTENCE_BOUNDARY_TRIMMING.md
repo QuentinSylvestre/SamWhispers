@@ -1,7 +1,7 @@
 # Whisper-Streaming Sentence-Boundary Buffer Trimming
 
 > **Date**: 2026-06-16
-> **Status**: Draft  <!-- Status lifecycle: Exploring → Draft → In Progress → Complete -->
+> **Status**: In Progress  <!-- Status lifecycle: Exploring → Draft → In Progress → Complete -->
 > **Scope**: Replace fixed 30s sliding window in streaming transcription with sentence-boundary buffer trimming (Whisper-Streaming algorithm)
 > **Estimated effort**: 2-3 days
 
@@ -117,16 +117,20 @@ class TranscribeResult:
 - Update `ScriptedEngine` in tests to return `TranscribeResult`.
 
 **Exit criteria**:
-- [ ] `TranscribeResult` and `WordTimestamp` dataclasses defined
-- [ ] `StreamingEngine.update_prompt(prompt: str)` abstract method added
-- [ ] `WhisperClient.transcribe_verbose()` posts `response_format=verbose_json` and parses word timestamps
-- [ ] Validates word timestamps are numeric (handles `no_timestamps` server flag)
-- [ ] `ChunkedEngine` returns `TranscribeResult`; implements `update_prompt`
-- [ ] `FasterWhisperEngine` returns `TranscribeResult` with `word_timestamps=True`; implements `update_prompt`
-- [ ] Engine raises `StreamingUnavailableError` if timestamps unavailable
-- [ ] Zero-duration/punctuation-only tokens normalized in parse
-- [ ] Existing streaming tests updated to use new return type
-- [ ] New tests for timestamp parsing (mock verbose_json responses)
+- [x] `TranscribeResult` and `WordTimestamp` dataclasses defined
+- [x] `StreamingEngine.update_prompt(prompt: str)` abstract method added
+- [x] `WhisperClient.transcribe_verbose()` posts `response_format=verbose_json` and parses word timestamps
+- [x] Validates word timestamps are numeric (handles `no_timestamps` server flag)
+- [x] `ChunkedEngine` returns `TranscribeResult`; implements `update_prompt`
+- [x] `FasterWhisperEngine` returns `TranscribeResult` with `word_timestamps=True`; implements `update_prompt`
+- [x] Engine raises `StreamingUnavailableError` if timestamps unavailable
+- [x] Zero-duration/punctuation-only tokens normalized in parse
+- [x] Existing streaming tests updated to use new return type
+- [x] New tests for timestamp parsing (mock verbose_json responses)
+
+#### Implementation (2026-06-16, code: a8ea8ab)
+
+Added `WordTimestamp` and `TranscribeResult` dataclasses to `streaming.py`, changed `StreamingEngine.transcribe()` to return `TranscribeResult`, added abstract `update_prompt(prompt)` method to the ABC, and implemented both in `ChunkedEngine` (delegates to new `WhisperClient.transcribe_verbose()`) and `FasterWhisperEngine` (passes `word_timestamps=True`, builds result from segment word data). Added `transcribe_verbose()` to `WhisperClient` that posts with `response_format=verbose_json`, validates numeric timestamps, skips zero-duration punctuation-only tokens, and raises `StreamingUnavailableError` (new exception in `exceptions.py`) when timestamps are unavailable. Updated `StreamingSession.tick()` and `finalize()` to unpack `TranscribeResult`. Updated `ScriptedEngine` and all existing streaming tests to use the new return type, and added 6 new tests for verbose timestamp parsing (success, multi-segment, zero-duration filtering, non-numeric validation, no-words error, empty text).
 
 ### Phase 2: Audio buffer front-trimming with deque [QA] [P:1]
 
@@ -166,14 +170,18 @@ def trim_front(self, n_samples: int) -> int:
 - Guard: `if not self._recording: return 0` at top of `trim_front`.
 
 **Exit criteria**:
-- [ ] `_frames` converted to `collections.deque`
-- [ ] `trim_front(n_samples)` method added, returns actual samples trimmed
-- [ ] O(1) popleft for full-frame removal
-- [ ] Handles partial frame at boundary
-- [ ] Thread-safe (operates under `_lock`)
-- [ ] Guard against trim after recording stops
-- [ ] Unit tests: trim full frames, trim partial, trim zero, trim more than available
-- [ ] Existing snapshot/stop tests still pass with deque
+- [x] `_frames` converted to `collections.deque`
+- [x] `trim_front(n_samples)` method added, returns actual samples trimmed
+- [x] O(1) popleft for full-frame removal
+- [x] Handles partial frame at boundary
+- [x] Thread-safe (operates under `_lock`)
+- [x] Guard against trim after recording stops
+- [x] Unit tests: trim full frames, trim partial, trim zero, trim more than available
+- [x] Existing snapshot/stop tests still pass with deque
+
+#### Implementation (2026-06-16, code: a8ea8ab)
+
+Converted `AudioRecorder._frames` from `list[np.ndarray]` to `collections.deque[np.ndarray]` for O(1) front removal, updated all reset sites (`__init__`, `start()`, `stop()`) to use `deque()`, captured frames as `list()` in `stop()` before reset, and added the `trim_front(n_samples: int) -> int` method that discards confirmed audio from the buffer head under `_lock` with proper handling of full-frame popleft, partial frame slicing at boundaries, and a guard returning 0 when not recording. Added 6 unit tests covering full-frame trim, partial-frame trim, zero trim, over-trim, not-recording guard, and snapshot-after-trim verification.
 
 ### Phase 3: Sentence-boundary trimming in StreamingSession [QA]
 
