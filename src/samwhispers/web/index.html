@@ -536,8 +536,12 @@ for (const item of document.querySelectorAll(".nav-item[data-page]")) {
     document.querySelectorAll(".nav-item").forEach(n => n.classList.remove("active"));
     item.classList.add("active");
     document.querySelectorAll(".page").forEach(p => p.classList.remove("active"));
-    document.getElementById("page-" + item.dataset.page).classList.add("active");
+    const page = document.getElementById("page-" + item.dataset.page);
+    page.classList.add("active");
     document.getElementById("sidebar").classList.remove("open");
+    // Focus management: move focus to the page heading for screen readers
+    const heading = page.querySelector(".page-title");
+    if (heading) { heading.setAttribute("tabindex", "-1"); heading.focus(); }
     if (item.dataset.page === "history") loadHistory(true);
     if (item.dataset.page === "logs") loadLogs();
   });
@@ -708,6 +712,9 @@ async function deleteModel(name) {
     await api("DELETE", "/api/models", { name });
     toast(`Deleted ${name}.`, "ok");
     await loadModels();
+    // Restore focus to models section heading
+    const h = document.querySelector("#page-whisper .page-title");
+    if (h) { h.setAttribute("tabindex", "-1"); h.focus(); }
   } catch (e) { toast("Delete failed: " + e.message, "err"); }
 }
 
@@ -888,6 +895,8 @@ function renderEntry(e) {
     if (!confirm("Delete this entry?")) return;
     await api("DELETE", `/api/history/${e.id}`);
     loadHistory(true);
+    // Focus the search input after list refresh
+    document.getElementById("histSearch").focus();
   });
   return div;
 }
@@ -1065,6 +1074,20 @@ document.getElementById("vadModelSelect").addEventListener("change", (e) => {
 });
 
 document.getElementById("btnSaveVad").addEventListener("click", save);
+
+// --- Accessibility: bind labels to inputs ---
+(function() {
+  let uid = 0;
+  for (const field of document.querySelectorAll(".field")) {
+    const label = field.querySelector("label");
+    const input = field.querySelector("input, select, textarea");
+    if (label && input && !label.htmlFor && !input.id) {
+      const id = `sw-field-${uid++}`;
+      input.id = id;
+      label.htmlFor = id;
+    }
+  }
+})();
 
 // --- Boot ---
 loadAll().catch(e => toast("Failed to load config: " + e.message, "err"));
