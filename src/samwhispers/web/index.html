@@ -710,7 +710,7 @@ function renderModelManager() {
     const row = document.createElement("div");
     row.className = "model-row";
     row.innerHTML =
-      `<span class="name">${filename}</span>` +
+      `<span class="name">${esc(filename)}</span>` +
       `<span class="badge-custom">custom</span>` +
       `<span class="spacer"></span>` +
       (info.downloaded ? `<span class="tag">downloaded</span>` : `<button class="dl-btn" title="Download">&#x2B07;</button>`) +
@@ -724,6 +724,7 @@ function renderModelManager() {
 document.getElementById("modelSearch").addEventListener("input", renderModelManager);
 
 // --- Downloads ---
+function esc(s) { const d = document.createElement("div"); d.textContent = s; return d.innerHTML; }
 function fmtMB(n) { return (n / 1048576).toFixed(0) + " MB"; }
 
 async function startModelDownload(name) {
@@ -781,7 +782,7 @@ document.getElementById("btnDiscoverModels").addEventListener("click", async () 
       row.className = "model-row";
       const sizeMB = m.size ? (m.size / 1048576).toFixed(0) + " MB" : "?";
       row.innerHTML =
-        `<span class="name">${m.filename}</span>` +
+        `<span class="name">${esc(m.filename)}</span>` +
         `<span class="info-icon" title="${sizeMB}">&#9432;</span>` +
         `<span class="spacer"></span>` +
         `<button class="dl-btn">Pin &amp; Download</button>`;
