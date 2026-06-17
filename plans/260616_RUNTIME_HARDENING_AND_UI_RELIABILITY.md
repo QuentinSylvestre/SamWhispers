@@ -707,16 +707,16 @@ accessible, and easier to verify without adding a frontend build system.
 - [x] No duplicate save requests from any save button.
 - [x] Save failures keep dirty state and show an error.
 - [x] Blank invalid numeric fields are rejected before save.
-- [ ] Failed config loads show config path, failure reason, safe read-only
+- [x] Failed config loads show config path, failure reason, safe read-only
   state, retry/reload, and no mutation of secrets or manual model paths.
 - [x] Status polling has one owner and stale timers cannot reactivate old state.
 - [x] Keyboard users can reach navigation and destructive controls.
 - [x] Labels, live regions, and dynamic control names are present.
 - [x] Focus is restored or moved predictably after navigation, confirmation,
   destructive action completion/cancellation, and dynamic updates.
-- [ ] Automated semantic checks cover labels, live regions, accessible names,
+- [x] Automated semantic checks cover labels, live regions, accessible names,
   and keyboard reachability for touched views.
-- [ ] Accessibility acceptance covers keyboard destructive flows, focus after
+- [x] Accessibility acceptance covers keyboard destructive flows, focus after
   modal/async actions, labels, live regions, and semantic assertions.
 - [x] Model inventory stays current after relevant saves/downloads/deletes.
 - [x] `README.md` reflects any visible settings UI flow changes.
