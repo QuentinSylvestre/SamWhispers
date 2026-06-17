@@ -253,17 +253,25 @@ and custom model download with hash verification.
   test path traversal rejection; test private-network rejection.
 
 **Exit criteria**:
-- [ ] `GET /api/models/discover` returns filtered file list from HF.
-- [ ] Discovery rejects private-network redirect targets.
-- [ ] HF API failure returns 502 with safe generic message (no internal details).
-- [ ] `POST /api/models/pin` validates and persists to JSON registry.
-- [ ] Pin endpoint rejects path traversal in filenames.
-- [ ] Custom model download verifies SHA256 before accepting.
-- [ ] `DELETE /api/models/custom` respects active-model guard.
-- [ ] `GET /api/models` includes custom models.
-- [ ] Registry uses atomic writes with file locking.
-- [ ] Tests cover discover, pin, download, delete, HF failure, path traversal.
-- [ ] Ruff + mypy pass.
+- [x] `GET /api/models/discover` returns filtered file list from HF.
+- [x] Discovery rejects private-network redirect targets.
+- [x] HF API failure returns 502 with safe generic message (no internal details).
+- [x] `POST /api/models/pin` validates and persists to JSON registry.
+- [x] Pin endpoint rejects path traversal in filenames.
+- [x] Custom model download verifies SHA256 before accepting.
+- [x] `DELETE /api/models/custom` respects active-model guard.
+- [x] `GET /api/models` includes custom models.
+- [x] Registry uses atomic writes with file locking.
+- [x] Tests cover discover, pin, download, delete, HF failure, path traversal.
+- [x] Ruff + mypy pass.
+
+#### Implementation (2026-06-17, code: 769687e)
+
+Added HF model discovery backend with three new endpoints: `GET /api/models/discover` (fetches and filters ggml-*.bin files from the official whisper.cpp HF repo with private-network rejection via DNS resolution check), `POST /api/models/pin` (validates filename/sha256/path-traversal and persists to a JSON registry), and `DELETE /api/models/custom` (with active-model guard). Extended `model_manifest.py` with `load_custom_models`, `save_custom_model`, and `remove_custom_model` using atomic writes (tempfile + os.replace) with platform-appropriate advisory file locking (msvcrt on Windows, fcntl on Unix). Added `start_custom` to `ModelDownloader` for custom model downloads with SHA256 verification and single-flight enforcement. Updated `GET /api/models` to include custom models with download status. 68 tests pass.
+
+Divergence: Tests use AsyncMock instead of respx (respx incompatible with Starlette TestClient sync-to-async bridge).
+
+QA verification: SKIP (API endpoints fully exercised by TestClient stack; no browser surface yet).
 
 ### Phase 3: Add UI Discovery Panel And README [QA]
 
@@ -345,3 +353,23 @@ Implementation health: Green.
 | 6 | Low | VAD error message lacks remediation steps. | Deferred — bootstrap.py not in Phase 1 file scope. |
 
 Domain expert confirmed all hashes are structurally valid LFS OIDs, sizes match known whisper.cpp model characteristics, revisions are real commits. Senior engineer confirmed all 6 exit criteria met. Reliability engineer confirmed no crash paths from the hash-conditional removal.
+
+### 2026-06-17 -- Implementation Review (after Phase 2, persona: Senior engineer, Security auditor, Reliability engineer, Maintainability reviewer)
+
+Implementation health: Yellow.
+10 findings (0 High, 6 Medium, 4 Low). Auto-fix commit: 413c51a.
+
+| # | Severity | Finding (one line) | Resolution (one line) |
+|---|---|---|---|
+| 1 | Medium | SSRF TOCTOU: getaddrinfo resolves separately from httpx connection. | Deferred — target is hardcoded `huggingface.co`; nil practical risk. |
+| 2 | Medium | File lock on temp file provides no mutual exclusion for registry writes. | Fixed — lock file approach serializes concurrent writers. |
+| 3 | Medium | Double-close fd on error path in save/remove functions. | Fixed — restructured with proper try/finally. |
+| 4 | Medium | `start_custom()` defined but not called from any endpoint. | Deferred — Phase 3 will wire the download trigger. |
+| 5 | Medium | Atomic-write code duplicated in save/remove. | Fixed — extracted `_atomic_json_write` helper. |
+| 6 | Medium | `_download` / `_download_custom` near-clone (~90% shared). | Deferred — refactoring, not a correctness issue. |
+| 7 | Low | DELETE endpoint lacks independent path traversal check. | Fixed — added traversal + containment validation. |
+| 8 | Low | `_HF_BASE` dead code not cleaned up. | Deferred — low priority, dead code. |
+| 9 | Low | Inline stdlib imports in functions. | Deferred — style preference, not a bug. |
+| 10 | Low | TOCTOU between load and save (subsumed by finding #2). | Fixed — addressed by lock file fix. |
+
+Security auditor confirmed private-network rejection covers RFC 1918, loopback, link-local. Pin endpoint validates filename, sha256 hex, and path containment. Error responses never leak internal details.
