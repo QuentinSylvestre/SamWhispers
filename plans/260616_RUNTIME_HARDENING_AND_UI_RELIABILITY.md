@@ -712,7 +712,7 @@ accessible, and easier to verify without adding a frontend build system.
 - [x] Status polling has one owner and stale timers cannot reactivate old state.
 - [x] Keyboard users can reach navigation and destructive controls.
 - [x] Labels, live regions, and dynamic control names are present.
-- [ ] Focus is restored or moved predictably after navigation, confirmation,
+- [x] Focus is restored or moved predictably after navigation, confirmation,
   destructive action completion/cancellation, and dynamic updates.
 - [ ] Automated semantic checks cover labels, live regions, accessible names,
   and keyboard reachability for touched views.
