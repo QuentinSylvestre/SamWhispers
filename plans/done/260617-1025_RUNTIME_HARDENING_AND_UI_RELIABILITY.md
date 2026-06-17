@@ -1,11 +1,19 @@
 # Runtime Hardening And UI Reliability
 
 > **Date**: 2026-06-16
-> **Status**: In Progress  <!-- Status lifecycle: Exploring -> Draft -> In Progress -> Complete -->
+> **Status**: Complete (HF discovery follow-up pending)
+> **Last Updated**: 2026-06-17T10:25+02:00
 > **Scope**: Fix qtest-drive findings across local web security, lifecycle control, downloads, history, destructive actions, and UI reliability/accessibility.
 > **Estimated effort**: 1-2 weeks
 
 ---
+
+## Completion Summary
+
+### Acknowledged at archival
+
+- `Follow-up plan intended` — Phase 3 HF discovery (exit criteria #6-9, #11-12): Hugging Face model discovery endpoints, custom pinning, input validation, URL restriction, and real SHA256 values for large models.
+- `Accepted (harness opportunity)` — `/qclose` with no argument should infer plan from context rather than erroring.
 
 ## Intent
 
