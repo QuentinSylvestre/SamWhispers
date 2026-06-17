@@ -1,7 +1,8 @@
 # HF Model Discovery And Manifest Fix
 
 > **Date**: 2026-06-17
-> **Status**: In Progress  <!-- Status lifecycle: Exploring → Draft → In Progress → Complete -->
+> **Status**: Complete — all 3 phases implemented, reviewed, and verified.  <!-- Status lifecycle: Exploring → Draft → In Progress → Complete -->
+> **Last Updated**: 2026-06-17T15:05+02:00
 > **Scope**: Fix built-in manifest SHA256 hashes, add Hugging Face model discovery with pinning and verified downloads.
 > **Estimated effort**: 1-2 days
 
