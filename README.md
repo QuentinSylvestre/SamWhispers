@@ -821,7 +821,6 @@ The SamWhispers "Ghost Ribbon" icons ship inside the package:
 - Wayland is not supported (X11 only on Linux)
 - WSL hotkey detection uses polling (~15ms latency) instead of native hooks
 - No per-application hotkey customization
-- No streaming transcription (full recording is sent after release)
 - Maximum recording duration is configurable but defaults to 5 minutes
 - Clipboard is overwritten during text injection
 - The simulated Ctrl+V may not work in all applications (e.g., some terminal emulators use Ctrl+Shift+V)

@@ -1,7 +1,7 @@
 # SamWhispers Roadmap
 
 > **Status**: Living document
-> **Last Updated**: 2026-06-13
+> **Last Updated**: 2026-06-17
 > **Purpose**: Track larger, not-yet-scheduled initiatives. Each item is a
 > candidate, not a commitment; promote an item to a dated plan in `plans/`
 > when it's picked up.
@@ -128,18 +128,7 @@ text processing fully offline via llama.cpp. Add a `provider = "local" | "openai
 (download + run, mirroring whisper-server management). Keeps dictation 100%
 offline end-to-end.
 
-## 3. Voice activity detection (VAD)
-
-> **Status**: Exploring
-> **Scope**: Detect speech vs silence to improve endpointing, trim silence, and
-> provide natural commit points for streaming.
-
-whisper.cpp ships a VAD model/config; OpenWhispr uses one (`whisperVad.json`).
-Benefits: auto-stop on trailing silence (no need to release the key precisely),
-skip empty/silent recordings, and give the streaming path real commit points
-instead of fixed time intervals. Low-to-medium effort, broadly useful.
-
-## 4. Cloud transcription option (BYOK)
+## 3. Cloud transcription option (BYOK)
 
 > **Status**: Exploring
 > **Scope**: Optional cloud transcription engine (OpenAI/Groq/etc.) as an
@@ -148,9 +137,9 @@ instead of fixed time intervals. Low-to-medium effort, broadly useful.
 We're local-only for transcription. Add a `cloud` engine behind the backend
 abstraction (item 1) that POSTs audio to a transcription API with the user's
 own key. Fits the same engine-selection UI; reuses the multi-provider plumbing
-(item 5). Must remain opt-in (privacy).
+(item 4). Must remain opt-in (privacy).
 
-## 5. Multi-provider management (BYOK)
+## 4. Multi-provider management (BYOK)
 
 > **Status**: Exploring
 > **Scope**: Generalize hardcoded OpenAI/Anthropic into a managed list of AI
@@ -160,9 +149,9 @@ own key. Fits the same engine-selection UI; reuses the multi-provider plumbing
 OpenWhispr manages many providers (GPT-5, Claude, Gemini, Groq, local). Replace
 our two-provider cleanup config with a provider registry (name, base URL, key,
 model, type) that any AI feature can reference, surfaced in the config UI.
-Foundation for items 2, 4, and a future actions/agent feature.
+Foundation for items 2, 3, and a future actions/agent feature.
 
-## 6. Meeting capture & diarization
+## 5. Meeting capture & diarization
 
 > **Status**: Exploring (large; a distinct product direction)
 > **Scope**: Record and transcribe meetings with speaker labels.
@@ -180,7 +169,7 @@ OpenWhispr's meeting suite — what we'd need to match it:
 This is a meetings product layered on the dictation core; sizeable, and only
 worth it if we want to move beyond dictation.
 
-## 7. Packaging: installers & auto-update
+## 6. Packaging: installers & auto-update
 
 > **Status**: Exploring
 > **Scope**: Native installers per OS and a built-in updater.
@@ -191,56 +180,50 @@ PyInstaller/Briefcase bundles or platform packages (.deb, .dmg, MSI/winget),
 plus an update check against GitHub releases. Productization, not features, but
 key for non-developer adoption.
 
-## 8. Dictation intelligence & personalization (Wispr Flow gap analysis)
+## 7. Dictation intelligence & personalization (Wispr Flow gap analysis)
 
 > **Status**: Exploring
 > **Scope**: Make dictation itself smarter and more personal — real-time AI
 > editing, voice editing commands, context/app awareness, mixed typing+voice,
-> a learning dictionary, snippets, and whispered-speech support. Most of these
-> build on the LLM provider work (items 2 & 5) and the streaming engine.
+> a learning dictionary, and whispered-speech support. Most of these
+> build on the LLM provider work (items 2 & 4) and the streaming engine.
 
-### 8.1 Real-time auto-edit while speaking
+### 7.1 Real-time auto-edit while speaking
 
 Apply AI cleanup **incrementally as you speak** (not a single post-pass), and
 recognize **spoken self-corrections** inline ("no, make that Tuesday"). Builds
 on the streaming path + a (local-or-cloud) LLM. Mode A (preview) is the natural
 surface for showing live edits before injecting the final text.
 
-### 8.2 Command mode
+### 7.2 Command mode
 
 Voice commands that **edit already-written / selected text** — shorten,
 lengthen, rephrase, change tone. Requires reading the current selection (or
 recently injected text) and replacing it; LLM-driven. A distinct "command"
 activation (separate hotkey or trigger word) vs normal dictation.
 
-### 8.3 Context awareness
+### 7.3 Context awareness
 
 Detect the **focused application/window** and apply a matching formatting/tone
 profile (email vs chat vs code). Needs platform-specific active-window
 detection (X11 `_NET_ACTIVE_WINDOW`, Win32 `GetForegroundWindow`, macOS
 Accessibility) plus user-defined per-app profiles in the config UI.
 
-### 8.4 Multi-mode typing (voice + keyboard)
+### 7.4 Multi-mode typing (voice + keyboard)
 
 Let voice and typing mix: **read the surrounding text** in the target field and
 continue mid-sentence / match its tone, rather than dumping a standalone block.
 The hard part is reading the target field across arbitrary apps (accessibility
 APIs / clipboard tricks) — a meaningful platform investment.
 
-### 8.5 Personal dictionary with auto-learn
+### 7.5 Personal dictionary with auto-learn
 
 Extend the current (manual) vocabulary into a **learning dictionary**: when the
 user corrects a transcription, learn new proper nouns and add them
 automatically; manage entries (add / import / remove) in the config UI. Feeds
 the existing `initial_prompt` biasing.
 
-### 8.6 Snippets / voice text-replacement
-
-**Trigger phrases that expand** to saved text or code (a voice text-expander),
-applied as a post-transcription substitution step. Self-contained and
-low-risk; manage snippets in the config UI.
-
-### 8.7 Whispered speech support
+### 7.6 Whispered speech support
 
 Improve recognition of **whispered / very quiet speech** for dictating
 discreetly in public. Likely a mix of input normalization/gain, model choice,
@@ -251,11 +234,12 @@ do here.
 
 ## Other roadmap candidates (unscheduled)
 
+- **Insertion context pre-prompt** — feed surrounding text / app context into
+  the AI cleanup prompt so output matches the insertion point's tone/style.
+- **Fine-tuned model support** — allow loading user-fine-tuned Whisper models
+  (custom vocabulary domains, accent adaptation).
 - **Language-code normalization** (e.g. `zh -> zh-CN`) once non-Whisper engines
   are in play, to map between engine code sets.
-- **Streaming window trimming**: true sliding-window decode with buffer trimming
-  (currently the streaming engine decodes the whole buffer each tick). Pairs
-  with VAD (item 3).
 - **Simple "preferred language" mode** as an alternative to the configured
   list + cycle hotkey, for casual multilingual users.
 - **Audio file upload / batch transcription** (transcribe existing recordings).
