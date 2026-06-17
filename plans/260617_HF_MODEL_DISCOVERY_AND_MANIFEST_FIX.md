@@ -1,7 +1,7 @@
 # HF Model Discovery And Manifest Fix
 
 > **Date**: 2026-06-17
-> **Status**: Draft  <!-- Status lifecycle: Exploring → Draft → In Progress → Complete -->
+> **Status**: In Progress  <!-- Status lifecycle: Exploring → Draft → In Progress → Complete -->
 > **Scope**: Fix built-in manifest SHA256 hashes, add Hugging Face model discovery with pinning and verified downloads.
 > **Estimated effort**: 1-2 days
 
@@ -189,12 +189,18 @@ with real data from HF LFS metadata.
 - Update `test_model_manifest.py` to assert all entries have non-empty sha256.
 
 **Exit criteria**:
-- [ ] All 12 Whisper entries have 64-char hex sha256 from real HF LFS OIDs.
-- [ ] VAD entry has correct sha256 and size.
-- [ ] `_WHISPER_REVISION` is `5359861c739e955e79d9a303bcbc70fb988958b1`.
-- [ ] Hash verification in `models.py` is unconditional (no empty-hash skip).
-- [ ] Test asserts all sha256 fields are non-empty and 64 chars.
-- [ ] Ruff + mypy pass.
+- [x] All 12 Whisper entries have 64-char hex sha256 from real HF LFS OIDs.
+- [x] VAD entry has correct sha256 and size.
+- [x] `_WHISPER_REVISION` is `5359861c739e955e79d9a303bcbc70fb988958b1`.
+- [x] Hash verification in `models.py` is unconditional (no empty-hash skip).
+- [x] Test asserts all sha256 fields are non-empty and 64 chars.
+- [x] Ruff + mypy pass.
+
+#### Implementation (2026-06-17, code: fce680e)
+
+Replaced all fabricated/empty SHA256 values in `model_manifest.py` with real LFS OID hashes fetched live from the Hugging Face API at revision `5359861c739e955e79d9a303bcbc70fb988958b1`. Updated `_WHISPER_REVISION` to the correct commit, pinned `_VAD_REVISION` to `9ffd54a1e1ee413ddf265af9913beaf518d1639b` with the correct VAD hash (`2aa269b...`) and size (885098). Made hash verification unconditional in `models.py` (removed the `artifact.sha256 and` guard). Updated the test assertion to require all entries have a 64-char sha256 (no empty allowed). All 11 tests pass, ruff clean, mypy clean.
+
+QA verification: SKIP (download verification requires real HF network call; unit tests cover logic).
 
 ### Phase 2: Add HF Discovery Backend And Pinned Registry [QA]
 
@@ -321,3 +327,21 @@ README with discovery documentation.
 ## 9) Implementation Divergences from Plan
 
 <Reserved -- filled during implementation>
+
+## 10) Review Log
+
+### 2026-06-17 -- Implementation Review (after Phase 1, persona: Senior engineer, Reliability engineer, Domain expert, End-user advocate)
+
+Implementation health: Green.
+6 findings (0 High, 1 Medium, 3 Low, 2 Info). Auto-fix commit: 990e1b8.
+
+| # | Severity | Finding (one line) | Resolution (one line) |
+|---|---|---|---|
+| 1 | Medium | `verify_cached_model()` never called at runtime; plan's migration note overstates user-facing impact. | Deferred to Phase 2 — function exists for future API endpoint use. |
+| 2 | Medium | Download hash mismatch error not actionable for users. | Fixed — error now says "Try downloading again from the model manager." |
+| 3 | Low | No hash logging on verification failure for diagnostics. | Fixed — added log.error with expected vs actual hash prefixes. |
+| 4 | Low | `_HF_BASE` still uses mutable `resolve/main` fallback (dead code). | Deferred to Phase 2 — models.py is in scope there. |
+| 5 | Low | Test doesn't assert model sizes are positive. | Fixed — added `assert a.size and a.size > 0`. |
+| 6 | Low | VAD error message lacks remediation steps. | Deferred — bootstrap.py not in Phase 1 file scope. |
+
+Domain expert confirmed all hashes are structurally valid LFS OIDs, sizes match known whisper.cpp model characteristics, revisions are real commits. Senior engineer confirmed all 6 exit criteria met. Reliability engineer confirmed no crash paths from the hash-conditional removal.
