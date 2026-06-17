@@ -81,6 +81,34 @@ def test_index_served(client_and_sup: tuple[TestClient, FakeSupervisor, Path]) -
     assert "SamWhispers" in res.text
 
 
+def test_index_accessibility_semantics(client_and_sup: tuple[TestClient, FakeSupervisor, Path]) -> None:
+    """Automated semantic checks: labels, live regions, nav role, keyboard reachability."""
+    client, _, _ = client_and_sup
+    res = client.get("/")
+    html = res.text
+    # Nav has role and aria-label
+    assert 'role="navigation"' in html
+    assert 'aria-label="Settings sections"' in html
+    # Nav items are keyboard-reachable links (have href)
+    assert 'href="#general"' in html
+    assert 'href="#history"' in html
+    # Toast has aria-live for screen reader announcements
+    assert 'aria-live="assertive"' in html
+    # Status pill has aria-live for polite updates
+    assert 'aria-live="polite"' in html
+    # Config error banner has role=alert
+    assert 'id="configErrorBanner"' in html and 'role="alert"' in html
+    # Cache-Control header prevents token caching
+    assert res.headers.get("cache-control") == "no-store, private"
+
+
+def test_index_cache_control(client_and_sup: tuple[TestClient, FakeSupervisor, Path]) -> None:
+    """Index page has Cache-Control: no-store to prevent CSRF token caching."""
+    client, _, _ = client_and_sup
+    res = client.get("/")
+    assert res.headers.get("cache-control") == "no-store, private"
+
+
 def test_meta(client_and_sup: tuple[TestClient, FakeSupervisor, Path]) -> None:
     client, _, _ = client_and_sup
     meta = client.get("/api/meta").json()

@@ -172,6 +172,13 @@ button.primary:disabled { opacity: .5; cursor: default; }
 
 <div class="content">
 
+<div id="configErrorBanner" hidden role="alert" aria-live="assertive" tabindex="-1" style="background:var(--surface);border:2px solid var(--danger);border-radius:var(--radius);padding:16px 20px;margin-bottom:20px">
+  <strong style="color:var(--danger)">Config load failed</strong>
+  <p class="error-reason" style="margin:8px 0;color:var(--muted)"></p>
+  <p style="font-size:13px;color:var(--muted)">Settings are read-only until the config loads successfully. Existing secrets and model paths were not modified.</p>
+  <button onclick="loadAll()" style="margin-top:8px">Retry</button>
+</div>
+
 <!-- General -->
 <div class="page active" id="page-general">
   <h2 class="page-title">General</h2>
@@ -857,12 +864,36 @@ async function loadStatus() {
 }
 
 async function loadAll() {
-  [state.meta, state.config] = await Promise.all([
-    api("GET", "/api/meta"), api("GET", "/api/config"),
-  ]);
-  render();
-  await loadModels();
-  await loadAutostart();
+  try {
+    [state.meta, state.config] = await Promise.all([
+      api("GET", "/api/meta"), api("GET", "/api/config"),
+    ]);
+    hideConfigError();
+    render();
+    await loadModels();
+    await loadAutostart();
+  } catch (e) {
+    showConfigError(e.message);
+  }
+}
+
+function showConfigError(reason) {
+  // Disable all inputs to prevent edits on broken state
+  for (const el of document.querySelectorAll("[data-path]")) el.disabled = true;
+  for (const btn of document.querySelectorAll('[id^="btnSave"]')) btn.disabled = true;
+  const banner = document.getElementById("configErrorBanner");
+  if (banner) {
+    banner.hidden = false;
+    banner.querySelector(".error-reason").textContent = reason;
+    banner.focus();
+  }
+}
+
+function hideConfigError() {
+  for (const el of document.querySelectorAll("[data-path]")) el.disabled = false;
+  for (const btn of document.querySelectorAll('[id^="btnSave"]')) btn.disabled = false;
+  const banner = document.getElementById("configErrorBanner");
+  if (banner) banner.hidden = true;
 }
 
 // --- History ---
@@ -1090,7 +1121,7 @@ document.getElementById("btnSaveVad").addEventListener("click", save);
 })();
 
 // --- Boot ---
-loadAll().catch(e => toast("Failed to load config: " + e.message, "err"));
+loadAll();
 loadStatus();
 
 // Status polling: 5s stable, 2s during transitions, pause when hidden
