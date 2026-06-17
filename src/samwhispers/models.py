@@ -103,9 +103,16 @@ class ModelDownloader:
                             self._set(downloaded=self.status()["downloaded"] + len(chunk))
             # Verify hash before accepting
             if artifact and not verify_file(tmp, artifact.sha256):
+                from samwhispers.model_manifest import compute_sha256
+
+                actual = compute_sha256(tmp)
+                log.error(
+                    "Hash mismatch for %s: expected %s, got %s",
+                    name, artifact.sha256[:16], actual[:16],
+                )
                 tmp.unlink(missing_ok=True)
                 self._set(
-                    error=f"Hash mismatch for {name}: file does not match expected SHA256",
+                    error=f"Hash mismatch for {name}. Try downloading again from the model manager.",
                     downloading=False, done=False,
                 )
                 return

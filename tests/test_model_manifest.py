@@ -27,6 +27,7 @@ def test_manifest_has_all_models() -> None:
         a = WHISPER_MANIFEST[name]
         assert a.filename == f"ggml-{name}.bin"
         assert len(a.sha256) == 64
+        assert a.size and a.size > 0
         assert "resolve/" in a.url
         assert a.revision
 
