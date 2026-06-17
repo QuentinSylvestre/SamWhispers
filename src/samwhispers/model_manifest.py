@@ -15,12 +15,12 @@ from pathlib import Path
 log = logging.getLogger("samwhispers.models")
 
 # Immutable revision for all built-in whisper.cpp artifacts.
-# Pinned 2026-06-16 from https://huggingface.co/ggerganov/whisper.cpp
-_WHISPER_REVISION = "d013dbcae5de1e7ab8a41ce90b2ab0de5de6a862"
+# Pinned 2026-06-17 from https://huggingface.co/ggerganov/whisper.cpp
+_WHISPER_REVISION = "5359861c739e955e79d9a303bcbc70fb988958b1"
 _WHISPER_REPO = "ggerganov/whisper.cpp"
 
 # VAD model pinned revision.
-_VAD_REVISION = "main"  # single artifact repo; pin by hash
+_VAD_REVISION = "9ffd54a1e1ee413ddf265af9913beaf518d1639b"
 _VAD_REPO = "ggml-org/whisper-vad"
 
 
@@ -41,8 +41,8 @@ WHISPER_MANIFEST: dict[str, ModelArtifact] = {
         name="tiny.en", filename="ggml-tiny.en.bin",
         url=f"https://huggingface.co/{_WHISPER_REPO}/resolve/{_WHISPER_REVISION}/ggml-tiny.en.bin",
         revision=_WHISPER_REVISION,
-        sha256="c78c86eb1a8faa21b369bcd33207cc90d64b8ddf31cbbc1a28e5fde01e13913e",
-        size=77691713,
+        sha256="921e4cf8686fdd993dcd081a5da5b6c365bfde1162e72b08d75ac75289920b1f",
+        size=77704715,
     ),
     "tiny": ModelArtifact(
         name="tiny", filename="ggml-tiny.bin",
@@ -55,8 +55,8 @@ WHISPER_MANIFEST: dict[str, ModelArtifact] = {
         name="base.en", filename="ggml-base.en.bin",
         url=f"https://huggingface.co/{_WHISPER_REPO}/resolve/{_WHISPER_REVISION}/ggml-base.en.bin",
         revision=_WHISPER_REVISION,
-        sha256="60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe",
-        size=147951465,
+        sha256="a03779c86df3323075f5e796cb2ce5029f00ec8869eee3fdfb897afe36c6d002",
+        size=147964211,
     ),
     "base": ModelArtifact(
         name="base", filename="ggml-base.bin",
@@ -69,57 +69,57 @@ WHISPER_MANIFEST: dict[str, ModelArtifact] = {
         name="small.en", filename="ggml-small.en.bin",
         url=f"https://huggingface.co/{_WHISPER_REPO}/resolve/{_WHISPER_REVISION}/ggml-small.en.bin",
         revision=_WHISPER_REVISION,
-        sha256="db8a495a91d927739e50b3526a0e9824b1f35e89be29cae69f03ce39c2c2f082",
-        size=487601929,
+        sha256="c6138d6d58ecc8322097e0f987c32f1be8bb0a18532a3f88f734d1bbf9c41e5d",
+        size=487614201,
     ),
     "small": ModelArtifact(
         name="small", filename="ggml-small.bin",
         url=f"https://huggingface.co/{_WHISPER_REPO}/resolve/{_WHISPER_REVISION}/ggml-small.bin",
         revision=_WHISPER_REVISION,
         sha256="1be3a9b2063867b937e64e2ec7483364a79917e157fa98c5d94b5c1fffea987b",
-        size=487601929,
+        size=487601967,
     ),
     "medium.en": ModelArtifact(
         name="medium.en", filename="ggml-medium.en.bin",
         url=f"https://huggingface.co/{_WHISPER_REPO}/resolve/{_WHISPER_REVISION}/ggml-medium.en.bin",
         revision=_WHISPER_REVISION,
-        sha256="6c14aca0ab55ab4445e206a8c7c2e6eb0eb2392a5558934cd3c0f9073b2fbe34",
+        sha256="cc37e93478338ec7700281a7ac30a10128929eb8f427dda2e865faa8f6da4356",
         size=1533774781,
     ),
     "medium": ModelArtifact(
         name="medium", filename="ggml-medium.bin",
         url=f"https://huggingface.co/{_WHISPER_REPO}/resolve/{_WHISPER_REVISION}/ggml-medium.bin",
         revision=_WHISPER_REVISION,
-        sha256="fd9727b63e45b383b0eefc652e2b0cbeb25a5f3b6ef8d583c3d09ef4bcf2d277",
-        size=1533774781,
+        sha256="6c14d5adee5f86394037b4e4e8b59f1673b6cee10e3cf0b11bbdbee79c156208",
+        size=1533763059,
     ),
     "large-v1": ModelArtifact(
         name="large-v1", filename="ggml-large-v1.bin",
         url=f"https://huggingface.co/{_WHISPER_REPO}/resolve/{_WHISPER_REVISION}/ggml-large-v1.bin",
         revision=_WHISPER_REVISION,
-        sha256="",  # UNVERIFIED — needs real hash from HF LFS metadata
+        sha256="7d99f41a10525d0206bddadd86760181fa920438b6b33237e3118ff6c83bb53d",
         size=3094623691,
     ),
     "large-v2": ModelArtifact(
         name="large-v2", filename="ggml-large-v2.bin",
         url=f"https://huggingface.co/{_WHISPER_REPO}/resolve/{_WHISPER_REVISION}/ggml-large-v2.bin",
         revision=_WHISPER_REVISION,
-        sha256="",  # UNVERIFIED — needs real hash from HF LFS metadata
+        sha256="9a423fe4d40c82774b6af34115b8b935f34152246eb19e80e376071d3f999487",
         size=3094623691,
     ),
     "large-v3": ModelArtifact(
         name="large-v3", filename="ggml-large-v3.bin",
         url=f"https://huggingface.co/{_WHISPER_REPO}/resolve/{_WHISPER_REVISION}/ggml-large-v3.bin",
         revision=_WHISPER_REVISION,
-        sha256="",  # UNVERIFIED — needs real hash from HF LFS metadata
-        size=3094623691,
+        sha256="64d182b440b98d5203c4f9bd541544d84c605196c4f7b845dfa11fb23594d1e2",
+        size=3095033483,
     ),
     "large-v3-turbo": ModelArtifact(
         name="large-v3-turbo", filename="ggml-large-v3-turbo.bin",
         url=f"https://huggingface.co/{_WHISPER_REPO}/resolve/{_WHISPER_REVISION}/ggml-large-v3-turbo.bin",
         revision=_WHISPER_REVISION,
-        sha256="",  # UNVERIFIED — needs real hash from HF LFS metadata
-        size=1621098497,
+        sha256="1fc70f774d38eb169993ac391eea357ef47c88757ef72ee5943879b7e8e2bc69",
+        size=1624555275,
     ),
 }
 
@@ -128,8 +128,8 @@ VAD_ARTIFACT = ModelArtifact(
     filename="ggml-silero-v6.2.0.bin",
     url=f"https://huggingface.co/{_VAD_REPO}/resolve/{_VAD_REVISION}/ggml-silero-v6.2.0.bin",
     revision=_VAD_REVISION,
-    sha256="3b679e397dbb7efc19a72b89521b1fdf09e4a5e1effc9cf3d28bb8e62df049e4",
-    size=861720,
+    sha256="2aa269b785eeb53a82983a20501ddf7c1d9c48e33ab63a41391ac6c9f7fb6987",
+    size=885098,
 )
 
 
