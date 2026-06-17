@@ -693,7 +693,7 @@ function renderModelManager() {
     row.className = "model-row";
     row.innerHTML =
       (meta.rec ? `<span class="star" title="Recommended">&#9733;</span>` : "") +
-      `<span class="name">${name}</span>` +
+      `<span class="name">${esc(name)}</span>` +
       `<span class="info-icon" title="${meta.size || "?"} — ${meta.info || ""}">&#9432;</span>` +
       `<span class="spacer"></span>` +
       (isDl ? `<span class="tag">downloaded</span>` : "") +
