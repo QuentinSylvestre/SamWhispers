@@ -629,3 +629,172 @@ def test_history_clear(history_client: tuple[TestClient, HistoryStore]) -> None:
     store.add("b")
     assert client.delete("/api/history", headers=_csrf_headers(client)).json()["deleted"] == 2
     assert client.get("/api/history").json()["items"] == []
+
+
+# -- HF Discovery / Custom Model endpoint tests --
+
+
+def test_discover_models_returns_filtered_list(
+    client_and_sup: tuple[TestClient, FakeSupervisor, Path],
+) -> None:
+    from unittest.mock import AsyncMock, MagicMock
+
+    client, _, path = client_and_sup
+    hf_response = [
+        {"path": "ggml-new-model.bin", "lfs": {"oid": "b" * 64, "size": 999}, "size": 999},
+        {"path": "ggml-tiny.en.bin", "lfs": {"oid": "a" * 64, "size": 100}, "size": 100},
+        {"path": "README.md", "size": 50},  # no lfs, filtered out
+    ]
+
+    mock_resp = MagicMock()
+    mock_resp.raise_for_status = MagicMock()
+    mock_resp.json = MagicMock(return_value=hf_response)
+
+    mock_client = MagicMock()
+    mock_client.get = AsyncMock(return_value=mock_resp)
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=False)
+
+    with (
+        patch("samwhispers.webserver.socket.getaddrinfo", return_value=[
+            (2, 1, 6, "", ("104.0.0.1", 443)),
+        ]),
+        patch("httpx.AsyncClient", return_value=mock_client),
+        patch("samwhispers.model_manifest.load_custom_models", return_value={}),
+    ):
+        resp = client.get("/api/models/discover")
+    assert resp.status_code == 200
+    data = resp.json()
+    # Only ggml-new-model.bin should appear (tiny.en is built-in)
+    filenames = [d["filename"] for d in data]
+    assert "ggml-new-model.bin" in filenames
+    assert "ggml-tiny.en.bin" not in filenames
+    assert "README.md" not in filenames
+
+
+def test_discover_models_hf_failure_returns_502(
+    client_and_sup: tuple[TestClient, FakeSupervisor, Path],
+) -> None:
+    from unittest.mock import AsyncMock, MagicMock
+
+    client, _, _ = client_and_sup
+
+    mock_client = MagicMock()
+    mock_client.get = AsyncMock(side_effect=Exception("connection failed"))
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=False)
+
+    with (
+        patch("samwhispers.webserver.socket.getaddrinfo", return_value=[
+            (2, 1, 6, "", ("104.0.0.1", 443)),
+        ]),
+        patch("httpx.AsyncClient", return_value=mock_client),
+    ):
+        resp = client.get("/api/models/discover")
+    assert resp.status_code == 502
+    assert "Hugging Face" in resp.json()["detail"]
+
+
+def test_discover_rejects_private_network(
+    client_and_sup: tuple[TestClient, FakeSupervisor, Path],
+) -> None:
+    client, _, _ = client_and_sup
+    with patch("samwhispers.webserver.socket.getaddrinfo", return_value=[
+        (2, 1, 6, "", ("10.0.0.1", 443)),
+    ]):
+        resp = client.get("/api/models/discover")
+    assert resp.status_code == 502
+
+
+def test_pin_model_happy_path(
+    client_and_sup: tuple[TestClient, FakeSupervisor, Path],
+) -> None:
+    client, _, config_path = client_and_sup
+    tmp_registry = config_path.parent / "custom_models.json"
+    with patch("samwhispers.model_manifest.custom_models_path", return_value=tmp_registry):
+        resp = client.post(
+            "/api/models/pin",
+            json={"filename": "ggml-new-model.bin", "sha256": "c" * 64, "size": 1234},
+            headers=_csrf_headers(client),
+        )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["filename"] == "ggml-new-model.bin"
+    assert data["sha256"] == "c" * 64
+
+
+def test_pin_model_rejects_path_traversal(
+    client_and_sup: tuple[TestClient, FakeSupervisor, Path],
+) -> None:
+    client, _, _ = client_and_sup
+    resp = client.post(
+        "/api/models/pin",
+        json={"filename": "ggml-../../../etc/passwd.bin", "sha256": "d" * 64, "size": 1},
+        headers=_csrf_headers(client),
+    )
+    assert resp.status_code == 400
+
+
+def test_delete_custom_model_active_guard(
+    client_and_sup: tuple[TestClient, FakeSupervisor, Path],
+) -> None:
+    """Deleting the active model returns 409."""
+    client, _, path = client_and_sup
+    from samwhispers.model_manifest import ModelArtifact, save_custom_model
+
+    # Set up config with a model path
+    cfg = client.get("/api/config").json()
+    model_dir = Path(cfg["whisper"]["model_path"]).parent
+    model_dir.mkdir(parents=True, exist_ok=True)
+    active_filename = Path(cfg["whisper"]["model_path"]).name
+
+    # Pin a custom model with the same filename as the active model
+    artifact = ModelArtifact(
+        name="active", filename=active_filename,
+        url="http://x", revision="r", sha256="e" * 64,
+    )
+    tmp_registry = path.parent / "custom_models.json"
+    with patch("samwhispers.model_manifest.custom_models_path", return_value=tmp_registry):
+        save_custom_model(artifact)
+        resp = client.request(
+            "DELETE",
+            "/api/models/custom",
+            json={"filename": active_filename},
+            headers=_csrf_headers(client),
+        )
+    assert resp.status_code == 409
+
+
+def test_delete_custom_model_not_found(
+    client_and_sup: tuple[TestClient, FakeSupervisor, Path],
+) -> None:
+    client, _, path = client_and_sup
+    tmp_registry = path.parent / "custom_models.json"
+    with patch("samwhispers.model_manifest.custom_models_path", return_value=tmp_registry):
+        resp = client.request(
+            "DELETE",
+            "/api/models/custom",
+            json={"filename": "ggml-nonexistent.bin"},
+            headers=_csrf_headers(client),
+        )
+    assert resp.status_code == 404
+
+
+def test_models_endpoint_includes_custom(
+    client_and_sup: tuple[TestClient, FakeSupervisor, Path],
+) -> None:
+    from samwhispers.model_manifest import ModelArtifact, save_custom_model
+
+    client, _, path = client_and_sup
+    artifact = ModelArtifact(
+        name="custom-test", filename="ggml-custom-test.bin",
+        url="http://x", revision="r", sha256="f" * 64, size=500,
+    )
+    tmp_registry = path.parent / "custom_models.json"
+    with patch("samwhispers.model_manifest.custom_models_path", return_value=tmp_registry):
+        save_custom_model(artifact)
+        resp = client.get("/api/models")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert "custom" in body
+    assert "ggml-custom-test.bin" in body["custom"]

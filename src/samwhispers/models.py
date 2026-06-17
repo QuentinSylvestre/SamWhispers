@@ -11,7 +11,10 @@ from __future__ import annotations
 import logging
 import threading
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from samwhispers.model_manifest import ModelArtifact
 
 import httpx
 
@@ -121,6 +124,65 @@ class ModelDownloader:
             self._set(done=True, downloading=False, path=str(dest))
         except Exception as exc:
             log.exception("Model download failed: %s", name)
+            tmp.unlink(missing_ok=True)
+            self._set(error=str(exc), downloading=False, done=False)
+
+
+    def start_custom(self, artifact: ModelArtifact, dest_dir: Path | str) -> None:
+        """Begin downloading a custom (pinned) model (raises if one is running)."""
+        with self._lock:
+            if self._state["downloading"]:
+                raise RuntimeError("A download is already in progress")
+            self._state = {
+                "downloading": True,
+                "name": artifact.name,
+                "type": "custom",
+                "downloaded": 0,
+                "total": 0,
+                "done": False,
+                "error": None,
+                "path": None,
+            }
+        self._thread = threading.Thread(
+            target=self._download_custom, args=(artifact, Path(dest_dir)),
+            daemon=True, name="model-download-custom",
+        )
+        self._thread.start()
+
+    def _download_custom(self, artifact: ModelArtifact, dest_dir: Path) -> None:
+        from samwhispers.model_manifest import compute_sha256, verify_file
+
+        dest = dest_dir / artifact.filename
+        tmp = dest.with_name(dest.name + ".part")
+        try:
+            dest_dir.mkdir(parents=True, exist_ok=True)
+            timeout = httpx.Timeout(connect=15.0, read=120.0, write=30.0, pool=15.0)
+            with httpx.Client(follow_redirects=True, timeout=timeout) as client:
+                with client.stream("GET", artifact.url) as resp:
+                    resp.raise_for_status()
+                    total = int(resp.headers.get("content-length", 0))
+                    self._set(total=total)
+                    with open(tmp, "wb") as f:
+                        for chunk in resp.iter_bytes(_CHUNK):
+                            f.write(chunk)
+                            self._set(downloaded=self.status()["downloaded"] + len(chunk))
+            if not verify_file(tmp, artifact.sha256):
+                actual = compute_sha256(tmp)
+                log.error(
+                    "Hash mismatch for custom model %s: expected %s, got %s",
+                    artifact.filename, artifact.sha256[:16], actual[:16],
+                )
+                tmp.unlink(missing_ok=True)
+                self._set(
+                    error=f"Hash mismatch for {artifact.filename}. Try downloading again.",
+                    downloading=False, done=False,
+                )
+                return
+            tmp.replace(dest)
+            log.info("Downloaded custom model %s -> %s", artifact.filename, dest)
+            self._set(done=True, downloading=False, path=str(dest))
+        except Exception as exc:
+            log.exception("Custom model download failed: %s", artifact.filename)
             tmp.unlink(missing_ok=True)
             self._set(error=str(exc), downloading=False, done=False)
 

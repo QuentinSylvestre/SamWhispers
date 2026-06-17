@@ -133,6 +133,127 @@ VAD_ARTIFACT = ModelArtifact(
 )
 
 
+def custom_models_path() -> Path:
+    """Path to the custom (pinned) models JSON registry."""
+    from samwhispers.history import resolve_data_dir
+
+    return resolve_data_dir() / "custom_models.json"
+
+
+def load_custom_models() -> dict[str, ModelArtifact]:
+    """Load custom models registry. Returns empty dict on missing/corrupt file."""
+    import json
+
+    p = custom_models_path()
+    if not p.is_file():
+        return {}
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as exc:
+        log.warning("Failed to load custom models registry: %s", exc)
+        return {}
+    result: dict[str, ModelArtifact] = {}
+    for filename, entry in data.items():
+        result[filename] = ModelArtifact(
+            name=entry.get("name", filename),
+            filename=filename,
+            url=entry["url"],
+            revision=entry["revision"],
+            sha256=entry["sha256"],
+            size=entry.get("size"),
+        )
+    return result
+
+
+
+def save_custom_model(artifact: ModelArtifact) -> None:
+    """Add or update a custom model in the registry (atomic write)."""
+    import json
+    import os
+    import sys
+    import tempfile
+
+    p = custom_models_path()
+    p.parent.mkdir(parents=True, exist_ok=True)
+
+    # Load existing
+    existing: dict[str, dict[str, object]] = {}
+    if p.is_file():
+        try:
+            existing = json.loads(p.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    existing[artifact.filename] = {
+        "name": artifact.name,
+        "url": artifact.url,
+        "revision": artifact.revision,
+        "sha256": artifact.sha256,
+        "size": artifact.size,
+    }
+
+    content = json.dumps(existing, indent=2).encode("utf-8")
+    tmp_fd, tmp_name = tempfile.mkstemp(dir=str(p.parent), suffix=".tmp")
+    try:
+        if sys.platform == "win32":
+            import msvcrt
+
+            msvcrt.locking(tmp_fd, msvcrt.LK_LOCK, max(1, len(content)))
+        else:
+            import fcntl
+
+            fcntl.flock(tmp_fd, fcntl.LOCK_EX)
+        os.write(tmp_fd, content)
+        os.close(tmp_fd)
+        os.replace(tmp_name, str(p))
+    except BaseException:
+        os.close(tmp_fd)
+        Path(tmp_name).unlink(missing_ok=True)
+        raise
+
+
+def remove_custom_model(filename: str) -> bool:
+    """Remove a custom model from the registry. Returns True if it existed."""
+    import json
+    import os
+    import sys
+    import tempfile
+
+    p = custom_models_path()
+    if not p.is_file():
+        return False
+
+    try:
+        existing = json.loads(p.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return False
+
+    if filename not in existing:
+        return False
+
+    del existing[filename]
+
+    content = json.dumps(existing, indent=2).encode("utf-8")
+    tmp_fd, tmp_name = tempfile.mkstemp(dir=str(p.parent), suffix=".tmp")
+    try:
+        if sys.platform == "win32":
+            import msvcrt
+
+            msvcrt.locking(tmp_fd, msvcrt.LK_LOCK, max(1, len(content)))
+        else:
+            import fcntl
+
+            fcntl.flock(tmp_fd, fcntl.LOCK_EX)
+        os.write(tmp_fd, content)
+        os.close(tmp_fd)
+        os.replace(tmp_name, str(p))
+    except BaseException:
+        os.close(tmp_fd)
+        Path(tmp_name).unlink(missing_ok=True)
+        raise
+    return True
+
+
 def verify_file(path: Path, expected_sha256: str) -> bool:
     """Verify a file's SHA256 hash. Returns True if it matches."""
     h = hashlib.sha256()

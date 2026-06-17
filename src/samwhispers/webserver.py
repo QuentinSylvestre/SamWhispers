@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import secrets
+import socket
 import threading
 from dataclasses import dataclass
 from ipaddress import ip_address
@@ -288,6 +289,7 @@ def create_app(
 
     @app.get("/api/models")
     def models() -> dict[str, Any]:
+        from samwhispers.model_manifest import load_custom_models
         from samwhispers.models import WHISPER_CPP_MODELS
 
         whisper_list = list_whisper_models(config_path)
@@ -297,11 +299,23 @@ def create_app(
             filename = f"ggml-{m}.bin"
             if any(item["label"] == filename for item in whisper_list):
                 downloaded_names.append(m)
+        # Custom pinned models
+        custom = load_custom_models()
+        dest_dir = Path(current_app_config(config_path).whisper.model_path).parent
+        custom_list: dict[str, dict[str, Any]] = {}
+        for filename, art in custom.items():
+            custom_list[filename] = {
+                "name": art.name,
+                "sha256": art.sha256,
+                "size": art.size,
+                "downloaded": (dest_dir / filename).is_file(),
+            }
         return {
             "whisper": whisper_list,
             "faster_whisper": FASTER_WHISPER_MODELS,
             "downloadable": WHISPER_CPP_MODELS,
             "downloaded": downloaded_names,
+            "custom": custom_list,
         }
 
     @app.post("/api/models/download")
@@ -375,6 +389,143 @@ def create_app(
         except Exception as exc:
             raise HTTPException(status_code=500, detail=str(exc)) from exc
         return {"downloaded": True, "path": str(path)}
+
+    @app.get("/api/models/discover")
+    async def discover_models() -> Any:
+        import fnmatch
+
+        import httpx as _httpx
+
+        from samwhispers.model_manifest import (
+            _WHISPER_REVISION,
+            load_custom_models,
+        )
+        from samwhispers.models import WHISPER_CPP_MODELS
+
+        # Private-network rejection
+        hf_host = "huggingface.co"
+        try:
+            addrs = socket.getaddrinfo(hf_host, 443, proto=socket.IPPROTO_TCP)
+        except OSError as exc:
+            log.warning("DNS resolution failed for %s: %s", hf_host, exc)
+            raise HTTPException(status_code=502, detail="Could not reach Hugging Face. Try again later.") from exc
+
+        for family, _, _, _, sockaddr in addrs:
+            addr = ip_address(sockaddr[0])
+            if addr.is_private or addr.is_loopback or addr.is_link_local:
+                raise HTTPException(status_code=502, detail="Could not reach Hugging Face. Try again later.")
+
+        url = f"https://huggingface.co/api/models/ggerganov/whisper.cpp/tree/{_WHISPER_REVISION}"
+        try:
+            async with _httpx.AsyncClient(timeout=_httpx.Timeout(15.0)) as client:
+                resp = await client.get(url)
+                resp.raise_for_status()
+                items = resp.json()
+        except Exception as exc:
+            log.warning("HF API request failed: %s", exc)
+            raise HTTPException(status_code=502, detail="Could not reach Hugging Face. Try again later.") from exc
+
+        # Filter to ggml-*.bin with LFS data
+        dest_dir = Path(current_app_config(config_path).whisper.model_path).parent
+        custom = load_custom_models()
+        builtin_filenames = {f"ggml-{m}.bin" for m in WHISPER_CPP_MODELS}
+
+        results: list[dict[str, Any]] = []
+        for item in items:
+            path_val = item.get("path", "")
+            if not fnmatch.fnmatch(path_val, "ggml-*.bin"):
+                continue
+            lfs = item.get("lfs")
+            if not lfs or "oid" not in lfs:
+                continue
+            filename = path_val
+            # Exclude already downloaded or pinned or built-in
+            if filename in custom or filename in builtin_filenames:
+                continue
+            if (dest_dir / filename).is_file():
+                continue
+            results.append({
+                "filename": filename,
+                "sha256": lfs["oid"],
+                "size": lfs.get("size", item.get("size")),
+            })
+        return results
+
+    @app.post("/api/models/pin")
+    async def pin_model(request: Request) -> dict[str, Any]:
+        import fnmatch
+        import re
+
+        from samwhispers.model_manifest import (
+            ModelArtifact,
+            _WHISPER_REVISION,
+            save_custom_model,
+        )
+
+        body: dict[str, Any] = await request.json()
+        filename = str(body.get("filename", ""))
+        sha256 = str(body.get("sha256", ""))
+        size = body.get("size")
+
+        # Validate filename
+        if not fnmatch.fnmatch(filename, "ggml-*.bin"):
+            raise HTTPException(status_code=400, detail="Filename must match ggml-*.bin")
+        if "/" in filename or "\\" in filename or ".." in filename:
+            raise HTTPException(status_code=400, detail="Invalid filename")
+        # Validate sha256
+        if not re.fullmatch(r"[0-9a-f]{64}", sha256):
+            raise HTTPException(status_code=400, detail="sha256 must be 64 hex chars")
+        # Path traversal check
+        dest_dir = Path(current_app_config(config_path).whisper.model_path).parent
+        resolved = (dest_dir / filename).resolve()
+        if not str(resolved).startswith(str(dest_dir.resolve())):
+            raise HTTPException(status_code=400, detail="Invalid filename")
+
+        artifact = ModelArtifact(
+            name=filename.removesuffix(".bin").removeprefix("ggml-"),
+            filename=filename,
+            url=f"https://huggingface.co/ggerganov/whisper.cpp/resolve/{_WHISPER_REVISION}/{filename}",
+            revision=_WHISPER_REVISION,
+            sha256=sha256,
+            size=int(size) if size is not None else None,
+        )
+        save_custom_model(artifact)
+        return {
+            "name": artifact.name,
+            "filename": artifact.filename,
+            "url": artifact.url,
+            "revision": artifact.revision,
+            "sha256": artifact.sha256,
+            "size": artifact.size,
+        }
+
+    @app.delete("/api/models/custom")
+    async def delete_custom_model(request: Request) -> dict[str, Any]:
+        from samwhispers.model_manifest import load_custom_models, remove_custom_model
+
+        body: dict[str, Any] = await request.json()
+        filename = str(body.get("filename", ""))
+
+        # Check registry first
+        custom = load_custom_models()
+        if filename not in custom:
+            raise HTTPException(status_code=404, detail="Model not in custom registry")
+
+        # Active model guard
+        cfg = current_app_config(config_path)
+        active_path = Path(cfg.whisper.model_path)
+        dest_dir = active_path.parent
+        target = dest_dir / filename
+        if target.resolve() == active_path.resolve():
+            raise HTTPException(
+                status_code=409,
+                detail="Cannot delete active model. Switch to a different model first.",
+            )
+
+        remove_custom_model(filename)
+        if target.is_file():
+            target.unlink()
+        return {"deleted": True, "filename": filename}
 
     @app.get("/api/status")
     def status() -> dict[str, Any]:

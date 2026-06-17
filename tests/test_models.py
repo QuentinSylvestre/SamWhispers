@@ -82,3 +82,44 @@ def test_list_whisper_models_finds_bin_files(tmp_path: Path) -> None:
     found = {m["label"] for m in list_whisper_models(config)}
     assert "ggml-base.en.bin" in found
     assert "ggml-small.bin" in found
+
+
+# -- Custom model download tests --
+
+@respx.mock
+def test_start_custom_downloads_and_verifies(tmp_path: Path) -> None:
+    from unittest.mock import patch
+
+    from samwhispers.model_manifest import ModelArtifact
+
+    artifact = ModelArtifact(
+        name="custom-test",
+        filename="ggml-custom-test.bin",
+        url="https://huggingface.co/test/resolve/abc/ggml-custom-test.bin",
+        revision="abc",
+        sha256="a" * 64,
+        size=8000,
+    )
+    data = b"custom-model-bytes" * 100
+    respx.get(artifact.url).mock(
+        return_value=httpx.Response(200, content=data, headers={"content-length": str(len(data))})
+    )
+    d = ModelDownloader()
+    with patch("samwhispers.model_manifest.verify_file", return_value=True):
+        d.start_custom(artifact, tmp_path)
+        d._thread.join(timeout=5)
+    st = d.status()
+    assert st["done"] is True and st["downloading"] is False
+    assert (tmp_path / "ggml-custom-test.bin").read_bytes() == data
+
+
+def test_start_custom_rejects_concurrent(tmp_path: Path) -> None:
+    from samwhispers.model_manifest import ModelArtifact
+
+    artifact = ModelArtifact(
+        name="x", filename="ggml-x.bin", url="http://x", revision="r", sha256="a" * 64,
+    )
+    d = ModelDownloader()
+    d._state["downloading"] = True
+    with pytest.raises(RuntimeError):
+        d.start_custom(artifact, tmp_path)
