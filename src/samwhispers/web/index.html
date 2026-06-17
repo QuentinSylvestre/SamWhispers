@@ -128,6 +128,7 @@ button.primary:disabled { opacity: .5; cursor: default; }
   border-radius: 6px; font-size: 14px; line-height: 1; color: var(--fg); }
 .model-row button:hover:not(:disabled) { background: var(--surface2); }
 .model-row button:disabled { opacity: 0.2; cursor: default; }
+.model-row .badge-custom { font-size: 10px; color: var(--muted); border: 1px solid var(--muted); border-radius: 3px; padding: 1px 4px; }
 
 /* Responsive */
 @media (max-width: 768px) {
@@ -248,6 +249,11 @@ button.primary:disabled { opacity: .5; cursor: default; }
     <div style="border-top:1px solid var(--border);margin-top:14px;padding-top:14px">
       <input type="text" id="modelSearch" placeholder="Search models…" style="margin-bottom:10px" />
       <div id="modelList" class="model-list-scroll"></div>
+      <button id="btnDiscoverModels" class="secondary" style="margin-top:10px;width:100%">Browse more models</button>
+      <div id="discoveryPanel" style="display:none;margin-top:10px">
+        <div id="discoveryStatus"></div>
+        <div id="discoveryList" class="model-list-scroll"></div>
+      </div>
     </div>
   </div>
 
@@ -697,6 +703,22 @@ function renderModelManager() {
     row.querySelector(".del-btn").addEventListener("click", () => deleteModel(name));
     list.appendChild(row);
   }
+  // Render custom pinned models
+  const custom = state.models.custom || {};
+  for (const [filename, info] of Object.entries(custom)) {
+    if (search && !filename.toLowerCase().includes(search)) continue;
+    const row = document.createElement("div");
+    row.className = "model-row";
+    row.innerHTML =
+      `<span class="name">${filename}</span>` +
+      `<span class="badge-custom">custom</span>` +
+      `<span class="spacer"></span>` +
+      (info.downloaded ? `<span class="tag">downloaded</span>` : `<button class="dl-btn" title="Download">&#x2B07;</button>`) +
+      `<button class="del-btn" title="Delete">&#x1F5D1;</button>`;
+    if (!info.downloaded) row.querySelector(".dl-btn").addEventListener("click", () => startCustomDownload(filename));
+    row.querySelector(".del-btn").addEventListener("click", () => deleteCustomModel(filename));
+    list.appendChild(row);
+  }
 }
 
 document.getElementById("modelSearch").addEventListener("input", renderModelManager);
@@ -740,6 +762,62 @@ async function pollDownload() {
     await loadModels();
     toast("Model downloaded.", "ok");
   }
+}
+
+// --- Discovery & Custom Models ---
+document.getElementById("btnDiscoverModels").addEventListener("click", async () => {
+  const panel = document.getElementById("discoveryPanel");
+  const status = document.getElementById("discoveryStatus");
+  const list = document.getElementById("discoveryList");
+  panel.style.display = "block";
+  status.textContent = "Loading\u2026";
+  list.innerHTML = "";
+  try {
+    const models = await api("GET", "/api/models/discover");
+    status.textContent = "";
+    if (!models.length) { status.textContent = "No additional models found."; return; }
+    for (const m of models) {
+      const row = document.createElement("div");
+      row.className = "model-row";
+      const sizeMB = m.size ? (m.size / 1048576).toFixed(0) + " MB" : "?";
+      row.innerHTML =
+        `<span class="name">${m.filename}</span>` +
+        `<span class="info-icon" title="${sizeMB}">&#9432;</span>` +
+        `<span class="spacer"></span>` +
+        `<button class="dl-btn">Pin &amp; Download</button>`;
+      row.querySelector(".dl-btn").addEventListener("click", async (e) => {
+        e.target.disabled = true;
+        e.target.textContent = "Pinning\u2026";
+        try {
+          await api("POST", "/api/models/pin", { filename: m.filename, sha256: m.sha256, size: m.size });
+          await api("POST", "/api/models/download/custom", { filename: m.filename });
+          pollDownload();
+          await loadModels();
+          row.remove();
+          toast("Model pinned. Downloading\u2026", "ok");
+        } catch (err) { e.target.disabled = false; e.target.textContent = "Pin & Download"; toast("Error: " + err.message, "err"); }
+      });
+      list.appendChild(row);
+    }
+  } catch (e) { status.textContent = "Could not load models: " + e.message; }
+});
+
+async function startCustomDownload(filename) {
+  const out = document.getElementById("dlStatus");
+  out.textContent = "Starting\u2026";
+  try {
+    await api("POST", "/api/models/download/custom", { filename });
+    pollDownload();
+  } catch (e) { out.textContent = "Error: " + e.message; }
+}
+
+async function deleteCustomModel(filename) {
+  if (!confirm(`Delete custom model "${filename}"? This cannot be undone.`)) return;
+  try {
+    await api("DELETE", "/api/models/custom", { filename });
+    toast(`Deleted ${filename}.`, "ok");
+    await loadModels();
+  } catch (e) { toast("Delete failed: " + e.message, "err"); }
 }
 
 // --- Model select sync ---

@@ -535,6 +535,23 @@ def create_app(
             target.unlink()
         return {"deleted": True, "filename": filename}
 
+    @app.post("/api/models/download/custom")
+    async def start_custom_download(request: Request) -> dict[str, Any]:
+        from samwhispers.model_manifest import load_custom_models
+        from samwhispers.models import downloader
+
+        body: dict[str, Any] = await request.json()
+        filename = str(body.get("filename", ""))
+        custom = load_custom_models()
+        if filename not in custom:
+            raise HTTPException(status_code=404, detail="Model not in custom registry")
+        dest_dir = Path(current_app_config(config_path).whisper.model_path).parent
+        try:
+            downloader.start_custom(custom[filename], dest_dir)
+        except RuntimeError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return {"started": True}
+
     @app.get("/api/status")
     def status() -> dict[str, Any]:
         return {"state": supervisor.state.value if supervisor else "unknown"}

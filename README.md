@@ -154,6 +154,24 @@ To add models not in the built-in list, place the file manually and set
 `whisper.model_path` in your config. Manually placed models are trusted by file
 existence — no hash verification is applied to user-managed paths.
 
+### Discovering Additional Models
+
+The config UI includes a **Browse more models** button (in the Model section)
+that lists all `ggml-*.bin` files from the official
+[ggerganov/whisper.cpp](https://huggingface.co/ggerganov/whisper.cpp) Hugging
+Face repository. Select a model to pin and download it with full SHA256
+verification — the same integrity guarantee as built-in models.
+
+Custom (pinned) models appear in the model list with a "custom" badge. They can
+be deleted from the UI (with a confirmation prompt). The active model cannot be
+deleted — switch to a different model first.
+
+If Hugging Face is unreachable, the discovery panel shows an error message
+without affecting built-in model downloads.
+
+For models not hosted on the official whisper.cpp repository, place the file
+manually in your models directory and set `whisper.model_path` in `config.toml`.
+
 ## Install SamWhispers
 
 ### Linux / macOS
