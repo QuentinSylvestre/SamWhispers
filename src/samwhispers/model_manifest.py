@@ -166,15 +166,48 @@ def load_custom_models() -> dict[str, ModelArtifact]:
 
 
 
-def save_custom_model(artifact: ModelArtifact) -> None:
-    """Add or update a custom model in the registry (atomic write)."""
+def _atomic_json_write(p: Path, data: object) -> None:
+    """Write JSON atomically with advisory file locking on the target."""
     import json
     import os
     import sys
     import tempfile
 
-    p = custom_models_path()
     p.parent.mkdir(parents=True, exist_ok=True)
+    content = json.dumps(data, indent=2).encode("utf-8")
+
+    # Lock the target file (or create it) to serialize concurrent writers.
+    lock_path = p.with_suffix(".lock")
+    lock_fd = os.open(str(lock_path), os.O_CREAT | os.O_RDWR)
+    try:
+        if sys.platform == "win32":
+            import msvcrt
+
+            msvcrt.locking(lock_fd, msvcrt.LK_LOCK, 1)
+        else:
+            import fcntl
+
+            fcntl.flock(lock_fd, fcntl.LOCK_EX)
+
+        # Write to temp, then replace atomically.
+        tmp_fd, tmp_name = tempfile.mkstemp(dir=str(p.parent), suffix=".tmp")
+        try:
+            os.write(tmp_fd, content)
+        finally:
+            os.close(tmp_fd)
+        os.replace(tmp_name, str(p))
+    except BaseException:
+        Path(tmp_name).unlink(missing_ok=True) if "tmp_name" in dir() else None
+        raise
+    finally:
+        os.close(lock_fd)
+
+
+def save_custom_model(artifact: ModelArtifact) -> None:
+    """Add or update a custom model in the registry (atomic write)."""
+    import json
+
+    p = custom_models_path()
 
     # Load existing
     existing: dict[str, dict[str, object]] = {}
@@ -192,32 +225,12 @@ def save_custom_model(artifact: ModelArtifact) -> None:
         "size": artifact.size,
     }
 
-    content = json.dumps(existing, indent=2).encode("utf-8")
-    tmp_fd, tmp_name = tempfile.mkstemp(dir=str(p.parent), suffix=".tmp")
-    try:
-        if sys.platform == "win32":
-            import msvcrt
-
-            msvcrt.locking(tmp_fd, msvcrt.LK_LOCK, max(1, len(content)))
-        else:
-            import fcntl
-
-            fcntl.flock(tmp_fd, fcntl.LOCK_EX)
-        os.write(tmp_fd, content)
-        os.close(tmp_fd)
-        os.replace(tmp_name, str(p))
-    except BaseException:
-        os.close(tmp_fd)
-        Path(tmp_name).unlink(missing_ok=True)
-        raise
+    _atomic_json_write(p, existing)
 
 
 def remove_custom_model(filename: str) -> bool:
     """Remove a custom model from the registry. Returns True if it existed."""
     import json
-    import os
-    import sys
-    import tempfile
 
     p = custom_models_path()
     if not p.is_file():
@@ -232,25 +245,7 @@ def remove_custom_model(filename: str) -> bool:
         return False
 
     del existing[filename]
-
-    content = json.dumps(existing, indent=2).encode("utf-8")
-    tmp_fd, tmp_name = tempfile.mkstemp(dir=str(p.parent), suffix=".tmp")
-    try:
-        if sys.platform == "win32":
-            import msvcrt
-
-            msvcrt.locking(tmp_fd, msvcrt.LK_LOCK, max(1, len(content)))
-        else:
-            import fcntl
-
-            fcntl.flock(tmp_fd, fcntl.LOCK_EX)
-        os.write(tmp_fd, content)
-        os.close(tmp_fd)
-        os.replace(tmp_name, str(p))
-    except BaseException:
-        os.close(tmp_fd)
-        Path(tmp_name).unlink(missing_ok=True)
-        raise
+    _atomic_json_write(p, existing)
     return True
 
 

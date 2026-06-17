@@ -506,6 +506,10 @@ def create_app(
         body: dict[str, Any] = await request.json()
         filename = str(body.get("filename", ""))
 
+        # Path traversal defense-in-depth
+        if "/" in filename or "\\" in filename or ".." in filename:
+            raise HTTPException(status_code=400, detail="Invalid filename")
+
         # Check registry first
         custom = load_custom_models()
         if filename not in custom:
@@ -521,6 +525,10 @@ def create_app(
                 status_code=409,
                 detail="Cannot delete active model. Switch to a different model first.",
             )
+
+        # Containment check
+        if not str(target.resolve()).startswith(str(dest_dir.resolve())):
+            raise HTTPException(status_code=400, detail="Invalid filename")
 
         remove_custom_model(filename)
         if target.is_file():
