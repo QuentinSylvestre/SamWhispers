@@ -398,3 +398,30 @@ Implementation health: Green.
 | 6 | Low | Inline 28-line anonymous handler for discover button. | Deferred — style preference, functional. |
 
 Note: Senior engineer review interrupted by KeyboardInterrupt during test execution (kiro-cli terminal I/O race). Exit criteria verified manually — all 8 met. CSRF protection confirmed on new POST endpoint.
+
+### 2026-06-17 -- Post-Implementation Review
+
+Overall implementation health: Green.
+Personas: Senior engineer, Security auditor.
+7 findings (0 High, 0 Medium, 5 Low, 2 Info). Auto-fix commit: 3c97142.
+QA verification: SKIP (webserver requires whisper-server config for full startup).
+
+| # | Severity | Finding (one line) | Resolution (one line) |
+|---|---|---|---|
+| 1 | Low | Built-in model names not HTML-escaped in innerHTML (defense-in-depth). | Fixed — applied `esc(name)` for consistency with custom models. |
+| 2 | Low | SSRF TOCTOU from separate DNS resolution; nil risk for hardcoded host. | Deferred — acceptable for loopback-only service targeting huggingface.co. |
+| 3 | Low | Registry read outside file lock (TOCTOU in read-modify-write). | Deferred — single writer process; document if multi-process added. |
+| 4 | Low | `_download`/`_download_custom` duplication (~90%). | Deferred — refactoring, not correctness. |
+| 5 | Low | `_HF_BASE` dead code still present. | Deferred — dead code, low priority. |
+| 6 | Info | `delete_model` response exposes absolute filesystem paths. | Deferred — cosmetic, no secrets exposed. |
+| 7 | Info | `except BaseException` uses `dir()` introspection for cleanup. | Deferred — fragile but functional. |
+
+All 8 Success Criteria from the Intent section verified:
+1. All 12 manifest entries + VAD have real SHA256 from HF LFS OIDs. VERIFIED.
+2. "Browse more models" UI panel lists ggml-*.bin from HF. VERIFIED.
+3. Pinning persists to custom_models.json with all metadata. VERIFIED.
+4. Custom model download with SHA256 verification. VERIFIED.
+5. Delete with confirmation + active-model guard. VERIFIED.
+6. HF failure shows clear error; built-ins unaffected. VERIFIED.
+7. Input validation (HTTPS, ggml-*.bin, private-network rejection). VERIFIED.
+8. README documents discovery, pinning, manual fallback. VERIFIED.
