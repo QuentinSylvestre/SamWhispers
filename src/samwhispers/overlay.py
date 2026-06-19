@@ -93,6 +93,11 @@ class OverlayController:
             return
         try:
             flags = 0x08000000 if sys.platform == "win32" else 0
+            si = None
+            if sys.platform == "win32":
+                si = subprocess.STARTUPINFO()
+                si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                si.wShowWindow = 0
             self._proc = subprocess.Popen(
                 [sys.executable, "-m", "samwhispers.overlay"],
                 stdin=subprocess.PIPE,
@@ -100,6 +105,7 @@ class OverlayController:
                 stderr=subprocess.DEVNULL,
                 text=True,
                 creationflags=flags,
+                startupinfo=si,
             )
         except Exception:
             log.exception("Failed to start overlay process")
@@ -457,6 +463,7 @@ def main() -> None:
         import tkinter as tk
 
         root = tk.Tk()
+        root.withdraw()
         root.update_idletasks()
     except Exception as exc:  # pragma: no cover - needs a display
         log.info("Overlay unavailable: %s", exc)

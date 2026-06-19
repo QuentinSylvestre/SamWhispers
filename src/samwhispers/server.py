@@ -109,10 +109,15 @@ class WhisperServerManager:
         # On Windows, run the console binary without popping a window when the
         # parent has no console (e.g. launched via pythonw at login).
         flags = 0x08000000 if sys.platform == "win32" else 0  # CREATE_NO_WINDOW
+        si = None
+        if sys.platform == "win32":
+            si = subprocess.STARTUPINFO()
+            si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            si.wShowWindow = 0
         with self._lock:
             self._stderr_lines = []
             self._proc = subprocess.Popen(
-                cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, creationflags=flags
+                cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, creationflags=flags, startupinfo=si
             )
             self._stderr_thread = threading.Thread(
                 target=self._read_stderr, daemon=True, name="whisper-stderr"

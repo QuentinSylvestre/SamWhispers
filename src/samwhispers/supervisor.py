@@ -26,6 +26,7 @@ import sys
 import threading
 import time
 from collections.abc import Callable
+from pathlib import Path
 from types import FrameType
 from typing import TYPE_CHECKING, Any
 
@@ -296,8 +297,13 @@ class WorkerSupervisor:
         """Launch a fresh worker process. Caller holds the lock."""
         cmd = self._build_cmd()
         log.info("Starting worker: %s", " ".join(cmd))
-        flags = _CREATE_NO_WINDOW if sys.platform == "win32" else 0
-        self._proc = subprocess.Popen(cmd, creationflags=flags, stderr=subprocess.PIPE, text=True)
+        flags = (_CREATE_NO_WINDOW | _CREATE_NEW_PROCESS_GROUP) if sys.platform == "win32" else 0
+        si = None
+        if sys.platform == "win32":
+            si = subprocess.STARTUPINFO()
+            si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            si.wShowWindow = 0
+        self._proc = subprocess.Popen(cmd, creationflags=flags, stderr=subprocess.PIPE, text=True, startupinfo=si)
         with self._log_lock:
             self._log_buffer.append("--- worker started ---")
         self._log_reader = threading.Thread(
@@ -371,6 +377,9 @@ class WorkerSupervisor:
                 self._log_reader.join(timeout=2.0)
             proc.wait()
             code = proc.returncode
+            log.warning("Worker exited with code %d (restart #%d)", code, restart_count + 1)
+            with self._log_lock:
+                self._log_buffer.append(f"Worker exited with code {code} (restart #{restart_count + 1})")
 
             # Startup/config failure — deterministic, don't retry.
             if code == _EX_CONFIG:
@@ -439,9 +448,13 @@ class _RingBufferHandler(logging.Handler):
 def _python_launcher() -> str:
     """Interpreter to relaunch ourselves with.
 
-    Always use python.exe; CREATE_NO_WINDOW hides the console.  pythonw.exe
-    silently swallows errors and breaks pystray on some Windows setups.
+    On Windows use pythonw.exe to avoid any console window flash.
+    CREATE_NO_WINDOW alone can still flash on some Windows versions.
     """
+    if sys.platform == "win32":
+        pythonw = Path(sys.executable).with_name("pythonw.exe")
+        if pythonw.exists():
+            return str(pythonw)
     return sys.executable
 
 
@@ -487,7 +500,11 @@ def _relaunch_detached(args: Any = None) -> None:
         "close_fds": True,
     }
     if sys.platform == "win32":
+        si = subprocess.STARTUPINFO()
+        si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        si.wShowWindow = 0  # SW_HIDE
         popen_kwargs["creationflags"] = _CREATE_NEW_PROCESS_GROUP | _CREATE_NO_WINDOW
+        popen_kwargs["startupinfo"] = si
     else:
         popen_kwargs["start_new_session"] = True
     subprocess.Popen(cmd, **popen_kwargs)

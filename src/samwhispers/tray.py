@@ -15,7 +15,7 @@ from types import FrameType
 from typing import Any
 
 from samwhispers.supervisor import WorkerState, WorkerSupervisor
-from samwhispers.notify import notify
+from samwhispers.notify import set_tray_icon
 
 log = logging.getLogger("samwhispers.tray")
 
@@ -128,7 +128,6 @@ def run_tray(supervisor: WorkerSupervisor, settings_url: str | None = None, stop
 
     def on_restart_all(icon: Any, _item: Any) -> None:
         supervisor.request_relaunch()
-        notify("SamWhispers", "SamWhispers is restarting...")
         icon.stop()
 
     def on_open_settings(_icon: Any, _item: Any) -> None:
@@ -196,6 +195,8 @@ def run_tray(supervisor: WorkerSupervisor, settings_url: str | None = None, stop
                 icon.stop()
 
             threading.Thread(target=_watch_stop, daemon=True, name="tray-stop-watcher").start()
+        set_tray_icon(icon)
         icon.run()
     finally:
+        set_tray_icon(None)
         supervisor.set_state_listener(None)

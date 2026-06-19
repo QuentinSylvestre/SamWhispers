@@ -7,8 +7,19 @@ import os
 import shutil
 import subprocess
 import sys
+from typing import Any
 
 log = logging.getLogger("samwhispers")
+
+# When a pystray Icon is running, register it here so Windows notifications
+# use the existing tray icon instead of spawning a PowerShell NotifyIcon.
+_tray_icon: Any = None
+
+
+def set_tray_icon(icon: Any) -> None:
+    """Register the active pystray Icon for native notifications."""
+    global _tray_icon
+    _tray_icon = icon
 
 
 def notify(title: str, message: str, on_click_url: str | None = None) -> None:
@@ -45,6 +56,14 @@ def _notify_linux(title: str, message: str, on_click_url: str | None = None) -> 
 def _notify_windows(title: str, message: str, on_click_url: str | None = None) -> None:
     from samwhispers.wsl import is_wsl
 
+    # Use pystray's built-in notify (no extra icon, no subprocess)
+    if not is_wsl() and _tray_icon is not None:
+        try:
+            _tray_icon.notify(message, title)
+            return
+        except Exception:
+            pass  # Fall through to PowerShell
+
     if is_wsl():
         from samwhispers.wsl import find_windows_exe
 
@@ -78,9 +97,14 @@ def _notify_windows(title: str, message: str, on_click_url: str | None = None) -
             "$n.Dispose()"
         )
         env = {**os.environ, "SW_TITLE": title, "SW_MSG": message}
+    popen_kwargs: dict[str, Any] = {
+        "env": env,
+        "stdout": subprocess.DEVNULL,
+        "stderr": subprocess.DEVNULL,
+    }
+    if not is_wsl():
+        popen_kwargs["creationflags"] = 0x08000000  # CREATE_NO_WINDOW
     subprocess.Popen(
         [ps, "-NoProfile", "-WindowStyle", "Hidden", "-c", script],
-        env=env,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        **popen_kwargs,
     )

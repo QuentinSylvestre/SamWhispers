@@ -13,6 +13,7 @@ import sys
 import tempfile
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
+from typing import Any
 
 from samwhispers.history import resolve_data_dir
 
@@ -61,6 +62,15 @@ def _posix_check_private(path: Path) -> bool:
         return False
 
 
+def _win_startupinfo() -> Any:
+    """Return a STARTUPINFO that hides any console window."""
+    import subprocess
+    si = subprocess.STARTUPINFO()
+    si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+    si.wShowWindow = 0  # SW_HIDE
+    return si
+
+
 def _win_check_private(path: Path) -> bool:
     """Windows: reject broad ACEs (Everyone, Users, Authenticated Users)."""
     try:
@@ -69,6 +79,8 @@ def _win_check_private(path: Path) -> bool:
         result = subprocess.run(
             ["icacls", str(path)],
             capture_output=True, text=True, timeout=5,
+            creationflags=0x08000000,
+            startupinfo=_win_startupinfo(),
         )
         if result.returncode != 0:
             return False
@@ -108,6 +120,8 @@ def _win_set_private(path: Path) -> bool:
              "/grant:r", "SYSTEM:F",
              "/grant:r", "Administrators:F"],
             capture_output=True, text=True, timeout=5,
+            creationflags=0x08000000,
+            startupinfo=_win_startupinfo(),
         )
         return result.returncode == 0
     except Exception:
@@ -196,6 +210,15 @@ def is_pid_alive(pid: int) -> bool:
     """Check if a PID is alive."""
     if pid <= 0:
         return False
+    if sys.platform == "win32":
+        import ctypes
+
+        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+        handle = ctypes.windll.kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+        if handle:
+            ctypes.windll.kernel32.CloseHandle(handle)
+            return True
+        return False
     try:
         os.kill(pid, 0)
         return True
@@ -215,6 +238,8 @@ def is_samwhispers_process(pid: int) -> bool:
                 ["powershell", "-NoProfile", "-c",
                  f"(Get-CimInstance Win32_Process -Filter 'ProcessId={pid}').CommandLine"],
                 capture_output=True, text=True, timeout=5,
+                creationflags=0x08000000,
+                startupinfo=_win_startupinfo(),
             )
             return "samwhispers" in result.stdout.lower()
         else:

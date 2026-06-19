@@ -113,10 +113,13 @@ _FIND_PROC = (
 def _windows_target_and_args() -> tuple[str, str]:
     """Return (target, args) for launching the supervisor with no console window.
 
-    Anchored on the installed ``samwhispers-supervisor`` script so we use the
-    venv's ``pythonw`` (``sys.executable`` can report the base interpreter in
-    some venv setups, which wouldn't have the package importable).
+    Uses import-based launch (not -m) because runpy's fresh __main__ namespace
+    breaks pystray's Shell_NotifyIcon message pump on Windows.
     """
+    _code = (
+        "import sys; sys.argv = ['samwhispers-supervisor', '--foreground']; "
+        "from samwhispers.supervisor import main; main()"
+    )
     candidates: list[Path] = []
     script = shutil.which("samwhispers-supervisor")
     if script:
@@ -124,11 +127,11 @@ def _windows_target_and_args() -> tuple[str, str]:
     candidates.append(Path(sys.executable).with_name("pythonw.exe"))
     for pythonw in candidates:
         if pythonw.exists():
-            return str(pythonw), "-m samwhispers.supervisor --foreground"
+            return str(pythonw), f'-c "{_code}"'
     # No pythonw found -> use the console script directly (shows a brief window).
     if script:
         return script, "--foreground"
-    return sys.executable, "-m samwhispers.supervisor --foreground"
+    return sys.executable, f'-c "{_code}"'
 
 
 def _startup_shortcut() -> Path:
