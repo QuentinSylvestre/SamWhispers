@@ -52,3 +52,16 @@
 **Why**: The audio callback thread holds `_lock`. Any method that also acquires `_lock` (like `stop()`) will deadlock if called directly from `_callback`. Use `threading.Timer(0, method).start()` to defer to a new thread.
 **How to apply**: When adding behavior in `AudioRecorder._callback` that triggers stop/state-change, defer via Timer(0). Include a boolean flag (e.g., `_vad_fired`) to prevent double-fire, and reset it in `start()`.
 **Source**: Plan 260614_SNIPPETS_AND_VAD, Phase 2 + Post-Implementation Review finding #1 | **Verified**: 2026-06-14
+
+
+### pytest triggers KeyboardInterrupt under kiro-cli due to hotkey/pynput terminal I/O conflict
+
+**Why**: Running pytest from kiro-cli repeatedly crashes the session because pynput's hotkey listener intercepts terminal control sequences during test output. Caused multiple session interruptions and user frustration.
+**How to apply**: When running pytest for SamWhispers from kiro-cli, stop the running SamWhispers instance first, OR use `.venv/Scripts/python.exe -m pytest` and pipe output to a temp file to avoid terminal contention.
+**Source**: Sessions 33e9f3b8, 3abed80b, 4f717cb4 - repeated KeyboardInterrupt during test execution | **Verified**: 2026-07-05
+
+### Window flash on restart requires CREATE_NO_WINDOW flag on subprocess creation
+
+**Why**: The detached relaunch subprocess briefly shows a console window on Windows. Required 5+ fix iterations across 2 sessions spanning 5 days before the correct flag combination resolved it.
+**How to apply**: Any subprocess creation in supervisor.py that spawns a new process on Windows must use `creationflags=CREATE_NO_WINDOW | DETACHED_PROCESS` together. Testing requires a full kill + fresh start cycle.
+**Source**: Sessions abcbfed7, afd1ec22 - 5+ fix iterations before resolution | **Verified**: 2026-07-05

@@ -7,3 +7,5 @@ __pycache__/
 config.toml
 tools/
 .kiro/
+.playwright-mcp/
+.vscode/

@@ -6,6 +6,7 @@ import enum
 import logging
 import queue
 import signal
+import sys
 import threading
 import time
 from types import FrameType
@@ -240,6 +241,13 @@ class SamWhispers:
         signal.signal(signal.SIGTERM, self._handle_signal)
         signal.signal(signal.SIGINT, self._handle_signal)
 
+        # On Windows, disable CTRL_C_EVENT at the OS level. This must come
+        # AFTER signal.signal() which internally calls SetConsoleCtrlHandler.
+        # The supervisor uses TerminateProcess for intentional stops.
+        if sys.platform == "win32":
+            import ctypes
+            ctypes.windll.kernel32.SetConsoleCtrlHandler(None, True)
+
         self.hotkey_listener.start()
         log.info(
             "Ready. Listening for hotkey '%s' (mode=%s)...",
@@ -255,6 +263,9 @@ class SamWhispers:
         self.shutdown()
 
     def _handle_signal(self, signum: int, frame: FrameType | None) -> None:
+        if sys.platform == "win32" and signum == signal.SIGINT:
+            log.debug("Ignoring stray CTRL_C_EVENT (managed worker)")
+            return
         log.info("Received signal %d, shutting down", signum)
         self._shutdown_event.set()
 

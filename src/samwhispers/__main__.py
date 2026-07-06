@@ -45,11 +45,9 @@ def _http_post(host: str, port: int, path: str, csrf_token: str | None = None) -
 
 def _is_process_alive(pid: int) -> bool:
     """Check if a process with the given PID exists."""
-    try:
-        os.kill(pid, 0)
-        return True
-    except OSError:
-        return False
+    from samwhispers.runtime import is_pid_alive
+
+    return is_pid_alive(pid)
 
 
 def _force_kill(pid: int) -> None:

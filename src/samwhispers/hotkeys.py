@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import subprocess
+import sys
 import threading
 from collections.abc import Callable
 from typing import Any
@@ -77,6 +78,11 @@ def _normalize_key(key: Any) -> Any:
     return _ALIASES.get(key, key)
 
 
+# Minimum hold duration (seconds) before hotkey activates.
+# Filters phantom modifier events from OS/console operations.
+_DEBOUNCE_SECONDS = 0.05
+
+
 class HotkeyListener:
     """Detect push-to-talk hotkey in hold or toggle mode."""
 
@@ -96,10 +102,12 @@ class HotkeyListener:
         self._pressed: set[Any] = set()
         self._active = False  # Toggle state
         self._suppressed = False
+        self._activated = False  # True after debounce confirms real press
         self._lock = threading.Lock()
         self._listener: Any = None
         self._lang_keys: set[Any] | None = None
         self._on_language_cycle = on_language_cycle
+        self._debounce_timer: threading.Timer | None = None
         if language_key_str and on_language_cycle:
             self._lang_keys = parse_hotkey(language_key_str)
 
@@ -130,7 +138,15 @@ class HotkeyListener:
             self._suppressed = False
             self._pressed.clear()
 
-    def _on_press(self, key: Any) -> None:
+    def _is_injected(self, injected: Any) -> bool:
+        """Return True if the event was programmatically injected (Windows only)."""
+        if sys.platform != "win32":
+            return False
+        return bool(injected)
+
+    def _on_press(self, key: Any, injected: Any = False) -> None:
+        if self._is_injected(injected):
+            return
         with self._lock:
             if self._suppressed:
                 return
@@ -146,29 +162,61 @@ class HotkeyListener:
             self._on_language_cycle()
         elif hotkey_match:
             if self._mode == "hold":
-                self._on_start()
+                self._schedule_activation()
             else:  # toggle
-                with self._lock:
-                    if self._active:
-                        self._active = False
-                        action = "stop"
-                    else:
-                        self._active = True
-                        action = "start"
-                # Invoke callbacks outside the lock to prevent deadlock
-                if action == "stop":
-                    self._on_stop()
-                else:
-                    self._on_start()
+                self._schedule_activation()
 
-    def _on_release(self, key: Any) -> None:
+    def _schedule_activation(self) -> None:
+        """Start debounce timer. Fires on_start only if keys still held after delay."""
+        with self._lock:
+            if self._debounce_timer is not None:
+                return  # Already scheduled
+            self._debounce_timer = threading.Timer(_DEBOUNCE_SECONDS, self._confirm_activation)
+            self._debounce_timer.daemon = True
+            self._debounce_timer.start()
+
+    def _confirm_activation(self) -> None:
+        """Called after debounce delay. Activate only if hotkey keys are still held."""
+        with self._lock:
+            self._debounce_timer = None
+            if self._suppressed:
+                return
+            if not self._hotkey_keys.issubset(self._pressed):
+                return  # Keys released during debounce — phantom event
+            self._activated = True
+
+        if self._mode == "hold":
+            self._on_start()
+        else:  # toggle
+            with self._lock:
+                if self._active:
+                    self._active = False
+                    action = "stop"
+                else:
+                    self._active = True
+                    action = "start"
+            if action == "stop":
+                self._on_stop()
+            else:
+                self._on_start()
+
+    def _on_release(self, key: Any, injected: Any = False) -> None:
+        if self._is_injected(injected):
+            return
         with self._lock:
             if self._suppressed:
                 return
             normalized = _normalize_key(key)
             self._pressed.discard(normalized)
+            was_activated = self._activated
+            # Cancel pending debounce if key released before it fires
+            if self._debounce_timer is not None:
+                self._debounce_timer.cancel()
+                self._debounce_timer = None
 
-        if self._mode == "hold" and normalized in self._hotkey_keys:
+        if self._mode == "hold" and normalized in self._hotkey_keys and was_activated:
+            with self._lock:
+                self._activated = False
             self._on_stop()
 
 
