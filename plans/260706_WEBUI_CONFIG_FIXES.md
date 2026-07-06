@@ -1,7 +1,7 @@
 # Web UI Config Parameter Fixes
 
 > **Date**: 2026-07-06
-> **Status**: Draft  <!-- Status lifecycle: Exploring → Draft → In Progress → Complete -->
+> **Status**: In Progress  <!-- Status lifecycle: Exploring → Draft → In Progress → Complete -->
 > **Scope**: Fix 4 verified findings from /qtest run — model delete button, missing save button, global collect, unsurfaced warnings
 
 ---
