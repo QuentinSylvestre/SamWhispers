@@ -1,7 +1,8 @@
 # Full Restart Lifecycle (start/stop/restart)
 
 > **Date**: 2026-06-13
-> **Status**: In Progress  <!-- Status lifecycle: Exploring → Draft → In Progress → Complete -->
+> **Status**: All 3 phases COMPLETE
+> **Last Updated**: 2026-07-06 12:03
 > **Scope**: Add full supervisor restart/stop commands to CLI, tray, and web UI
 > **Estimated effort**: 2-4 hours
 
