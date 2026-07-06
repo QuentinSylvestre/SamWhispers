@@ -295,6 +295,22 @@ def test_put_config_invalid_returns_400(
     assert "restart" not in sup.calls
 
 
+def test_put_config_returns_warnings_for_missing_api_key(
+    client_and_sup: tuple[TestClient, FakeSupervisor, Path],
+) -> None:
+    client, sup, path = client_and_sup
+    cfg = client.get("/api/config").json()
+    cfg["whisper"]["managed"] = False
+    cfg["translation"]["enabled"] = True
+    cfg["translation"]["target_language"] = "fr"
+    cfg["cleanup"]["openai"]["api_key"] = ""
+    cfg["cleanup"]["anthropic"]["api_key"] = ""
+    body = client.put("/api/config", json=cfg, headers=_csrf_headers(client)).json()
+    assert body["saved"] is True
+    assert "warnings" in body
+    assert any("API key is empty" in w for w in body["warnings"])
+
+
 def test_config_validation_error_redacts_posted_and_persisted_secrets(
     client_and_sup: tuple[TestClient, FakeSupervisor, Path],
 ) -> None:

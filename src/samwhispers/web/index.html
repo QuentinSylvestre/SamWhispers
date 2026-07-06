@@ -99,6 +99,7 @@ button.primary:disabled { opacity: .5; cursor: default; }
 .toast.show { opacity: 1; }
 .toast.ok { border-color: var(--accent); }
 .toast.err { border-color: var(--danger); }
+.toast.warn { border-color: var(--amber); }
 
 /* History */
 .histbar { display: flex; gap: 8px; margin-bottom: 14px; }
@@ -451,6 +452,10 @@ button.primary:disabled { opacity: .5; cursor: default; }
     <div class="field"><label>Max entries</label><input type="number" data-path="history.max_entries" data-type="number" /></div>
     <div class="hint">0 = unlimited</div>
   </div>
+  <div class="savebar">
+    <button class="primary" id="btnSaveHistory">Save</button>
+    <span class="hint">The worker restarts automatically when a change requires it.</span>
+  </div>
   <div class="histbar">
     <input type="text" id="histSearch" placeholder="Search transcriptions…" />
     <button id="btnHistRefresh">Refresh</button>
@@ -539,7 +544,7 @@ function toast(msg, kind) {
   const t = document.getElementById("toast");
   t.textContent = redactSecrets(msg);
   t.className = `toast show ${kind || ""}`;
-  setTimeout(() => (t.className = "toast"), kind === "err" ? 4000 : 2000);
+  setTimeout(() => (t.className = "toast"), (kind === "err" || kind === "warn") ? 4000 : 2000);
 }
 
 // --- Navigation ---
@@ -685,9 +690,12 @@ function renderModelManager() {
   const downloaded = new Set(state.models.downloaded || []);
   const all = state.models.downloadable || [];
   const filtered = search ? all.filter(n => n.toLowerCase().includes(search)) : all;
+  const modelPath = document.querySelector('[data-path="whisper.model_path"]')?.value || "";
+  const activeFilename = modelPath.split(/[\\/]/).pop() || "";
   list.innerHTML = "";
   for (const name of filtered) {
     const isDl = downloaded.has(name);
+    const isActive = activeFilename === `ggml-${name}.bin`;
     const meta = MODEL_META[name] || {};
     const row = document.createElement("div");
     row.className = "model-row";
@@ -698,7 +706,7 @@ function renderModelManager() {
       `<span class="spacer"></span>` +
       (isDl ? `<span class="tag">downloaded</span>` : "") +
       `<button class="dl-btn" title="Download" ${isDl ? "disabled" : ""}>&#x2B07;</button>` +
-      `<button class="del-btn" title="Delete" ${isDl ? "" : "disabled"}>&#x1F5D1;</button>`;
+      `<button class="del-btn" title="Delete${isActive ? " (active)" : ""}" ${!isDl || isActive ? "disabled" : ""}>&#x1F5D1;</button>`;
     row.querySelector(".dl-btn").addEventListener("click", () => startModelDownload(name));
     row.querySelector(".del-btn").addEventListener("click", () => deleteModel(name));
     list.appendChild(row);
@@ -707,6 +715,7 @@ function renderModelManager() {
   const custom = state.models.custom || {};
   for (const [filename, info] of Object.entries(custom)) {
     if (search && !filename.toLowerCase().includes(search)) continue;
+    const isActiveCustom = activeFilename === filename;
     const row = document.createElement("div");
     row.className = "model-row";
     row.innerHTML =
@@ -714,7 +723,7 @@ function renderModelManager() {
       `<span class="badge-custom">custom</span>` +
       `<span class="spacer"></span>` +
       (info.downloaded ? `<span class="tag">downloaded</span>` : `<button class="dl-btn" title="Download">&#x2B07;</button>`) +
-      `<button class="del-btn" title="Delete">&#x1F5D1;</button>`;
+      `<button class="del-btn" title="Delete${isActiveCustom ? " (active)" : ""}" ${isActiveCustom ? "disabled" : ""}>&#x1F5D1;</button>`;
     if (!info.downloaded) row.querySelector(".dl-btn").addEventListener("click", () => startCustomDownload(filename));
     row.querySelector(".del-btn").addEventListener("click", () => deleteCustomModel(filename));
     list.appendChild(row);
@@ -861,7 +870,8 @@ document.getElementById("autostartToggle").addEventListener("change", async (e) 
 
 // --- Save/Load ---
 function collect() {
-  for (const el of document.querySelectorAll("[data-path]")) {
+  const scope = document.querySelector(".page.active") || document;
+  for (const el of scope.querySelectorAll("[data-path]")) {
     const type = el.dataset.type;
     let val;
     if (el.type === "checkbox") val = el.checked;
@@ -871,12 +881,15 @@ function collect() {
     else val = el.value;
     if (val !== null) setPath(state.config, el.dataset.path, val);
   }
-  collectSnippets();
+  if (document.getElementById("page-snippets")?.classList.contains("active")) {
+    collectSnippets();
+  }
 }
 
 async function save() {
-  // Validate blank numeric fields before save
-  for (const el of document.querySelectorAll("[data-path][data-type='number']")) {
+  // Validate blank numeric fields before save (scoped to active page)
+  const scope = document.querySelector(".page.active") || document;
+  for (const el of scope.querySelectorAll("[data-path][data-type='number']")) {
     if (el.value.trim() === "" && el.required) {
       toast(`"${el.closest('.field')?.querySelector('label')?.textContent || el.dataset.path}" cannot be blank.`, "err");
       el.focus();
@@ -892,6 +905,9 @@ async function save() {
   try {
     const r = await api("PUT", "/api/config", state.config);
     toast(r.restarted ? "Saved \u2014 worker restarting\u2026" : "Saved.", "ok");
+    if (r.warnings && r.warnings.length) {
+      toast("Warning: " + r.warnings.join(" \u00b7 "), "warn");
+    }
     setTransitionPolling();
     loadStatus();
     await loadModels();

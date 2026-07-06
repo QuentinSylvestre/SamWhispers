@@ -593,16 +593,22 @@ def create_app(
 
     @app.put("/api/config")
     async def put_config(request: Request) -> dict[str, Any]:
+        import warnings as _warnings
+
         payload: dict[str, Any] = await request.json()
-        try:
-            old_cfg = current_app_config(config_path)
-            new_cfg = save_config_dict(payload, config_path)
-        except ValueError as exc:
-            detail = _safe_config_error(str(exc), config_path, payload)
-            raise HTTPException(status_code=400, detail=detail) from exc
-        except OSError as exc:
-            detail = _safe_config_error(str(exc), config_path, payload)
-            raise HTTPException(status_code=500, detail=f"Config save failed: {detail}") from exc
+        with _warnings.catch_warnings(record=True) as caught:
+            _warnings.simplefilter("always")
+            try:
+                old_cfg = current_app_config(config_path)
+                new_cfg = save_config_dict(payload, config_path)
+            except ValueError as exc:
+                detail = _safe_config_error(str(exc), config_path, payload)
+                raise HTTPException(status_code=400, detail=detail) from exc
+            except OSError as exc:
+                detail = _safe_config_error(str(exc), config_path, payload)
+                raise HTTPException(status_code=500, detail=f"Config save failed: {detail}") from exc
+
+        warn_messages = [str(w.message) for w in caught if issubclass(w.category, UserWarning)]
 
         restarted = False
         whisper_restarted = False
@@ -613,7 +619,12 @@ def create_app(
             )
             supervisor.apply_config_change(restart_whisper=whisper_restarted)
             restarted = True
-        return {"saved": True, "restarted": restarted, "whisper_restarted": whisper_restarted}
+        return {
+            "saved": True,
+            "restarted": restarted,
+            "whisper_restarted": whisper_restarted,
+            "warnings": warn_messages,
+        }
 
     @app.get("/api/history")
     def get_history(
