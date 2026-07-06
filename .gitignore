@@ -3,6 +3,7 @@ __pycache__/
 *.egg-info/
 .mypy_cache/
 .pytest_cache/
+.ruff_cache/
 *.pyc
 config.toml
 tools/
