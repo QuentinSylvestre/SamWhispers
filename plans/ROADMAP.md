@@ -1,7 +1,7 @@
 # SamWhispers Roadmap
 
 > **Status**: Living document
-> **Last Updated**: 2026-06-17
+> **Last Updated**: 2026-07-06
 > **Purpose**: Track larger, not-yet-scheduled initiatives. Each item is a
 > candidate, not a commitment; promote an item to a dated plan in `plans/`
 > when it's picked up.
@@ -232,6 +232,216 @@ do here.
 
 ---
 
+## 8. Single-key recording trigger
+
+> **Status**: Candidate
+> **Scope**: Allow a single modifier key (e.g. right-Alt, Fn, Caps Lock) as
+> the recording hotkey, not just multi-key combos.
+> **Origin**: OpenSuperWhisper competitive analysis (July 2026)
+
+Both OpenSuperWhisper and OpenWhispr support single-modifier triggers (Left ⌘,
+Right ⌥, Fn/Globe key). A single key is more ergonomic for hold-to-record —
+the user presses one key with one finger rather than contorting for a combo.
+
+Implementation notes:
+- pynput can detect individual modifier key press/release events on all
+  platforms.
+- Needs disambiguation: a quick tap of Alt (to open menus) vs a hold (to
+  record). Use a minimum hold duration threshold (~150ms) before entering
+  recording state.
+- Config: `hotkey.key = "right_alt"` or `hotkey.key = "caps_lock"` alongside
+  the existing combo syntax.
+- Must not break existing combo-key behavior — detect format and route
+  accordingly.
+
+---
+
+## 9. Post-dictation CLI hooks
+
+> **Status**: Candidate
+> **Scope**: Run a user-defined shell command after each successful
+> transcription, with the transcribed text available as input.
+> **Origin**: OpenSuperWhisper competitive analysis (July 2026)
+
+OpenSuperWhisper ships a CLI tool that supports post-record hooks — run any
+command after dictation completes, piping the transcribed text. This enables
+automation: logging, sending to APIs, triggering workflows, appending to files.
+
+Implementation notes:
+- New config section: `[hooks]` with `post_transcribe = "command"`.
+- The command receives the final text via stdin (or as `$1` / `%1`).
+- Environment variables: `SW_TEXT`, `SW_LANGUAGE`, `SW_DURATION_MS`,
+  `SW_APP` (focused app, if context-awareness is present).
+- Run async (fire-and-forget) so it doesn't block the next dictation.
+- Timeout + log stderr on failure; never let a broken hook crash the app.
+- Optional: `post_cleanup` hook (runs after AI processing, with both raw and
+  cleaned text).
+
+---
+
+## 10. Movable/configurable overlay position
+
+> **Status**: Candidate
+> **Scope**: Let users configure where the on-screen recording indicator
+> appears — cursor-following, screen corners, center, or a fixed offset.
+> **Origin**: OpenSuperWhisper / OpenWhispr competitive analysis (July 2026)
+
+OpenSuperWhisper offers cursor-following, edge-docked, and notch/Dynamic Island
+positions. OpenWhispr's overlay is draggable. Our fixed bottom-center placement
+doesn't suit all workflows (e.g. the overlay may obscure the text you're
+dictating into).
+
+Config: `overlay.position = "bottom-center" | "top-right" | "cursor" | ...`
+plus an optional pixel offset. The overlay module already manages a Tk window;
+extending its geometry logic is straightforward.
+
+---
+
+## 11. Microphone device picker
+
+> **Status**: Candidate
+> **Scope**: Let users select a specific audio input device from the web config
+> UI instead of always using the system default.
+> **Origin**: OpenSuperWhisper / OpenWhispr competitive analysis (July 2026)
+
+Both competitors offer mic selection (menu bar in OpenSuperWhisper, settings in
+OpenWhispr). Users with USB mics, Bluetooth headsets, or multiple inputs need
+this.
+
+Implementation notes:
+- `sounddevice.query_devices()` lists available inputs — expose via a
+  `/api/devices` endpoint.
+- New config: `[audio] device = "default"` or a device name/index.
+- Web UI: dropdown populated from the API, with a "Test" button that captures
+  1s and shows the level.
+- Hot-reload: switching devices should not require a full restart.
+
+---
+
+## 12. History context metadata
+
+> **Status**: Candidate
+> **Scope**: Record which application/window was focused during each dictation,
+> alongside the existing timestamp and duration.
+> **Origin**: OpenSuperWhisper competitive analysis (July 2026)
+
+OpenSuperWhisper's history shows the source app, website, duration, and model
+used for each entry — and lets you re-transcribe with a different model. Adding
+context metadata makes history more useful for review and debugging.
+
+Fields to capture:
+- `app_name` — the focused application (via `GetForegroundWindow` title on
+  Windows, `xdotool getactivewindow` on X11).
+- `model` — which whisper model was used.
+- `engine` — which transcription engine (once multi-engine lands).
+- `language` — detected or forced language.
+
+Store in the existing SQLite history table (new columns). Surface in the web UI
+history tab with filter/search by app.
+
+---
+
+## 13. AI agent / command mode
+
+> **Status**: Candidate
+> **Scope**: Detect a trigger phrase (e.g. "Hey Sam, ...") at the start of a
+> dictation and route the text to an AI model for transformation instead of
+> raw injection.
+> **Origin**: OpenWhispr competitive analysis (July 2026)
+> **Depends on**: Items 2 & 4 (multi-provider / local LLM)
+
+OpenWhispr's agent mode lets users address a named AI assistant during
+dictation ("Hey Assistant, format this as a bullet list"). The AI processes the
+instruction and returns transformed text. This turns dictation into a hands-free
+AI command interface without a separate hotkey.
+
+Implementation notes:
+- Config: `[agent] enabled = true`, `name = "Sam"`,
+  `provider = "openai" | "anthropic" | "local"`.
+- Detection: after transcription, check if text starts with
+  `"hey {name},"` (case-insensitive). If matched, strip the prefix and send the
+  remainder to the AI provider with a system prompt instructing transformation.
+- The agent name is auto-added to the vocabulary list (biases Whisper toward
+  recognizing it).
+- Fallback: if AI fails, inject the original text (minus the trigger prefix)
+  with a notification.
+- Future: a dedicated agent hotkey (separate from dictation hotkey) that always
+  routes to the AI, no trigger phrase needed.
+
+---
+
+## 14. Audio file transcription (batch mode)
+
+> **Status**: Candidate
+> **Scope**: Transcribe existing audio files (drag & drop or file picker) via
+> the web UI or CLI, without requiring live microphone recording.
+> **Origin**: OpenSuperWhisper / OpenWhispr competitive analysis (July 2026)
+
+Both competitors support transcribing pre-recorded audio. OpenSuperWhisper has
+drag & drop with queue processing; OpenWhispr has an upload UI in its Notes
+system.
+
+Implementation notes:
+- Web UI: an "Upload" button in the history tab (or a new "Transcribe File"
+  tab). Accept common formats: WAV, MP3, M4A, FLAC, OGG, WEBM.
+- Convert to 16kHz mono WAV before sending to whisper-server (use ffmpeg or
+  the `soundfile` library).
+- CLI: `samwhispers transcribe <file>` — output text to stdout, or `--json`
+  for structured output with timestamps.
+- Queue: for multiple files, process sequentially with progress indication.
+- Store results in history with `source = "file"` and the filename.
+- Long files: consider chunking (split at silence boundaries) to stay within
+  whisper-server's memory/timeout limits.
+
+---
+
+## 15. Per-app engine/profile rules
+
+> **Status**: Candidate
+> **Scope**: Automatically switch the transcription engine, model, language, or
+> AI cleanup profile based on the currently focused application.
+> **Origin**: OpenSuperWhisper competitive analysis (July 2026)
+> **Depends on**: Items 1 (multi-engine) & 12 (app context detection)
+
+OpenSuperWhisper lets users bind a specific model to an app or website — it
+switches automatically when you dictate there. E.g. use a fast small model in
+Slack, a large accurate model in your email client, enable translation only in
+a specific app.
+
+Implementation notes:
+- Config: `[[rules]]` array with `app_pattern`, `engine`, `model`, `language`,
+  `cleanup_enabled`, `translation_enabled` fields.
+- App detection reuses the platform code from item 12 (history context).
+- Rule matching: glob or regex on window title / process name.
+- UI: a "Rules" section in the web config with add/edit/delete.
+- Fallback: if no rule matches, use the global defaults.
+
+---
+
+## 16. OS credential storage for API keys
+
+> **Status**: Candidate
+> **Scope**: Store provider API keys in the OS keychain/credential vault
+> instead of plaintext config.toml.
+> **Origin**: OpenSuperWhisper / OpenWhispr competitive analysis (July 2026)
+
+OpenSuperWhisper stores secrets in macOS Keychain; OpenWhispr uses `.env` with
+restrictive permissions. Our plaintext TOML is the weakest approach.
+
+Implementation notes:
+- Use the `keyring` Python library (cross-platform: Windows Credential Vault,
+  macOS Keychain, Linux Secret Service/kwallet).
+- Config.toml stores a sentinel value (e.g. `api_key = "@keyring"`) indicating
+  the real key is in the OS store.
+- Web UI: the existing redacted key display + password field continues to work;
+  on save, write to keyring instead of TOML.
+- Migration: on first run with the new version, if a plaintext key exists in
+  TOML, offer to migrate it to keyring and replace with the sentinel.
+- Fallback: if `keyring` is unavailable (headless Linux without a secret
+  service), keep the existing plaintext behavior with a warning.
+
+---
+
 ## Other roadmap candidates (unscheduled)
 
 - **Insertion context pre-prompt** — feed surrounding text / app context into
@@ -242,5 +452,51 @@ do here.
   are in play, to map between engine code sets.
 - **Simple "preferred language" mode** as an alternative to the configured
   list + cycle hotkey, for casual multilingual users.
-- **Audio file upload / batch transcription** (transcribe existing recordings).
 - **MCP server / public API** to expose dictation to AI assistants.
+
+---
+
+## Architecture & patterns to adopt
+
+> **Origin**: Competitive analysis of OpenSuperWhisper & OpenWhispr (July 2026)
+> **Purpose**: Cross-cutting patterns to apply as the codebase evolves, not
+> standalone features.
+
+### A. Remote-engine local fallback
+
+When a remote/cloud transcription engine is configured, automatically fall back
+to the local whisper.cpp engine if the remote server is unreachable (network
+error, timeout, 5xx). OpenSuperWhisper does this transparently. Apply when
+implementing item 3 (cloud BYOK transcription).
+
+### B. Paste fallback chain (Linux)
+
+OpenWhispr implements a robust paste fallback: native binary → wtype (Wayland)
+→ ydotool → xdotool → manual paste prompt. SamWhispers currently relies on
+`xclip` + pynput only. As we move toward broader Linux support (Wayland), adopt
+a tiered fallback in `inject.py` that tries multiple methods and picks the
+first that works.
+
+### C. Engine benchmark data in model selection UI
+
+OpenSuperWhisper shows a per-language WER/speed/score comparison table for all
+engines. When multi-engine lands (item 1), surface benchmark data (measured or
+reference) alongside the model dropdown in the web config to help users make
+informed choices.
+
+### D. Manager lifecycle pattern
+
+OpenWhispr organizes its main process into explicit manager classes
+(WhisperManager, ClipboardManager, HotkeyManager, etc.) each with init/start/
+stop lifecycle methods. SamWhispers already has a reasonable module split, but
+as complexity grows (multiple engines, local LLM, hooks, rules), consider
+formalizing a manager registry with ordered startup/shutdown. This aids
+testability and hot-reload of individual subsystems.
+
+### E. Model re-transcription from history
+
+OpenSuperWhisper lets users re-run a past dictation through a different model
+directly from the history UI. Once multi-engine is in place and we store the
+original audio path (or a short audio buffer) alongside history entries,
+offering "re-transcribe with model X" is a high-value, low-cost addition to
+the history tab.
