@@ -1,7 +1,7 @@
 # Whisper-Streaming Sentence-Boundary Buffer Trimming
 
 > **Date**: 2026-06-16
-> **Status**: Complete  <!-- Status lifecycle: Exploring → Draft → In Progress → Complete -->
+> **Status**: All 4 phases COMPLETE — archived 2026-07-06
 > **Scope**: Replace fixed 30s sliding window in streaming transcription with sentence-boundary buffer trimming (Whisper-Streaming algorithm)
 > **Estimated effort**: 2-3 days
 
