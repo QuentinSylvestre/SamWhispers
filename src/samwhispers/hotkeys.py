@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 import subprocess
-import sys
 import threading
 from collections.abc import Callable
 from typing import Any
@@ -138,15 +137,7 @@ class HotkeyListener:
             self._suppressed = False
             self._pressed.clear()
 
-    def _is_injected(self, injected: Any) -> bool:
-        """Return True if the event was programmatically injected (Windows only)."""
-        if sys.platform != "win32":
-            return False
-        return bool(injected)
-
     def _on_press(self, key: Any, injected: Any = False) -> None:
-        if self._is_injected(injected):
-            return
         with self._lock:
             if self._suppressed:
                 return
@@ -201,8 +192,6 @@ class HotkeyListener:
                 self._on_start()
 
     def _on_release(self, key: Any, injected: Any = False) -> None:
-        if self._is_injected(injected):
-            return
         with self._lock:
             if self._suppressed:
                 return
