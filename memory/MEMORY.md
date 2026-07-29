@@ -32,6 +32,12 @@
 **How to apply**: All new overlay visual elements must use the PIL 4x supersample + LANCZOS downsample pattern established in _render_spinner and _render_checkmark. Do not use raw Tk drawing primitives for user-facing UI.
 **Source**: Session 45ad4165 — overlay polishing | **Verified**: 2026-06-14
 
+### Hotkey listener must accept injected key events — Logitech mouse mapping depends on it
+
+**Why**: The _is_injected filter in hotkeys.py discarded all software-generated keypresses on Windows, which blocked the user's Logitech Options+ mouse-button-to-keyboard mapping from triggering recording. It was deliberately removed with user approval (commit c6c324b, 2026-07-14); paste self-trigger protection is handled by the existing suppress()/resume() mechanism alone. A future agent could plausibly re-add an injected-event filter as a safety improvement and silently break the user's primary trigger path.
+**How to apply**: Do not re-introduce an injected-event check in hotkeys.py _on_press/_on_release. Rely on suppress()/resume() for paste self-trigger protection; if self-triggering regressions appear, fix within suppress()/resume(), not by filtering injected events. (Only the unused `injected` parameters remain at hotkeys.py:140,194 — verified 2026-07-16.)
+**Source**: Session 14892e46 (2026-07-14) + commit c6c324b | **Verified**: 2026-07-16
+
 ## Pattern
 
 ### Worker state lifecycle: STOPPED -> STARTING -> RUNNING -> PAUSED
@@ -44,7 +50,9 @@
 
 **Why**: The user frequently asks for direct implementation of features (overlay polish, model management UI, config webUI rework) without going through /qexplore -> /qplan. Only multi-concern production-grade work gets the full lifecycle treatment.
 **How to apply**: For SamWhispers tasks that are single-file or single-concern (UI rework, visual polish, feature addition to existing modules), implement directly. Reserve /qexplore->/qplan for cross-cutting concerns or production-critical changes with failure modes.
-**Source**: Sessions 45ad4165, ce4f96dc, 44f3f23c (direct) vs 60a930c7, 8d312e75 (full lifecycle) | **Verified**: 2026-06-14
+**Source**: Sessions 45ad4165, ce4f96dc, 44f3f23c (direct) vs 60a930c7, 8d312e75 (full lifecycle) | **Verified**: 2026-07-16
+**Governance-conflict**: contradicts shared/AGENTS.md § Workflow (Plan-before-act gate) — adjudicated 2026-07-16: keep-entry (user affirms the standing waiver for SamWhispers single-concern work)
+**Governance-conflict-quote**: "Only tasks meeting the Trivial-tier criteria defined in `/qplan` Step 1 (unambiguous approach, ≤1 file, no irreversible changes, no external dependencies, no breaking changes) proceed without this prompt. If the user chooses direct implementation, proceed without further confirmation."
 
 
 ### Deferred Timer(0) for audio callback stop actions — never call lock-acquiring methods from _callback
@@ -63,5 +71,5 @@
 ### Window flash on restart requires CREATE_NO_WINDOW flag on subprocess creation
 
 **Why**: The detached relaunch subprocess briefly shows a console window on Windows. Required 5+ fix iterations across 2 sessions spanning 5 days before the correct flag combination resolved it.
-**How to apply**: Any subprocess creation in supervisor.py that spawns a new process on Windows must use `creationflags=CREATE_NO_WINDOW | DETACHED_PROCESS` together. Testing requires a full kill + fresh start cycle.
-**Source**: Sessions abcbfed7, afd1ec22 - 5+ fix iterations before resolution | **Verified**: 2026-07-05
+**How to apply**: Detached relaunch on Windows uses the `pythonw.exe` launcher (`_python_launcher`), a `STARTUPINFO` with `STARTF_USESHOWWINDOW` and `wShowWindow = 0` (SW_HIDE), and `creationflags = _CREATE_NEW_PROCESS_GROUP | _CREATE_NO_WINDOW` — see `_relaunch_detached` in `src/samwhispers/supervisor.py`. **Do not add `DETACHED_PROCESS`**: the `_DETACHED_PROCESS` constant defined in that file has zero use sites and is dead. `autostart.py` is the one place that legitimately pairs `_DETACHED_PROCESS | _CREATE_NO_WINDOW`. Testing still requires a full kill + fresh start cycle.
+**Source**: Sessions abcbfed7, afd1ec22 - 5+ fix iterations before resolution; procedure superseded by commit 04d6ecc (2026-06-19) "fix(windows): eliminate window flash and broken autostart on boot", corrected 2026-07-28 | **Verified**: 2026-07-28

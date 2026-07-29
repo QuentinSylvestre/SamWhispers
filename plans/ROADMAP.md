@@ -501,6 +501,263 @@ Implementation notes:
 
 ---
 
+## 17. Previous clipboard restore
+
+> **Status**: Candidate
+> **Scope**: After injecting transcribed text via clipboard + Ctrl+V, restore
+> the user's previous clipboard content so dictation doesn't destroy it.
+> **Origin**: HyperWhisper competitive analysis (July 2026)
+
+HyperWhisper documents: "your previous clipboard contents are restored
+afterwards." Currently SamWhispers overwrites the clipboard on every
+transcription — a daily friction point for users who copy/paste as part of
+their workflow.
+
+Implementation notes:
+- Before writing the transcribed text to the clipboard, read and save the
+  current clipboard content (text + optionally rich content).
+- After the paste delay + simulated Ctrl+V, restore the saved content.
+- Add a configurable restore delay: `[inject] clipboard_restore_delay = 0.5`
+  (seconds after paste before restoring; allows the target app to process the
+  paste event).
+- Platform considerations: Windows (`win32clipboard`), Linux (`xclip -o`),
+  WSL (`powershell.exe Get-Clipboard`). The existing platform-specific
+  clipboard code in `inject.py` already handles read/write per platform.
+- Edge case: if the user performs another copy between paste and restore,
+  skip the restore (detect clipboard change via content comparison).
+- Config toggle: `[inject] restore_clipboard = true` (default on).
+
+---
+
+## 18. Local API server + MCP bridge
+
+> **Status**: Candidate
+> **Scope**: Expose SamWhispers' transcription, history, and control functions
+> via a local REST API (loopback-only, bearer-auth), plus an MCP bridge for
+> AI coding agents.
+> **Origin**: HyperWhisper competitive analysis (July 2026)
+
+HyperWhisper ships a full local API (`/health`, `/models`, `/modes`,
+`/transcribe`, `/post-process`, `/recordings`) with bearer-token auth and a
+discovery file, plus an `@hyperwhisper/mcp` npm package that wraps it as an MCP
+server for Cursor, Claude Code, Claude Desktop, Zed, etc.
+
+Implementation notes:
+- Leverage the existing Flask/web UI infrastructure — add API routes alongside
+  the config UI (or a separate Blueprint on the same port, `/api/` prefix).
+- Endpoints: `GET /api/health`, `POST /api/transcribe` (accept audio file),
+  `POST /api/cleanup` (text → cleaned text), `GET /api/history` (search),
+  `GET /api/status`, `POST /api/control/{pause,resume,restart}`.
+- Auth: generate a bearer token on first start, write to a discovery file
+  (`~/.config/samwhispers/local-api.json` or `%LOCALAPPDATA%\samwhispers\`).
+  Token stored with restrictive permissions. Re-use the existing CSRF
+  infrastructure for browser requests.
+- MCP bridge: a thin Python MCP server (or Node wrapper) that reads the
+  discovery file and exposes tools: `health`, `transcribe`, `post_process`,
+  `search_history`, `get_recording`. Published as a pip-installable extra
+  (`pip install samwhispers[mcp]`).
+- Enables: Raycast shortcuts, CLI scripting, automation, AI coding agent
+  integration, Shortcuts.app on macOS.
+
+---
+
+## 19. Named transcription modes / preset system
+
+> **Status**: Candidate
+> **Scope**: Let users define multiple named transcription profiles (modes),
+> each with its own AI cleanup prompt preset, language, formatting options,
+> and engine settings — switchable via hotkey.
+> **Origin**: HyperWhisper competitive analysis (July 2026)
+
+HyperWhisper's mode system is its single strongest UX advantage: users create
+profiles like "Email" (formal tone, punctuation, sign-off formatting), "Slack"
+(casual, no periods), "Code" (symbol conversion, no auto-caps), "Meeting"
+(extracts action items), each with independent engine, language, and PP
+settings. A hotkey cycles between modes with a notification.
+
+SamWhispers currently has a single global config — one cleanup prompt, one
+language cycle, one set of formatting rules. The language cycle hotkey is the
+closest analogue but only changes language, not the full behavior profile.
+
+Implementation notes:
+- Data model: a `[[modes]]` array in TOML (or a separate `modes.toml`), each
+  entry with: `name`, `preset` (hyper/email/code/meeting/note/custom),
+  `language`, `cleanup_enabled`, `cleanup_prompt` (custom system prompt),
+  `postprocess` overrides (trailing, collapse, trim), `engine` (once
+  multi-engine lands).
+- Built-in presets: ship prompt templates for common use cases (general,
+  email, code, meeting, note, custom). The Custom preset uses a user-written
+  system prompt.
+- Hotkey: `[hotkey] mode_key = "ctrl+shift+m"` — cycles through modes with
+  a desktop notification showing the active mode name.
+- Web UI: a "Modes" section with add/edit/delete, preset picker, per-mode
+  settings panel.
+- Runtime: the active mode's settings override the global defaults for the
+  duration of that dictation.
+- Migration: existing single-config users get a default "General" mode
+  matching their current settings; no breaking change.
+- Relationship to item 15 (per-app rules): rules can reference a mode by
+  name for automatic switching.
+
+---
+
+## 20. Voice commands in post-processing prompts
+
+> **Status**: Candidate
+> **Scope**: Teach the AI cleanup prompt to recognize and execute in-text
+> formatting commands ("new paragraph", "exclamation mark", "actually I mean",
+> email/URL dictation).
+> **Origin**: HyperWhisper competitive analysis (July 2026)
+
+HyperWhisper's Hyper preset handles voice commands naturally during
+post-processing: "new paragraph" inserts a paragraph break, "exclamation mark"
+becomes `!`, "at example dot com" becomes `example@example.com`, "actually I
+mean X" replaces the preceding clause with X.
+
+SamWhispers' cleanup prompt does not currently handle any of these — spoken
+punctuation and corrections remain as literal text in the output.
+
+Implementation notes:
+- Pure prompt engineering: add a "Voice Commands" section to the AI cleanup
+  system prompt that instructs the model to interpret these cues:
+  - **Punctuation**: "period", "comma", "exclamation mark", "question mark",
+    "colon", "semicolon", "open paren", "close paren", "open quote",
+    "close quote", "dash", "ellipsis".
+  - **Structure**: "new line", "new paragraph", "bullet point".
+  - **Self-correction**: "actually I mean...", "no wait...", "scratch that..."
+    — delete preceding clause, keep only the correction.
+  - **Email/URL**: "at [domain] dot [tld]" → `@domain.tld`.
+  - **Capitalization**: "in capitals [word]", "all caps [phrase]".
+- Config toggle: `[cleanup] voice_commands = true` (default on when cleanup is
+  enabled) — so users who want verbatim "exclamation mark" in output can
+  disable it.
+- Locale-aware: French equivalents ("point d'exclamation", "à la ligne",
+  "nouveau paragraphe") when language is `fr`.
+- No code change beyond the system prompt template — the LLM handles
+  interpretation. Test with both OpenAI and Anthropic models.
+
+---
+
+## 21. Screen OCR context for improved recognition
+
+> **Status**: Candidate
+> **Scope**: Capture visible text on the user's screen at recording start and
+> feed it to the AI as context for better proper noun / identifier spelling.
+> **Origin**: HyperWhisper competitive analysis (July 2026)
+
+HyperWhisper's "Screen OCR" feature captures visible text when recording
+starts and passes it to the AI post-processing step. This dramatically improves
+recognition of proper nouns, variable names, and technical terms the user is
+looking at while dictating.
+
+Implementation notes:
+- Capture: on recording start, take a screenshot of the focused window (or
+  full screen) and run OCR.
+  - Windows: `win32gui` for window capture + Windows.Media.Ocr (UWP OCR API)
+    or pytesseract.
+  - Linux: `xdotool` + `tesseract-ocr` (or `python-Levenshtein` + screenshot).
+- Processing: extract text from OCR, limit to ~500-1000 tokens, and prepend
+  to the AI cleanup prompt as context: "The user is looking at the following
+  text on screen: [...]".
+- Also feed extracted proper nouns/identifiers to whisper's `initial_prompt`
+  for recognition biasing (complements the existing vocabulary feature).
+- Per-mode toggle: `screen_ocr = true` (off by default; useful for code and
+  technical work, unnecessary for casual chat).
+- Privacy: all OCR runs locally; no screenshot data is sent to cloud unless
+  the user has cloud cleanup enabled (in which case the extracted *text* — not
+  the image — is included in the prompt).
+- Performance: OCR adds ~200-500ms; run async during the recording so it's
+  ready by the time transcription completes.
+
+---
+
+## 22. Settings backup & export
+
+> **Status**: Candidate
+> **Scope**: Export/import all settings, modes, vocabulary, snippets, and
+> optionally history as a portable file for machine migration or backup.
+> **Origin**: HyperWhisper competitive analysis (July 2026)
+
+HyperWhisper has a cross-platform JSON backup schema (`shared-backup/`)
+enabling full settings export/import between platforms. SamWhispers has no
+backup/restore mechanism — users must manually copy `config.toml` and the
+SQLite DB.
+
+Implementation notes:
+- Export format: a single JSON file containing:
+  - `config` — full config.toml content (as JSON, sans API keys unless opted
+    in).
+  - `modes` — all named modes (once item 19 lands).
+  - `vocabulary` — global + per-language word lists.
+  - `snippets` — all trigger/expansion pairs.
+  - `history` — optional; last N entries or date range.
+  - `metadata` — export timestamp, app version, platform.
+- Web UI: "Backup" section in settings with "Export" and "Import" buttons.
+- CLI: `samwhispers backup export > backup.json`,
+  `samwhispers backup import backup.json`.
+- API key handling: by default, keys are excluded from export (replaced with
+  a placeholder). Optional `--include-keys` flag for same-user migration.
+- Import: validate schema version, warn on conflicts (e.g. different model
+  paths), merge or replace (user choice).
+- Store a schema version for forward compatibility.
+
+---
+
+## 23. English spelling variant selection
+
+> **Status**: Candidate
+> **Scope**: Per-mode selection of English spelling variant (American, British,
+> Australian, Canadian) applied during AI post-processing.
+> **Origin**: HyperWhisper competitive analysis (July 2026)
+
+HyperWhisper allows pinning a spelling variant per mode so the AI uses
+consistent conventions (color vs colour, organize vs organise, favor vs
+favour). SamWhispers has no such control — output spelling depends on the
+model's default behavior.
+
+Implementation notes:
+- Config: `[cleanup] english_variant = "american"` (or `"british"`,
+  `"australian"`, `"canadian"`). Per-mode override when mode system (item 19)
+  is present.
+- Implementation: append a single line to the AI cleanup system prompt:
+  "Use [variant] English spelling conventions consistently (e.g. colour not
+  color)." — pure prompt engineering, no code logic.
+- Applicable only when: cleanup is enabled AND detected/forced language is
+  English.
+- Web UI: dropdown in the cleanup settings section (or per-mode editor).
+- Default: none (model's natural behavior) — existing behavior is preserved.
+
+---
+
+## 24. Sound feedback on recording events
+
+> **Status**: Candidate
+> **Scope**: Play configurable audio cues on recording start, stop, and
+> transcription complete — non-visual confirmation especially useful when the
+> overlay is disabled or the user isn't watching the screen.
+> **Origin**: HyperWhisper competitive analysis (July 2026)
+
+HyperWhisper has configurable start/stop sounds. SamWhispers currently provides
+only visual feedback (overlay pill + notifications). Users dictating while
+looking away, or with the overlay disabled, have no confirmation that recording
+started or stopped.
+
+Implementation notes:
+- Ship small WAV files (~5-20KB each): `start.wav`, `stop.wav`, `done.wav`
+  (transcription complete). Place in `src/samwhispers/assets/sounds/`.
+- Playback: use `sounddevice.play()` (already a dependency) or the lighter
+  `winsound` (Windows) / `aplay` (Linux) for minimal latency.
+- Config: `[sounds] enabled = true`, `start = "default"`, `stop = "default"`,
+  `done = "default"`. Values: `"default"` (bundled), `"none"` (disable that
+  cue), or a path to a custom WAV file.
+- Volume: `[sounds] volume = 0.5` (0.0-1.0 scale).
+- Play async (non-blocking) so sounds don't add latency to the recording
+  pipeline.
+- Respect system Do Not Disturb / Focus modes: skip playback if the OS is in
+  a DND state (Windows: query Focus Assist; Linux: check D-Bus DND property).
+
+---
+
 ## Other roadmap candidates (unscheduled)
 
 - **Insertion context pre-prompt** — feed surrounding text / app context into
@@ -511,7 +768,6 @@ Implementation notes:
   are in play, to map between engine code sets.
 - **Simple "preferred language" mode** as an alternative to the configured
   list + cycle hotkey, for casual multilingual users.
-- **MCP server / public API** to expose dictation to AI assistants.
 
 ---
 
