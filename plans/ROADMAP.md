@@ -1,7 +1,7 @@
 # SamWhispers Roadmap
 
 > **Status**: Living document
-> **Last Updated**: 2026-07-06
+> **Last Updated**: 2026-07-29
 > **Purpose**: Track larger, not-yet-scheduled initiatives. Each item is a
 > candidate, not a commitment; promote an item to a dated plan in `plans/`
 > when it's picked up.
@@ -73,8 +73,8 @@ choice, without the rest of the app caring which is active.
    ABC (`streaming.py`) into a broader transcription-backend interface used by
    both batch and streaming paths: `transcribe(audio) -> text` plus optional
    streaming/partials. Engines: `whisper_cpp` (current), `faster_whisper`
-   (already present for streaming), `parakeet_onnx` (new), and potentially a
-   generic `onnx_whisper`.
+   (already present for streaming), `parakeet_onnx` (new), `voxtral_realtime`
+   (new, see below), and potentially a generic `onnx_whisper`.
 2. **Acceleration as a provider dimension.** Add an `acceleration`/`device`
    setting (`cpu`, `cuda`, `metal`, `coreml`, `directml`, `vulkan`, `openvino`,
    `auto`) resolved per engine. The supervisor already owns and (re)launches
@@ -88,6 +88,16 @@ choice, without the rest of the app caring which is active.
 5. **Keep multilingual on Whisper.** Parakeet is offered as an opt-in for
    English/European users; auto-detect + 99-language support stays on Whisper so
    our multi-language advantage is preserved.
+6. **Evaluate Voxtral Realtime as the multilingual streaming engine.**
+   Mistral's Voxtral Realtime (open weights, Apache 2.0; 970M causal audio
+   encoder + 3.4B LM) is streaming-native with a configurable 80–1200 ms delay
+   (480 ms recommended) and beats Whisper large-v3 on multilingual FLEURS WER
+   (~5.9% vs ~7.4%). If it holds up on our audio, it partly **dissolves the
+   trade-off in point 5** — today the plan accepts a multilingual regression as
+   the price of streaming-native decoding, and Voxtral is the one open model
+   that offers both. Cost is footprint: it is far larger than Parakeet 0.6B and
+   realistically wants a GPU, so it complements rather than replaces the
+   Parakeet-on-CPU path.
 
 ### Phasing (rough)
 
@@ -132,12 +142,51 @@ offline end-to-end.
 
 > **Status**: Exploring
 > **Scope**: Optional cloud transcription engine (OpenAI/Groq/etc.) as an
-> alternative to local whisper.cpp, for speed or low-power devices.
+> alternative to local whisper.cpp — for speed and low-power devices, but also
+> for provider-side features we cannot match locally (keyword hints,
+> topic/context prompts, broad language coverage).
 
 We're local-only for transcription. Add a `cloud` engine behind the backend
 abstraction (item 1) that POSTs audio to a transcription API with the user's
 own key. Fits the same engine-selection UI; reuses the multi-provider plumbing
 (item 4). Must remain opt-in (privacy).
+
+### 3.1 Batch (request/response)
+
+The straightforward half, and the place to start. `WhisperClient._post_with_retry`
+already POSTs multipart `file` + `temperature` + `response_format` + `language`
++ `prompt`, which is nearly OpenAI's `/v1/audio/transcriptions` shape minus a
+`model` field — so a sibling client is a small change once the backend
+abstraction exists. Candidate providers as of July 2026: Groq
+(whisper-large-v3-turbo, ~$0.04/hr — by far the cheapest and the same weights we
+already run), Mistral Voxtral Mini Transcribe (~$0.18/hr), OpenAI GPT Transcribe
+(~$0.27/hr, adds keyword + context hints), AssemblyAI (~$0.21/hr).
+
+### 3.2 Streaming (session-based)
+
+**Not covered by 3.1, and a materially different integration.** Streaming
+transcription APIs — OpenAI GPT Live Transcribe (a.k.a. `gpt-realtime-whisper`,
+~$1.02/hr), Deepgram (~$0.46/hr), Mistral Voxtral Realtime (~$0.36/hr) — are
+**WebSocket sessions that push incremental deltas**, not request/response calls.
+Our `StreamingEngine.transcribe(audio, sample_rate) -> TranscribeResult` is
+*pull-based re-decode*; a remote session inverts that control flow.
+
+What this implies:
+
+- The engine interface needs a **push/event-shaped variant** (callback or queue
+  of deltas) alongside today's pull method — a broader change than the
+  transducer-vs-chunked concern already noted in item 1's risks, which is about
+  *local* engines.
+- **`LocalAgreement` becomes redundant** on this path. These APIs emit their own
+  partial-vs-stable distinction, so prefix stabilization would be re-deriving
+  something the provider already tells us. The `_detect_repetition` hallucination
+  guard is likewise Whisper-specific.
+- New failure modes with no analogue in the batch path: connection lifecycle,
+  mid-utterance reconnect, and auth failures *during* a recording rather than
+  before it. Pattern A (remote-engine local fallback) has to handle a session
+  dropping halfway through, not just an unreachable endpoint.
+- Billing is per-second of open session, which makes item 4's metering gap
+  (below) sharper here than for batch.
 
 ## 4. Multi-provider management (BYOK)
 
@@ -150,6 +199,16 @@ OpenWhispr manages many providers (GPT-5, Claude, Gemini, Groq, local). Replace
 our two-provider cleanup config with a provider registry (name, base URL, key,
 model, type) that any AI feature can reference, surfaced in the config UI.
 Foundation for items 2, 3, and a future actions/agent feature.
+
+**Open gap — usage & cost accounting.** The registry shape above (name, base
+URL, key, model, type) suits cleanup and translation, which are per-request text
+operations. Cloud transcription (item 3) is billed **per minute of audio**, and
+streaming (3.2) per second of open session — a different billing shape with no
+representation in the registry today. Without at least minute counting and a
+visible running total, a user cannot tell what a dictation habit costs, and a
+stuck-open streaming session bills silently. Decide whether metering lives in
+the registry (per-provider unit + rate) or in the transcription layer before
+building either.
 
 ## 5. Meeting capture & diarization
 
