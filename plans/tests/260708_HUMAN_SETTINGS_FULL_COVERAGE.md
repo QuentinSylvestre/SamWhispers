@@ -54,8 +54,8 @@ Change **one setting at a time** via the config UI (or config.toml), save, wait 
 ## Vocabulary Biasing
 
 - [x] **vocabulary.words = ["RSSI", "pynput", "SamWhispers"]** — Say "RSSI" in a sentence. Confirm recognized correctly vs without vocabulary (where it often becomes "RSCI" or "RSS I").
-- [ ] **vocabulary per-lang: [vocabulary.en] words = ["Bluetooth"]** — Set language to "en", check `-v` log: "Bluetooth" appears in initial_prompt. Switch to "fr": absent from prompt.
-- [ ] **vocabulary in auto mode** — Only global `words` sent (per-lang ignored since language unknown). Check `-v` log.
+- [x] **vocabulary per-lang: [vocabulary.en] words = ["Bluetooth"]** — Set language to "en", check `-v` log: "Bluetooth" appears in initial_prompt. Switch to "fr": absent from prompt.
+- [x] **vocabulary in auto mode** — Only global `words` sent (per-lang ignored since language unknown). Check `-v` log.
 
 ## Filler Removal
 
