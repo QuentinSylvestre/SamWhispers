@@ -73,3 +73,13 @@
 **Why**: The detached relaunch subprocess briefly shows a console window on Windows. Required 5+ fix iterations across 2 sessions spanning 5 days before the correct flag combination resolved it.
 **How to apply**: Detached relaunch on Windows uses the `pythonw.exe` launcher (`_python_launcher`), a `STARTUPINFO` with `STARTF_USESHOWWINDOW` and `wShowWindow = 0` (SW_HIDE), and `creationflags = _CREATE_NEW_PROCESS_GROUP | _CREATE_NO_WINDOW` — see `_relaunch_detached` in `src/samwhispers/supervisor.py`. **Do not add `DETACHED_PROCESS`**: the `_DETACHED_PROCESS` constant defined in that file has zero use sites and is dead. `autostart.py` is the one place that legitimately pairs `_DETACHED_PROCESS | _CREATE_NO_WINDOW`. Testing still requires a full kill + fresh start cycle.
 **Source**: Sessions abcbfed7, afd1ec22 - 5+ fix iterations before resolution; procedure superseded by commit 04d6ecc (2026-06-19) "fix(windows): eliminate window flash and broken autostart on boot", corrected 2026-07-28 | **Verified**: 2026-07-28
+
+### Duplicate supervisor instances cause tray icon loss and settings_url becoming None
+
+**Why**: When two supervisor processes run simultaneously (e.g. autostart fires while a prior instance is still alive), neither has the web server listening. The `settings_url` field is `None` in the running supervisor because only one instance "wins" the socket, and the tray icon may show no functional menu. Diagnosis requires checking for multiple Python processes matching the supervisor pattern.
+**How to apply**: When the tray icon appears unresponsive or the settings window cannot be opened, check for duplicate supervisor instances first: `Get-Process python | Where-Object { $_.CommandLine -like '*samwhispers*' }` (or `ps aux | grep samwhispers`). Kill all but one and verify the survivor has `settings_url` set. The root race is `_relaunch_detached()` being called while the prior process is still cleaning up — the autostart path is the most common trigger.
+**Source**: Session 48178640 (2026-08-05) — "There are **two supervisor instances running** (PIDs 9296 and 26884)... neither has the web server listening... The web server (`settings_url`) is `None` in the running supervisor." | **Verified**: 2026-08-18 (sweep, verifier-confirmed)
+
+## Declined
+
+<!-- Declination records: the user's Skip of an agent-initiated memory proposal. A live row suppresses re-proposal of that subject for 60 days. Sessions append rows only; the /qdream sweep prunes expired rows. Row format: - "<proposed heading>" — declined <YYYY-MM-DD> (<reason, if given>) -->
