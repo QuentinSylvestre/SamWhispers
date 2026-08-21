@@ -2,7 +2,13 @@
 
 from __future__ import annotations
 
+import json
+import os
+import socket
+import subprocess
 import sys
+import time
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -393,3 +399,128 @@ def test_start_whisper_notifies_on_failure() -> None:
         "SamWhispers",
         "Voice transcription unavailable \u2014 the speech engine failed to start",
     )
+
+
+# ---------------------------------------------------------------------------
+# 4c: web_enabled=False when port pre-bound (subprocess integration test)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="supervisor integration test (Windows only)")
+@pytest.mark.integration
+def test_web_enabled_false_when_port_bound() -> None:
+    """web_enabled must be False in runtime.json when port 7891 is already bound.
+
+    IMPORTANT: This test must run with no other supervisor instance active.
+    A running supervisor already holds the lock; a new subprocess would be
+    blocked by the Phase 1 guard and never write runtime.json.
+    """
+    # Pre-bind port 7891 so the supervisor's uvicorn thread cannot bind it.
+    srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    srv.bind(("127.0.0.1", 7891))
+    srv.listen(1)
+    proc = None
+    try:
+        proc = subprocess.Popen(
+            [
+                sys.executable,
+                "-m",
+                "samwhispers",
+                "supervisor",
+                "--foreground",
+                "--no-tray",
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        # runtime.json is written to the default data dir on Windows.
+        data_dir = Path(os.environ.get("LOCALAPPDATA", "")) / "samwhispers"
+        meta_path = data_dir / "runtime.json"
+
+        # Poll up to 12s: 2s web-poll timeout + startup overhead + safety margin.
+        deadline = time.time() + 12
+        while time.time() < deadline:
+            if meta_path.exists():
+                break
+            time.sleep(0.1)
+
+        if proc.poll() is None:
+            proc.terminate()
+            proc.wait(timeout=5)
+        else:
+            proc.wait(timeout=5)
+
+        assert meta_path.exists(), "runtime.json was never written"
+        meta = json.loads(meta_path.read_text())
+        assert meta["web_enabled"] is False, (
+            f"Expected web_enabled=False when port 7891 is pre-bound, got: {meta}"
+        )
+        assert meta["web_port"] is None, (
+            f"Expected web_port=None when port 7891 is pre-bound, got: {meta}"
+        )
+    finally:
+        srv.close()
+        if proc is not None and proc.poll() is None:
+            proc.terminate()
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+
+
+# ---------------------------------------------------------------------------
+# 4d: supervisor.pid absent after clean exit (subprocess integration test)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="supervisor integration test (Windows only)")
+@pytest.mark.integration
+def test_supervisor_pid_cleaned_on_exit() -> None:
+    """supervisor.pid must not exist after a clean supervisor exit.
+
+    IMPORTANT: This test must run with no other supervisor instance active.
+    A running supervisor already holds the lock; the new subprocess would exit
+    immediately via the Phase 1 guard before writing supervisor.pid.
+    """
+    data_dir = Path(os.environ.get("LOCALAPPDATA", "")) / "samwhispers"
+    pid_file = data_dir / "supervisor.pid"
+
+    proc = subprocess.Popen(
+        [
+            sys.executable,
+            "-m",
+            "samwhispers",
+            "supervisor",
+            "--foreground",
+            "--no-tray",
+            "--no-web",
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    try:
+        # Wait up to 5s for supervisor.pid to appear, confirming the supervisor
+        # has passed lock acquisition and written its PID.
+        deadline = time.time() + 5
+        while time.time() < deadline:
+            if pid_file.exists():
+                break
+            time.sleep(0.1)
+        assert pid_file.exists(), (
+            "supervisor.pid was never written — check that no other supervisor is running"
+        )
+
+        proc.terminate()
+        proc.wait(timeout=5)
+
+        assert not pid_file.exists(), (
+            f"supervisor.pid was not removed on clean exit: {pid_file}"
+        )
+    finally:
+        if proc.poll() is None:
+            proc.terminate()
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()

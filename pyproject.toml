@@ -35,6 +35,11 @@ where = ["src"]
 [tool.setuptools.package-data]
 samwhispers = ["web/*.html", "web/**/*", "assets/**/*"]
 
+[tool.pytest.ini_options]
+markers = [
+    "integration: subprocess integration tests that require no running supervisor instance",
+]
+
 [tool.ruff]
 target-version = "py311"
 line-length = 100
