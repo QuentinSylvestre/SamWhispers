@@ -761,16 +761,16 @@ QA verification: PASS (CLI surface, 3 probes — guard fires, message to stderr 
 
 ### 2026-08-21 — Implementation Review (after Phase 2, personas: Senior engineer, Reliability engineer, Architect, Maintainability reviewer)
 
-Implementation health: Yellow (3 unresolved Medium — escalated to user).
-11 findings (0 High, 3 Medium escalated, 8 Low resolved). Cycle 2: clean (no new issues).
+Implementation health: Green (all Mediums resolved by user-directed fixes).
+11 findings (0 High, 3 Medium all fixed, 8 Low resolved). Cycle 2: clean. User directed: fix all three Mediums (commit 333f7d9).
 QA verification: PASS (library surface — is_ready property, 4 probes). Integration SC-2 test: BLOCKED — requires supervisor restart to exercise live port-conflict path.
 
 | # | Severity | Finding | Resolution |
 |---|---|---|---|
 | R3 | Medium | `shutdown()` swallows thread-join timeout; orphaned thread possible with no log | Fixed — added `is_alive()` check + `log.warning` after `join()` (commit 9d4b1ac) |
-| S1 | Medium | `_start_web()` emits "Config UI available at..." before poll; bind failure produces contradictory messages | Orchestrator: proposed-accept — pre-existing log placement; moving it is a scope extension beyond Phase 2 spec |
-| R2 | Medium | 2s poll timeout may produce false-negative on slow boot-time machine (uvicorn startup ~1–1.5s) | Orchestrator: proposed-accept — Design Decision Q4 explicitly chose 2s; documented as risk in plan |
-| A1 | Medium | `csrf_token` still accessed via `web_handle.server.config.app.state.csrf_token` in supervisor.py; incomplete encapsulation | Orchestrator: proposed-accept — pre-existing pattern; out of Phase 2 spec scope; add `csrf_token` property in follow-up |
+| S1 | Medium | `_start_web()` emits "Config UI available at..." before poll; bind failure produces contradictory messages | Fixed — log moved to `main()` post-poll, guarded by `web_handle is not None` (commit 333f7d9) |
+| R2 | Medium | 2s poll timeout may produce false-negative on slow boot-time machine (uvicorn startup ~1–1.5s) | Fixed — timeout widened to 5s; warning message updated (commit 333f7d9) |
+| A1 | Medium | `csrf_token` still accessed via `web_handle.server.config.app.state.csrf_token` in supervisor.py; incomplete encapsulation | Fixed — added `csrf_token` property to `WebServerHandle`; call site updated (commit 333f7d9) |
 | M1 | Low | `effective_port_for_log` duplicated `effective_port` — same expression, different names | Fixed — unified into single `effective_port` before poll block (commit 9d4b1ac) |
 | M2 | Low | `while/else` comment inaccurately said "without server.started"; actual condition is deadline-with-alive-thread | Fixed — updated to "Deadline reached with thread still alive but port not bound." (commit 9d4b1ac) |
 | R4 | Low | `is_ready` reads `server.started` without memory barrier; GIL dependency undocumented | Fixed — added CPython GIL note to `is_ready` docstring (commit 9d4b1ac) |
