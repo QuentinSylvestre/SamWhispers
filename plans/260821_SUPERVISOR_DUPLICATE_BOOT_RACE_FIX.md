@@ -1,7 +1,7 @@
 # Supervisor Duplicate Boot Race Fix
 
 > **Date**: 2026-08-21
-> **Status**: Draft
+> **Status**: In Progress
 > **Last Updated**: <set by /qclose at archival>
 > **Scope**: Fix three defects causing duplicate supervisor instances, silent web misconfiguration, and stale PID files
 > **Estimated effort**: ~4 hours
@@ -247,11 +247,11 @@ By the time the new child reaches the new `is_running()` check, the lock is free
 provably safe: `_relaunch_detached()` is called only after `finally` exits.
 
 **Exit criteria**:
-- [ ] `is_running` guard inserted before `logging.basicConfig` in the `--foreground` branch
-- [ ] Uses `print(..., file=sys.stderr)` not `log.error` (logger not yet configured)
-- [ ] No `webbrowser.open()` added
-- [ ] `ruff check src/samwhispers/supervisor.py` passes
-- [ ] `mypy src/` passes
+- [x] `is_running` guard inserted before `logging.basicConfig` in the `--foreground` branch
+- [x] Uses `print(..., file=sys.stderr)` not `log.error` (logger not yet configured)
+- [x] No `webbrowser.open()` added
+- [x] `ruff check src/samwhispers/supervisor.py` passes
+- [x] `mypy src/` passes
 
 ---
 
@@ -692,7 +692,14 @@ mypy src/
 
 ## 9) Implementation Divergences from Plan
 
-<Reserved — filled during implementation>
+### Phase 1 divergences
+
+None.
+
+### Phase 1 implementation notes
+
+Implementation (2026-08-21, code: 7605bc1 + a205f8a)
+In `src/samwhispers/supervisor.py`, inside `main()`, a 10-line early-exit guard was inserted immediately before the `logging.basicConfig(...)` call in the `--foreground` branch (after the `if not args.foreground:` block ends at line 568). The guard imports `is_running` from `samwhispers.singleinstance` under the alias `_is_running` to avoid any name collision, calls it, and if another instance already holds the lock it writes a message to stderr via `print(..., file=sys.stderr)` (not `log.error`, because the logger is not yet configured at that point) and returns immediately. No `webbrowser.open()` or any other logic was added. The existing `lock.acquire()` call that follows `logging.basicConfig` remains unchanged as the authoritative gate — this guard is purely an optimization that lets losing foreground children exit before allocating logging resources or starting any threads. Review auto-fixes (commit a205f8a): removed redundant `import sys` (already at module level), dropped unnecessary `_is_running` alias (import as `is_running` to match sibling branch at ~L553).
 
 ## Follow-up Work (Deferred)
 
@@ -729,6 +736,21 @@ High effort, 4 personas: Architect, Senior engineer, Reliability engineer, Maint
 | 11 | Low | Phase 1 used `log.error` before `logging.basicConfig` ran | Fixed — changed to `print(..., file=sys.stderr)` with rationale |
 | C | — | Tray restart: new child's `is_running()` fires before lock released | Refuted by verifier — `lock.release()` provably runs before `_relaunch_detached()` is called |
 | J | — | Import `pid_path` inside `finally` would suppress `ImportError` | Refuted by verifier — module already loaded earlier in `main()`; re-import is a cache lookup |
+
+### 2026-08-21 — Implementation Review (after Phase 1, personas: Senior engineer, Reliability engineer, Maintainability reviewer, Architect)
+
+Implementation health: Green.
+6 findings (0 High, 0 Medium, 6 Low). All auto-fixable Low findings resolved in cycle 1. Cycle 2 skipped — cycle-1 findings all Low + auto-fixes purely mechanical.
+QA verification: PASS (CLI surface, 3 probes — guard fires, message to stderr only, logging.basicConfig not called when guard fires).
+
+| # | Severity | Finding | Resolution |
+|---|---|---|---|
+| 1 | Low | Redundant `import sys` inside the `if is_running():` block; `sys` already imported at module level | Fixed — removed inner `import sys` (commit a205f8a) |
+| 2 | Low | `_is_running` alias inconsistent with sibling non-foreground branch which uses `is_running` unaliased | Fixed — dropped alias, import as `is_running` (commit a205f8a) |
+| 3 | Low | TOCTOU window note in plan slightly overstates risk; gap existed before this change in non-foreground path | Orchestrator: proposed-accept — no code change; plan Risk Assessment already treats this as Low |
+| 4 | Low | Exit code 0 on duplicate-instance early exit; `sys.exit(1)` would be more conventional | Orchestrator: proposed-accept — plan specifies `return`; behavior is intentional optimization path |
+| 5 | Low | Pre-existing test failure (`test_windows_target_anchors_on_script_dir`) unrelated to Phase 1 | Orchestrator: proposed-accept — pre-existing defect, not a Phase 1 responsibility |
+| 6 | Low | Two deferred `from samwhispers.singleinstance import ...` statements within `main()` | Orchestrator: proposed-accept — intentional by plan design; combining would move InstanceLock import earlier |
 
 ## Harness Improvement Opportunities
 
