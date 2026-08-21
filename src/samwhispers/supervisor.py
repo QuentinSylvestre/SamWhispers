@@ -567,6 +567,21 @@ def main() -> None:
         _relaunch_detached(args)
         return
 
+    # Early-exit guard: mirrors the non-foreground branch's is_running() check.
+    # The real lock.acquire() below is still the authoritative gate; this is an
+    # optimization that avoids logging setup and resource allocation in the losing child.
+    from samwhispers.singleinstance import is_running as _is_running
+
+    if _is_running():
+        # Log to stderr directly: logging not yet configured at this point.
+        import sys
+
+        print(
+            "Another SamWhispers instance is already running; exiting.",
+            file=sys.stderr,
+        )
+        return
+
     logging.basicConfig(
         level=logging.DEBUG if args.verbose else logging.INFO,
         format="%(asctime)s %(levelname)-8s %(name)s: %(message)s",
