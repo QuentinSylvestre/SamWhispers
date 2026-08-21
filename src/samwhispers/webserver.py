@@ -713,6 +713,14 @@ class WebServerHandle:
         """
         return bool(self.server.started)
 
+    @property
+    def csrf_token(self) -> str | None:
+        """CSRF token for the web UI, or None if not available."""
+        try:
+            return self.server.config.app.state.csrf_token  # type: ignore[attr-defined]
+        except AttributeError:
+            return None
+
     def shutdown(self) -> None:
         self.server.should_exit = True
         self.thread.join(timeout=5.0)

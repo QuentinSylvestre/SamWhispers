@@ -624,7 +624,7 @@ def main() -> None:
     from samwhispers.webserver import DEFAULT_PORT
     effective_port = args.web_port or DEFAULT_PORT
     if web_handle is not None:
-        deadline = time.monotonic() + 2.0
+        deadline = time.monotonic() + 5.0
         while time.monotonic() < deadline:
             if web_handle.is_ready:
                 break
@@ -640,18 +640,20 @@ def main() -> None:
         else:
             # Deadline reached with thread still alive but port not bound.
             log.warning(
-                "Web server did not confirm bind on port %d within 2s; disabling web UI",
+                "Web server did not confirm bind on port %d within 5s; disabling web UI",
                 effective_port,
             )
             web_handle.shutdown()
             web_handle = None
 
     settings_url = web_handle.url if web_handle else None
+    if web_handle is not None:
+        log.info("Config UI available at %s", settings_url)
 
     # Write runtime metadata now that web topology and CSRF token are known
     from samwhispers.runtime import RuntimeMetadata, write_metadata
 
-    csrf_token = web_handle.server.config.app.state.csrf_token if web_handle else None
+    csrf_token = web_handle.csrf_token if web_handle else None
     meta = RuntimeMetadata(
         pid=os.getpid(),
         web_enabled=not args.no_web and web_handle is not None,
@@ -738,7 +740,6 @@ def _start_web(
 
         app = create_app(supervisor, config_path=config_path, stop_callback=stop_callback)
         handle = serve(app, port=port or DEFAULT_PORT)
-        log.info("Config UI available at %s", handle.url)
         return handle
     except Exception:
         log.exception("Failed to start config web UI")
