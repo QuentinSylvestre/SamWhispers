@@ -1,8 +1,18 @@
 # Supervisor Duplicate Boot Race Fix
 
 > **Date**: 2026-08-21
-> **Status**: Completed
-> **Last Updated**: <set by /qclose at archival>
+> **Status**: Complete
+> **Last Updated**: 2026-08-21 17:37
+
+## Completion Summary
+
+### Acknowledged at archival
+
+- `Skipped (harness opportunity): probe/interview interleaving in /qexplore` — low-cost friction (~1 turn); user chose to skip
+- Follow-up Work item 1 retained: autostart shortcut dual-fire root cause deferred (Phase 1 guard addresses symptom; Windows mutex fix is out of scope)
+- Follow-up Work item 2 retained: `server.started` uvicorn internal — monitor on uvicorn version bumps
+
+---
 > **Scope**: Fix three defects causing duplicate supervisor instances, silent web misconfiguration, and stale PID files
 > **Estimated effort**: ~4 hours
 
@@ -621,13 +631,13 @@ def test_supervisor_pid_cleaned_on_exit(tmp_path):
 ```
 
 **Exit criteria**:
-- [ ] `test_concurrent_foreground_only_one_wins` added to `tests/test_singleinstance.py`; skips on non-Windows; uses per-process output files; uses `InstanceLock` (not raw `msvcrt.locking`)
-- [ ] `_with_pid_path` helper and three `write_pid`/`read_pid` tests added
-- [ ] `test_web_enabled_false_when_port_bound` subprocess integration test added; marked `integration`
-- [ ] `test_supervisor_pid_cleaned_on_exit` subprocess integration test added; marked `integration`
-- [ ] `python -m pytest tests/test_singleinstance.py -v` passes
-- [ ] `python -m pytest tests/ -v -m "not integration"` passes (unit tests clean)
-- [ ] `ruff check tests/` passes
+- [x] `test_concurrent_foreground_only_one_wins` added to `tests/test_singleinstance.py`; skips on non-Windows; uses per-process output files; uses `InstanceLock` (not raw `msvcrt.locking`)
+- [x] `_with_pid_path` helper and three `write_pid`/`read_pid` tests added
+- [x] `test_web_enabled_false_when_port_bound` subprocess integration test added; marked `integration`
+- [x] `test_supervisor_pid_cleaned_on_exit` subprocess integration test added; marked `integration`
+- [x] `python -m pytest tests/test_singleinstance.py -v` passes
+- [x] `python -m pytest tests/ -v -m "not integration"` passes (unit tests clean)
+- [x] `ruff check tests/` passes
 
 ---
 
