@@ -602,7 +602,7 @@ def main() -> None:
         "no_web": args.no_web,
         "web_port": args.web_port,
     }
-    from samwhispers.singleinstance import write_pid, pid_path
+    from samwhispers.singleinstance import delete_pid, write_pid
 
     write_pid()
 
@@ -709,10 +709,7 @@ def main() -> None:
         from samwhispers.runtime import delete_metadata
 
         delete_metadata()
-        try:
-            pid_path().unlink(missing_ok=True)  # missing_ok=True handles FileNotFoundError (crash before write_pid)
-        except OSError:
-            pass  # PermissionError on Windows (file held open) -- best effort
+        delete_pid()
         lock.release()
 
     # Post-loop: check if a relaunch was requested

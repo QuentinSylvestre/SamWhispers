@@ -85,6 +85,14 @@ def read_pid() -> int | None:
         return None
 
 
+def delete_pid() -> None:
+    """Remove the PID file on clean exit. Best-effort: swallows OSError (e.g. PermissionError)."""
+    try:
+        pid_path().unlink(missing_ok=True)
+    except OSError:
+        pass  # PermissionError on Windows (file held open) -- best effort
+
+
 def is_running() -> bool:
     """Whether another instance currently holds the lock."""
     probe = InstanceLock()
