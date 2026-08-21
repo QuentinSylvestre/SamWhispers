@@ -333,14 +333,14 @@ at `supervisor.py:662–664` already guards with `if web_handle is not None:` be
 `web_handle.shutdown()` before setting to `None`, ensuring no live uvicorn thread is orphaned.
 
 **Exit criteria**:
-- [ ] `is_ready` property added to `WebServerHandle` in `webserver.py`
-- [ ] Poll loop with `is_ready` check first, thread-alive check second, inserted between `_start_web()` and `settings_url = ...`
-- [ ] Both failure branches (`thread died`, `timeout`) call `web_handle.shutdown()` before setting `web_handle = None`
-- [ ] Both failure branches emit a `log.warning` naming the port
-- [ ] `settings_url` assignment moved to after the poll block
-- [ ] `csrf_token` and `web_port` are `None` in `runtime.json` when the poll sets `web_handle=None` (verified by SC-2 manual test)
-- [ ] `ruff check src/samwhispers/supervisor.py src/samwhispers/webserver.py` passes
-- [ ] `mypy src/` passes
+- [x] `is_ready` property added to `WebServerHandle` in `webserver.py`
+- [x] Poll loop with `is_ready` check first, thread-alive check second, inserted between `_start_web()` and `settings_url = ...`
+- [x] Both failure branches (`thread died`, `timeout`) call `web_handle.shutdown()` before setting `web_handle = None`
+- [x] Both failure branches emit a `log.warning` naming the port
+- [x] `settings_url` assignment moved to after the poll block
+- [x] `csrf_token` and `web_port` are `None` in `runtime.json` when the poll sets `web_handle=None` (verified by SC-2 manual test)
+- [x] `ruff check src/samwhispers/supervisor.py src/samwhispers/webserver.py` passes
+- [x] `mypy src/` passes
 
 ---
 
@@ -414,7 +414,7 @@ are written at launch and removed on clean shutdown. A crash leaves both files; 
 - [ ] `lock.release()` remains the last statement in `finally`
 - [ ] `README.md` updated to reflect `supervisor.pid` removal on clean exit
 - [ ] `ruff check src/samwhispers/supervisor.py` passes
-- [ ] `mypy src/` passes
+- [x] `mypy src/` passes
 
 ---
 
@@ -696,7 +696,14 @@ mypy src/
 
 None.
 
-### Phase 1 implementation notes
+### Phase 2 implementation notes
+
+Implementation (2026-08-21, code: cf0dcec + 9d4b1ac)
+In `src/samwhispers/webserver.py`, added `is_ready` property to `WebServerHandle` returning `bool(self.server.started)`, confining the uvicorn-internal `server.started` coupling to `webserver.py`. In `src/samwhispers/supervisor.py`, inserted a 2s/50ms poll loop between `_start_web()` and `settings_url = ...`. The loop checks `is_ready` first (success path), then `thread.is_alive()` (failure path), with a `while/else` timeout branch. Both failure paths call `web_handle.shutdown()` before nulling `web_handle`, preventing orphaned threads. `DEFAULT_PORT` import moved before the poll block; `effective_port_for_log` unified into a single `effective_port`. Review auto-fixes (commit 9d4b1ac): added thread-still-alive warning in `shutdown()`, unified `effective_port` variable, fixed `while/else` comment accuracy, added GIL note to `is_ready` docstring.
+
+### Phase 2 divergences
+
+None.
 
 Implementation (2026-08-21, code: 7605bc1 + a205f8a)
 In `src/samwhispers/supervisor.py`, inside `main()`, a 10-line early-exit guard was inserted immediately before the `logging.basicConfig(...)` call in the `--foreground` branch (after the `if not args.foreground:` block ends at line 568). The guard imports `is_running` from `samwhispers.singleinstance` under the alias `_is_running` to avoid any name collision, calls it, and if another instance already holds the lock it writes a message to stderr via `print(..., file=sys.stderr)` (not `log.error`, because the logger is not yet configured at that point) and returns immediately. No `webbrowser.open()` or any other logic was added. The existing `lock.acquire()` call that follows `logging.basicConfig` remains unchanged as the authoritative gate — this guard is purely an optimization that lets losing foreground children exit before allocating logging resources or starting any threads. Review auto-fixes (commit a205f8a): removed redundant `import sys` (already at module level), dropped unnecessary `_is_running` alias (import as `is_running` to match sibling branch at ~L553).
@@ -751,6 +758,26 @@ QA verification: PASS (CLI surface, 3 probes — guard fires, message to stderr 
 | 4 | Low | Exit code 0 on duplicate-instance early exit; `sys.exit(1)` would be more conventional | Orchestrator: proposed-accept — plan specifies `return`; behavior is intentional optimization path |
 | 5 | Low | Pre-existing test failure (`test_windows_target_anchors_on_script_dir`) unrelated to Phase 1 | Orchestrator: proposed-accept — pre-existing defect, not a Phase 1 responsibility |
 | 6 | Low | Two deferred `from samwhispers.singleinstance import ...` statements within `main()` | Orchestrator: proposed-accept — intentional by plan design; combining would move InstanceLock import earlier |
+
+### 2026-08-21 — Implementation Review (after Phase 2, personas: Senior engineer, Reliability engineer, Architect, Maintainability reviewer)
+
+Implementation health: Yellow (3 unresolved Medium — escalated to user).
+11 findings (0 High, 3 Medium escalated, 8 Low resolved). Cycle 2: clean (no new issues).
+QA verification: PASS (library surface — is_ready property, 4 probes). Integration SC-2 test: BLOCKED — requires supervisor restart to exercise live port-conflict path.
+
+| # | Severity | Finding | Resolution |
+|---|---|---|---|
+| R3 | Medium | `shutdown()` swallows thread-join timeout; orphaned thread possible with no log | Fixed — added `is_alive()` check + `log.warning` after `join()` (commit 9d4b1ac) |
+| S1 | Medium | `_start_web()` emits "Config UI available at..." before poll; bind failure produces contradictory messages | Orchestrator: proposed-accept — pre-existing log placement; moving it is a scope extension beyond Phase 2 spec |
+| R2 | Medium | 2s poll timeout may produce false-negative on slow boot-time machine (uvicorn startup ~1–1.5s) | Orchestrator: proposed-accept — Design Decision Q4 explicitly chose 2s; documented as risk in plan |
+| A1 | Medium | `csrf_token` still accessed via `web_handle.server.config.app.state.csrf_token` in supervisor.py; incomplete encapsulation | Orchestrator: proposed-accept — pre-existing pattern; out of Phase 2 spec scope; add `csrf_token` property in follow-up |
+| M1 | Low | `effective_port_for_log` duplicated `effective_port` — same expression, different names | Fixed — unified into single `effective_port` before poll block (commit 9d4b1ac) |
+| M2 | Low | `while/else` comment inaccurately said "without server.started"; actual condition is deadline-with-alive-thread | Fixed — updated to "Deadline reached with thread still alive but port not bound." (commit 9d4b1ac) |
+| R4 | Low | `is_ready` reads `server.started` without memory barrier; GIL dependency undocumented | Fixed — added CPython GIL note to `is_ready` docstring (commit 9d4b1ac) |
+| S3 | Low | Plan spec says `is_ready()` method; implementation is `@property` | Orchestrator: proposed-accept — `@property` is the correct design; plan text is imprecise |
+| A2 | Low | `DEFAULT_PORT` imported inside poll block, used unconditionally after; style inconsistency | Fixed — hoisted to before `if web_handle is not None:` (commit 9d4b1ac) |
+| R5 | Low | `shutdown()` on dead-thread handle writes to `server.should_exit` on already-exited object | Orchestrator: proposed-accept — harmless with current uvicorn; noted in Follow-up Work |
+| M4 | Low | Max nesting depth 4 in poll block (at threshold) | Orchestrator: proposed-accept — within scope; no growth expected per plan boundaries |
 
 ## Harness Improvement Opportunities
 
