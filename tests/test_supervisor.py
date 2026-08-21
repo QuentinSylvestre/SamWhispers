@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import json
 import os
+import signal
 import socket
 import subprocess
 import sys
 import time
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -415,6 +415,11 @@ def test_web_enabled_false_when_port_bound() -> None:
     A running supervisor already holds the lock; a new subprocess would be
     blocked by the Phase 1 guard and never write runtime.json.
     """
+    from samwhispers.history import resolve_data_dir
+
+    data_dir = resolve_data_dir()
+    meta_path = data_dir / "runtime.json"
+
     # Pre-bind port 7891 so the supervisor's uvicorn thread cannot bind it.
     srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -422,6 +427,9 @@ def test_web_enabled_false_when_port_bound() -> None:
     srv.listen(1)
     proc = None
     try:
+        # Clear any stale runtime.json from a prior run so we don't false-pass.
+        meta_path.unlink(missing_ok=True)
+
         proc = subprocess.Popen(
             [
                 sys.executable,
@@ -434,9 +442,6 @@ def test_web_enabled_false_when_port_bound() -> None:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
-        # runtime.json is written to the default data dir on Windows.
-        data_dir = Path(os.environ.get("LOCALAPPDATA", "")) / "samwhispers"
-        meta_path = data_dir / "runtime.json"
 
         # Poll up to 12s: 2s web-poll timeout + startup overhead + safety margin.
         deadline = time.time() + 12
@@ -447,12 +452,19 @@ def test_web_enabled_false_when_port_bound() -> None:
 
         if proc.poll() is None:
             proc.terminate()
-            proc.wait(timeout=5)
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait()
         else:
             proc.wait(timeout=5)
 
         assert meta_path.exists(), "runtime.json was never written"
         meta = json.loads(meta_path.read_text())
+        assert meta["pid"] == proc.pid, (
+            f"runtime.json PID {meta['pid']} does not match proc.pid {proc.pid} — stale metadata"
+        )
         assert meta["web_enabled"] is False, (
             f"Expected web_enabled=False when port 7891 is pre-bound, got: {meta}"
         )
@@ -483,7 +495,9 @@ def test_supervisor_pid_cleaned_on_exit() -> None:
     A running supervisor already holds the lock; the new subprocess would exit
     immediately via the Phase 1 guard before writing supervisor.pid.
     """
-    data_dir = Path(os.environ.get("LOCALAPPDATA", "")) / "samwhispers"
+    from samwhispers.history import resolve_data_dir
+
+    data_dir = resolve_data_dir()
     pid_file = data_dir / "supervisor.pid"
 
     proc = subprocess.Popen(
@@ -498,6 +512,7 @@ def test_supervisor_pid_cleaned_on_exit() -> None:
         ],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
+        creationflags=subprocess.CREATE_NEW_PROCESS_GROUP,
     )
     try:
         # Wait up to 5s for supervisor.pid to appear, confirming the supervisor
@@ -511,16 +526,26 @@ def test_supervisor_pid_cleaned_on_exit() -> None:
             "supervisor.pid was never written — check that no other supervisor is running"
         )
 
-        proc.terminate()
-        proc.wait(timeout=5)
+        # Graceful shutdown via CTRL_BREAK_EVENT: the supervisor's SIGINT handler
+        # sets _main_stop, the while loop exits, and the finally block runs
+        # (including pid_path().unlink()). TerminateProcess (proc.terminate()) is
+        # a hard kill that never runs finally blocks on Windows.
+        os.kill(proc.pid, signal.CTRL_BREAK_EVENT)
+        try:
+            proc.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait()
+
+        # Allow up to 2s for the finally block to finish deleting supervisor.pid.
+        deadline = time.time() + 2.0
+        while pid_file.exists() and time.time() < deadline:
+            time.sleep(0.05)
 
         assert not pid_file.exists(), (
             f"supervisor.pid was not removed on clean exit: {pid_file}"
         )
     finally:
         if proc.poll() is None:
-            proc.terminate()
-            try:
-                proc.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                proc.kill()
+            proc.kill()
+            proc.wait()

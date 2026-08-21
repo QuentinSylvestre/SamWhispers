@@ -56,11 +56,12 @@ def test_release_is_safe_without_acquire(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.integration
 @pytest.mark.skipif(sys.platform != "win32", reason="msvcrt lock test (Windows only)")
 def test_concurrent_foreground_only_one_wins(tmp_path: Path) -> None:
     """Exactly one of N concurrent processes must acquire the InstanceLock."""
     lock_file = tmp_path / "supervisor.lock"
-    go_time = time.time() + 0.4
+    go_time = time.time() + 1.5
     N = 4
 
     # Each child writes its result to its own file to avoid shared-file write races.
@@ -96,7 +97,11 @@ def test_concurrent_foreground_only_one_wins(tmp_path: Path) -> None:
         for i in range(N)
     ]
     for p in procs:
-        p.wait(timeout=5)
+        try:
+            p.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            p.kill()
+            p.wait()
 
     results = [
         json.loads((tmp_path / f"result_{i}.json").read_text())
