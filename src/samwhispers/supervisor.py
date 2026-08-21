@@ -710,9 +710,9 @@ def main() -> None:
 
         delete_metadata()
         try:
-            pid_path().unlink(missing_ok=True)
+            pid_path().unlink(missing_ok=True)  # missing_ok=True handles FileNotFoundError (crash before write_pid)
         except OSError:
-            pass  # PermissionError (file held open on Windows) -- best effort
+            pass  # PermissionError on Windows (file held open) -- best effort
         lock.release()
 
     # Post-loop: check if a relaunch was requested
