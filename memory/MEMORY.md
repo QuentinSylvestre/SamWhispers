@@ -83,3 +83,7 @@
 ## Declined
 
 <!-- Declination records: the user's Skip of an agent-initiated memory proposal. A live row suppresses re-proposal of that subject for 60 days. Sessions append rows only; the /qdream sweep prunes expired rows. Row format: - "<proposed heading>" — declined <YYYY-MM-DD> (<reason, if given>) -->
+
+- "Confirm daemon thread bind before writing metadata — poll is_ready(), not thread.is_alive() alone" — declined 2026-08-21
+- "Integration tests for supervisor launch must use direct module invocation, not subcommand path, and must account for venv launcher PID indirection" — declined 2026-08-21
+- "CTRL_BREAK_EVENT only delivers to processes sharing the same console — use unit test with mock-patched paths for finally-block coverage" — declined 2026-08-21
