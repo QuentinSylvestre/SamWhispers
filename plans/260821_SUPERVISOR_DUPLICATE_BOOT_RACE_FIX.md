@@ -807,3 +807,27 @@ QA verification: see below.
 | C | Low | Phase 2 plan divergence note missing (poll timeout 2s→5s) | Fixed — note added to § 9 Phase 2 divergences |
 | D | Low | `pid_path()` inside `try` block — `resolve_data_dir()` errors would be silently swallowed | Orchestrator: proposed-accept — `resolve_data_dir()` is pure env/string ops; cannot raise OSError |
 | E | Low | README "dead-PID detection" undersells the three-part validation `_do_stop()` performs | Orchestrator: proposed-accept — understood shorthand; cosmetic |
+
+
+### 2026-08-21 — Implementation Review (after Phase 4, personas: Senior engineer, Reliability engineer, Architect, Maintainability reviewer)
+
+Implementation health: Green (all High/Medium resolved; cycle 2 clean).
+14 findings (1 High resolved, 6 Medium resolved, 7 Low). Cycle 2: no new issues.
+Test suite: 469 passed, 1 pre-existing failure (test_autostart.py::test_windows_target_anchors_on_script_dir), 3 integration tests deselected.
+
+| # | Severity | Finding | Resolution |
+|---|---|---|---|
+| H1 | High | test 4d: `proc.terminate()` is `TerminateProcess` on Windows — hard kill, `finally` never runs; test always fails | Fixed — use `os.kill(proc.pid, signal.CTRL_BREAK_EVENT)` with `CREATE_NEW_PROCESS_GROUP`; `_handle_signal` sets `_main_stop`, `finally` runs (commit 4a14559) |
+| M1 | Medium | test 4c: stale `runtime.json` from prior run causes false PASS; no `pid == proc.pid` check | Fixed — `meta_path.unlink(missing_ok=True)` before Popen; added `assert meta["pid"] == proc.pid` (commit 4a14559) |
+| M2 | Medium | test 4a: `go_time +0.4` too tight; flaky on slow machines | Fixed — increased to `+1.5` (commit 4a14559) |
+| M3 | Medium | test 4a: no `proc.kill()` fallback on `p.wait(timeout=5)` expiry | Fixed — wrapped in `try/except TimeoutExpired: p.kill(); p.wait()` (commit 4a14559) |
+| M4 | Medium | test 4a: missing `@pytest.mark.integration` marker; slips through `-m "not integration"` filter | Fixed — marker added (commit 4a14559) |
+| M5 | Medium | test 4d: mutation blind spot — if `unlink` removed from `finally`, 4d doesn't catch it (depended on H1 fix) | Resolved by H1 fix; 4d now exercises `finally` via graceful shutdown |
+| M6 | Medium | integration tests reconstruct data dir path differently from `resolve_data_dir()`; diverges on CI | Fixed — both tests use `resolve_data_dir()` (commit 4a14559) |
+| L1 | Low | test 4a: `results.count(True) == 1` assertion unclear for zero-winner case (import failure) | Orchestrator: proposed-accept — failure message `got [False,False,False,False]` is diagnosable |
+| L2 | Low | test 4b: `test_write_and_read_pid` and `test_read_pid_missing` lack docstrings | Orchestrator: proposed-accept — test names are self-documenting |
+| L3 | Low | test 4b: `test_pid_cleanup_via_unlink` tests stdlib contract, not supervisor `finally` path | Orchestrator: proposed-accept — comment added; SC-3 covered by 4d |
+| L4 | Low | test 4c: `os.environ.get("LOCALAPPDATA", "")` fallback yields wrong path | Fixed by M6 (`resolve_data_dir()` used instead) |
+| L5 | Low | Phase 4 exit criteria unchecked in plan | Fixed — all 7 criteria ticked by impl sub-agent |
+| L6 | Low | test 4d: architect confirms `test_supervisor.py` is correct home | Accepted — no change needed |
+| L7 | Low | test 4c: `proc.wait()` in try block without kill fallback | Accepted — fixed as part of cleanup in the finally block |
