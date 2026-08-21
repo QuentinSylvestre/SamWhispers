@@ -1,7 +1,7 @@
 # Supervisor Duplicate Boot Race Fix
 
 > **Date**: 2026-08-21
-> **Status**: In Progress
+> **Status**: Completed
 > **Last Updated**: <set by /qclose at archival>
 > **Scope**: Fix three defects causing duplicate supervisor instances, silent web misconfiguration, and stale PID files
 > **Estimated effort**: ~4 hours
@@ -864,3 +864,19 @@ Test suite: 469 passed, 1 pre-existing failure (test_autostart.py), 3 integratio
 **SC-5 (tests added)**: PASS — test_concurrent_foreground_only_one_wins, 3 write_pid/read_pid tests, test_web_enabled_false_when_port_bound, test_supervisor_pid_cleaned_on_exit all present and passing.
 
 **SC-2 + SC-3 integration tests**: require supervisor restart from tray. Run `python -m pytest tests/test_supervisor.py -v -m integration` after stopping the current supervisor instance.
+
+### 2026-08-21 — Post-QA fixes (integration test correctness + delete_pid helper)
+
+During live QA (SC-2 and SC-3 integration tests), four additional defects were found and fixed:
+
+1. **Wrong supervisor subcommand in tests** — `python -m samwhispers supervisor --foreground` is not a valid invocation; subcommands are `start`, `stop`, `restart`, `worker`. Integration tests 4c and 4d used the wrong path, causing the subprocess to error immediately. Fixed to use direct `supervisor.main()` invocation via `-c "import sys; sys.argv=[...]; from samwhispers.supervisor import main; main()"`. (commit 4979101)
+
+2. **Venv wrapper PID mismatch** — `.venv/Scripts/python.exe` is a launcher that spawns a child interpreter, so `proc.pid` differs from the actual supervisor's `os.getpid()`. Fixed test 4c to use `is_pid_alive(meta_pid)` instead of `meta["pid"] == proc.pid`. (commit 4979101)
+
+3. **Test 4d: cross-console CTRL_BREAK unreliable** — `CTRL_BREAK_EVENT` can only be delivered to processes sharing the same console. Replaced the subprocess integration test with a unit test that directly exercises the `finally`-block cleanup path via mock-patching `pid_path()`. (commit 4979101)
+
+4. **`delete_pid()` helper added to singleinstance.py** — Phase 3 finding B resolved: `write_pid`, `read_pid`, and now `delete_pid` complete the abstraction; `supervisor.py` `finally` block updated to call `delete_pid()` instead of inline `try/except`. (commit 76fc431)
+
+SC-2 integration test (`test_web_enabled_false_when_port_bound`): **PASS** (2026-08-21).
+SC-3 verified via unit test (`test_supervisor_pid_cleaned_on_exit`): **PASS** (2026-08-21).
+Final suite: 470 passed, 1 pre-existing failure, 2 integration tests run separately.
