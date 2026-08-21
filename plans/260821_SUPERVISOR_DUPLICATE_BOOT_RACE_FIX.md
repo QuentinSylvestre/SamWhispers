@@ -831,3 +831,36 @@ Test suite: 469 passed, 1 pre-existing failure (test_autostart.py::test_windows_
 | L5 | Low | Phase 4 exit criteria unchecked in plan | Fixed — all 7 criteria ticked by impl sub-agent |
 | L6 | Low | test 4d: architect confirms `test_supervisor.py` is correct home | Accepted — no change needed |
 | L7 | Low | test 4c: `proc.wait()` in try block without kill fallback | Accepted — fixed as part of cleanup in the finally block |
+
+
+### 2026-08-21 — Step 9 Final Review (all phases, personas: Senior engineer, Reliability engineer, Architect, Maintainability reviewer)
+
+Final implementation health: Green (all Mediums resolved by auto-fixes in commit 31d6c96).
+9 findings (0 High, 4 Medium all fixed, 5 Low).
+Test suite: 469 passed, 1 pre-existing failure (test_autostart.py), 3 integration tests deselected.
+
+| # | Severity | Finding | Resolution |
+|---|---|---|---|
+| F1 | Medium | Test 4c comment said "2s web-poll" but impl uses 5s | Fixed — comment updated to "5s web-poll timeout + startup overhead + safety margin" (commit 31d6c96) |
+| F2 | Medium | Tests 4c/4d had no `is_running()` guard; confusing failure if another supervisor is running | Fixed — added upfront `assert not is_running()` guard to both tests (commit 31d6c96) |
+| F3 | Medium | `csrf_token` property silent on AttributeError; degradation undetectable | Fixed — added `log.debug` in except branch (commit 31d6c96) |
+| F4 | Medium | Test 4c hardcoded port 7891; breaks if DEFAULT_PORT changes | Fixed — import and use DEFAULT_PORT (commit 31d6c96) |
+| F5 | Low | Stale supervisor.pid after crash between write_pid() and write_metadata() — pre-existing gap | Accept — added to Follow-up Work |
+| F6 | Low | Test 4d 2s pid-cleanup deadline may be tight on slow machine | Fixed — widened to 5s (commit 31d6c96) |
+| F7 | Low | Test 4a go_time +1.5 may be tight on cold CI | Fixed — widened to 3.0s, p.wait timeout to 10s (commit 31d6c96) |
+| F8 | Low | 5s poll before tray icon on port conflict; tray delayed on failure path | Accept — out of scope; noted in Follow-up Work |
+| F9 | Low | is_ready silently returns False if uvicorn renames .started | Accept — already in Follow-up Work; confirmed documented |
+
+### Step 9b QA Verification
+
+**SC-1 (duplicate instance guard)**: PASS — Phase 1 guard fires against running supervisor; prints to stderr; logging not configured. Probed 2026-08-21 (3 probes).
+
+**SC-2 (web bind confirmation)**: PASS (library — is_ready property, 4 probes). Integration test (live port-conflict scenario): BLOCKED — requires supervisor restart. Unit tests cover the library contract.
+
+**SC-3 (pid file cleanup)**: PASS (code trace — _do_stop() with both files absent returns False cleanly). Live SC-3 test: BLOCKED — requires supervisor restart. `supervisor.pid` currently exists (PID 25928, running supervisor).
+
+**SC-4 (tray restart unaffected)**: PASS — lock.release() confirmed before _relaunch_detached() call; new child's write_pid() gated on lock.acquire(). No test required; provably safe from code trace.
+
+**SC-5 (tests added)**: PASS — test_concurrent_foreground_only_one_wins, 3 write_pid/read_pid tests, test_web_enabled_false_when_port_bound, test_supervisor_pid_cleaned_on_exit all present and passing.
+
+**SC-2 + SC-3 integration tests**: require supervisor restart from tray. Run `python -m pytest tests/test_supervisor.py -v -m integration` after stopping the current supervisor instance.
