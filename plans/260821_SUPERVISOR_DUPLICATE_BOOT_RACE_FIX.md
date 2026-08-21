@@ -409,11 +409,11 @@ are written at launch and removed on clean shutdown. A crash leaves both files; 
 `stop`/`start` ignores stale ones via dead-PID detection."
 
 **Exit criteria**:
-- [ ] `pid_path` added to the `write_pid` import at `supervisor.py:592`
-- [ ] `try: pid_path().unlink(missing_ok=True) / except OSError: pass` added to `finally` after `delete_metadata()`
-- [ ] `lock.release()` remains the last statement in `finally`
-- [ ] `README.md` updated to reflect `supervisor.pid` removal on clean exit
-- [ ] `ruff check src/samwhispers/supervisor.py` passes
+- [x] `pid_path` added to the `write_pid` import at `supervisor.py:592`
+- [x] `try: pid_path().unlink(missing_ok=True) / except OSError: pass` added to `finally` after `delete_metadata()`
+- [x] `lock.release()` remains the last statement in `finally`
+- [x] `README.md` updated to reflect `supervisor.pid` removal on clean exit
+- [x] `ruff check src/samwhispers/supervisor.py` passes
 - [x] `mypy src/` passes
 
 ---
@@ -703,10 +703,16 @@ In `src/samwhispers/webserver.py`, added `is_ready` property to `WebServerHandle
 
 ### Phase 2 divergences
 
-None.
+Poll timeout changed from 2s (plan spec, Design Decision Q4) to 5s (user-directed fix during Phase 2 review, commit 333f7d9). Plan updated to reflect this.
 
-Implementation (2026-08-21, code: 7605bc1 + a205f8a)
-In `src/samwhispers/supervisor.py`, inside `main()`, a 10-line early-exit guard was inserted immediately before the `logging.basicConfig(...)` call in the `--foreground` branch (after the `if not args.foreground:` block ends at line 568). The guard imports `is_running` from `samwhispers.singleinstance` under the alias `_is_running` to avoid any name collision, calls it, and if another instance already holds the lock it writes a message to stderr via `print(..., file=sys.stderr)` (not `log.error`, because the logger is not yet configured at that point) and returns immediately. No `webbrowser.open()` or any other logic was added. The existing `lock.acquire()` call that follows `logging.basicConfig` remains unchanged as the authoritative gate — this guard is purely an optimization that lets losing foreground children exit before allocating logging resources or starting any threads. Review auto-fixes (commit a205f8a): removed redundant `import sys` (already at module level), dropped unnecessary `_is_running` alias (import as `is_running` to match sibling branch at ~L553).
+### Phase 3 implementation notes
+
+Implementation (2026-08-21, code: 450f8f9 + bde0e47)
+In `src/samwhispers/supervisor.py`: extended `write_pid` import to also import `pid_path` at line 605. In the `finally` block, inserted `try: pid_path().unlink(missing_ok=True) / except OSError: pass` between `delete_metadata()` and `lock.release()` — `missing_ok=True` suppresses `FileNotFoundError` on crash before `write_pid()`; `except OSError` suppresses `PermissionError` on Windows. `lock.release()` remains last. In `README.md`: updated the runtime metadata paragraph to name both `runtime.json` and `supervisor.pid` as removed on clean shutdown. Review auto-fix (commit bde0e47): clarified the `try/except` comment to explain both defenses separately.
+
+### Phase 3 divergences
+
+None.
 
 ## Follow-up Work (Deferred)
 
@@ -786,3 +792,18 @@ QA verification: PASS (library surface — is_ready property, 4 probes). Integra
   material cost here (probes were fast), but the skill text reads as batch-then-interview.
   cost: ~1 extra turn reordering — suggested change: clarify in SKILL.md whether probes must
   all complete before Q1 or can interleave with interview questions.
+
+
+### 2026-08-21 — Implementation Review (after Phase 3, personas: Senior engineer, Reliability engineer, Architect, Maintainability reviewer)
+
+Implementation health: Green.
+5 findings (0 High, 0 Medium, 5 Low). Comment auto-fix applied. Cycle 2 skipped — all Low.
+QA verification: see below.
+
+| # | Severity | Finding | Resolution |
+|---|---|---|---|
+| A | Low | `try/except` comment only explained PermissionError; `missing_ok=True` purpose undocumented | Fixed — comment now explains both defenses (commit bde0e47) |
+| B | Low | `pid_path().unlink()` inline in supervisor.py rather than a `delete_pid()` helper; partial abstraction leak | Orchestrator: proposed-accept — `pid_path()` is public API; adding helper is out of scope |
+| C | Low | Phase 2 plan divergence note missing (poll timeout 2s→5s) | Fixed — note added to § 9 Phase 2 divergences |
+| D | Low | `pid_path()` inside `try` block — `resolve_data_dir()` errors would be silently swallowed | Orchestrator: proposed-accept — `resolve_data_dir()` is pure env/string ops; cannot raise OSError |
+| E | Low | README "dead-PID detection" undersells the three-part validation `_do_stop()` performs | Orchestrator: proposed-accept — understood shorthand; cosmetic |
