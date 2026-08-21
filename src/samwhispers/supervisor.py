@@ -622,8 +622,8 @@ def main() -> None:
     # Check is_ready first (success path), then thread liveness (failure path).
     # Shut down the handle before nulling it so no threads are orphaned.
     from samwhispers.webserver import DEFAULT_PORT
+    effective_port = args.web_port or DEFAULT_PORT
     if web_handle is not None:
-        effective_port_for_log = args.web_port or DEFAULT_PORT
         deadline = time.monotonic() + 2.0
         while time.monotonic() < deadline:
             if web_handle.is_ready:
@@ -631,17 +631,17 @@ def main() -> None:
             if not web_handle.thread.is_alive():
                 log.warning(
                     "Web server thread died before binding on port %d; disabling web UI",
-                    effective_port_for_log,
+                    effective_port,
                 )
                 web_handle.shutdown()
                 web_handle = None
                 break
             time.sleep(0.05)
         else:
-            # Loop exhausted without break: 2-second timeout without server.started.
+            # Deadline reached with thread still alive but port not bound.
             log.warning(
                 "Web server did not confirm bind on port %d within 2s; disabling web UI",
-                effective_port_for_log,
+                effective_port,
             )
             web_handle.shutdown()
             web_handle = None
@@ -651,7 +651,6 @@ def main() -> None:
     # Write runtime metadata now that web topology and CSRF token are known
     from samwhispers.runtime import RuntimeMetadata, write_metadata
 
-    effective_port = args.web_port or DEFAULT_PORT
     csrf_token = web_handle.server.config.app.state.csrf_token if web_handle else None
     meta = RuntimeMetadata(
         pid=os.getpid(),

@@ -706,12 +706,18 @@ class WebServerHandle:
 
     @property
     def is_ready(self) -> bool:
-        """True once uvicorn has successfully bound the port."""
+        """True once uvicorn has successfully bound the port.
+
+        Reads ``server.started`` (a plain bool set by the uvicorn daemon thread).
+        Safe across threads under CPython's GIL; not a language-level guarantee.
+        """
         return bool(self.server.started)
 
     def shutdown(self) -> None:
         self.server.should_exit = True
         self.thread.join(timeout=5.0)
+        if self.thread.is_alive():
+            log.warning("Web server thread did not exit within 5s; port %d may remain occupied", self.port)
 
 
 def serve(
