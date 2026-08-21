@@ -704,6 +704,11 @@ class WebServerHandle:
     def url(self) -> str:
         return f"http://{self.host}:{self.port}/"
 
+    @property
+    def is_ready(self) -> bool:
+        """True once uvicorn has successfully bound the port."""
+        return bool(self.server.started)
+
     def shutdown(self) -> None:
         self.server.should_exit = True
         self.thread.join(timeout=5.0)

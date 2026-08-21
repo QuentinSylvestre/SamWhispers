@@ -616,11 +616,40 @@ def main() -> None:
         _main_stop.set()
 
     web_handle = _start_web(supervisor, args.config, args.no_web, args.web_port, stop_callback=_stop_main_loop)
+
+    # Wait for uvicorn to confirm the bind before advertising the port.
+    # serve() returns a handle immediately; the actual bind happens in a daemon thread.
+    # Check is_ready first (success path), then thread liveness (failure path).
+    # Shut down the handle before nulling it so no threads are orphaned.
+    from samwhispers.webserver import DEFAULT_PORT
+    if web_handle is not None:
+        effective_port_for_log = args.web_port or DEFAULT_PORT
+        deadline = time.monotonic() + 2.0
+        while time.monotonic() < deadline:
+            if web_handle.is_ready:
+                break
+            if not web_handle.thread.is_alive():
+                log.warning(
+                    "Web server thread died before binding on port %d; disabling web UI",
+                    effective_port_for_log,
+                )
+                web_handle.shutdown()
+                web_handle = None
+                break
+            time.sleep(0.05)
+        else:
+            # Loop exhausted without break: 2-second timeout without server.started.
+            log.warning(
+                "Web server did not confirm bind on port %d within 2s; disabling web UI",
+                effective_port_for_log,
+            )
+            web_handle.shutdown()
+            web_handle = None
+
     settings_url = web_handle.url if web_handle else None
 
     # Write runtime metadata now that web topology and CSRF token are known
     from samwhispers.runtime import RuntimeMetadata, write_metadata
-    from samwhispers.webserver import DEFAULT_PORT
 
     effective_port = args.web_port or DEFAULT_PORT
     csrf_token = web_handle.server.config.app.state.csrf_token if web_handle else None
