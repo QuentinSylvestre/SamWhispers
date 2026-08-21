@@ -570,12 +570,10 @@ def main() -> None:
     # Early-exit guard: mirrors the non-foreground branch's is_running() check.
     # The real lock.acquire() below is still the authoritative gate; this is an
     # optimization that avoids logging setup and resource allocation in the losing child.
-    from samwhispers.singleinstance import is_running as _is_running
+    from samwhispers.singleinstance import is_running
 
-    if _is_running():
+    if is_running():
         # Log to stderr directly: logging not yet configured at this point.
-        import sys
-
         print(
             "Another SamWhispers instance is already running; exiting.",
             file=sys.stderr,
