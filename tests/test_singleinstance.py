@@ -61,7 +61,7 @@ def test_release_is_safe_without_acquire(tmp_path: Path) -> None:
 def test_concurrent_foreground_only_one_wins(tmp_path: Path) -> None:
     """Exactly one of N concurrent processes must acquire the InstanceLock."""
     lock_file = tmp_path / "supervisor.lock"
-    go_time = time.time() + 1.5
+    go_time = time.time() + 3.0  # allow for cold-import on slow CI
     N = 4
 
     # Each child writes its result to its own file to avoid shared-file write races.
@@ -98,7 +98,7 @@ def test_concurrent_foreground_only_one_wins(tmp_path: Path) -> None:
     ]
     for p in procs:
         try:
-            p.wait(timeout=5)
+            p.wait(timeout=10)
         except subprocess.TimeoutExpired:
             p.kill()
             p.wait()

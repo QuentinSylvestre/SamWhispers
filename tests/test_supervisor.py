@@ -15,6 +15,7 @@ import pytest
 
 from samwhispers import supervisor as sup
 from samwhispers.supervisor import WorkerState, WorkerSupervisor
+from samwhispers.webserver import DEFAULT_PORT
 
 
 @pytest.fixture(autouse=True)
@@ -415,15 +416,21 @@ def test_web_enabled_false_when_port_bound() -> None:
     A running supervisor already holds the lock; a new subprocess would be
     blocked by the Phase 1 guard and never write runtime.json.
     """
+    from samwhispers.singleinstance import is_running
+    assert not is_running(), (
+        "This integration test requires no running supervisor instance. "
+        "Stop the running supervisor before running integration tests."
+    )
+
     from samwhispers.history import resolve_data_dir
 
     data_dir = resolve_data_dir()
     meta_path = data_dir / "runtime.json"
 
-    # Pre-bind port 7891 so the supervisor's uvicorn thread cannot bind it.
+    # Pre-bind DEFAULT_PORT so the supervisor's uvicorn thread cannot bind it.
     srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    srv.bind(("127.0.0.1", 7891))
+    srv.bind(("127.0.0.1", DEFAULT_PORT))
     srv.listen(1)
     proc = None
     try:
@@ -443,7 +450,7 @@ def test_web_enabled_false_when_port_bound() -> None:
             stderr=subprocess.PIPE,
         )
 
-        # Poll up to 12s: 2s web-poll timeout + startup overhead + safety margin.
+        # Poll up to 12s: 5s web-poll timeout + startup overhead + safety margin.
         deadline = time.time() + 12
         while time.time() < deadline:
             if meta_path.exists():
@@ -466,10 +473,10 @@ def test_web_enabled_false_when_port_bound() -> None:
             f"runtime.json PID {meta['pid']} does not match proc.pid {proc.pid} — stale metadata"
         )
         assert meta["web_enabled"] is False, (
-            f"Expected web_enabled=False when port 7891 is pre-bound, got: {meta}"
+            f"Expected web_enabled=False when port {DEFAULT_PORT} is pre-bound, got: {meta}"
         )
         assert meta["web_port"] is None, (
-            f"Expected web_port=None when port 7891 is pre-bound, got: {meta}"
+            f"Expected web_port=None when port {DEFAULT_PORT} is pre-bound, got: {meta}"
         )
     finally:
         srv.close()
@@ -495,6 +502,12 @@ def test_supervisor_pid_cleaned_on_exit() -> None:
     A running supervisor already holds the lock; the new subprocess would exit
     immediately via the Phase 1 guard before writing supervisor.pid.
     """
+    from samwhispers.singleinstance import is_running
+    assert not is_running(), (
+        "This integration test requires no running supervisor instance. "
+        "Stop the running supervisor before running integration tests."
+    )
+
     from samwhispers.history import resolve_data_dir
 
     data_dir = resolve_data_dir()
@@ -537,8 +550,8 @@ def test_supervisor_pid_cleaned_on_exit() -> None:
             proc.kill()
             proc.wait()
 
-        # Allow up to 2s for the finally block to finish deleting supervisor.pid.
-        deadline = time.time() + 2.0
+        # Allow up to 5s for the finally block to finish deleting supervisor.pid.
+        deadline = time.time() + 5.0
         while pid_file.exists() and time.time() < deadline:
             time.sleep(0.05)
 

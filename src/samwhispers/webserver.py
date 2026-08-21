@@ -718,7 +718,8 @@ class WebServerHandle:
         """CSRF token for the web UI, or None if not available."""
         try:
             return self.server.config.app.state.csrf_token  # type: ignore[attr-defined]
-        except AttributeError:
+        except AttributeError as e:
+            log.debug("csrf_token unavailable via server.config.app.state: %s", e)
             return None
 
     def shutdown(self) -> None:
