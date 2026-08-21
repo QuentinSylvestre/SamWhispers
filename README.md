@@ -324,9 +324,7 @@ web port and CSRF token automatically. This works with default settings, custom
 - `restart` reconstructs launch arguments from the running instance's metadata,
   so a custom-port instance restarts with the same port.
 
-Runtime metadata is written to the user's data directory after launch and
-cleaned up on normal shutdown. If a crash leaves stale metadata, the next
-`stop`/`start` safely ignores it (dead PID detection).
+Runtime metadata (`runtime.json`) and the PID file (`supervisor.pid`) are written to the user's data directory at launch and removed on clean shutdown. If a crash leaves either file behind, the next `stop`/`start` safely ignores stale entries via dead-PID detection.
 
 **Environment fidelity**: `restart` from an external terminal inherits the
 *invoking* terminal's environment, not the original instance's. If the original

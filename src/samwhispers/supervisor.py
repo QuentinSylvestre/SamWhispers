@@ -602,7 +602,7 @@ def main() -> None:
         "no_web": args.no_web,
         "web_port": args.web_port,
     }
-    from samwhispers.singleinstance import write_pid
+    from samwhispers.singleinstance import write_pid, pid_path
 
     write_pid()
 
@@ -709,6 +709,10 @@ def main() -> None:
         from samwhispers.runtime import delete_metadata
 
         delete_metadata()
+        try:
+            pid_path().unlink(missing_ok=True)
+        except OSError:
+            pass  # PermissionError (file held open on Windows) -- best effort
         lock.release()
 
     # Post-loop: check if a relaunch was requested
