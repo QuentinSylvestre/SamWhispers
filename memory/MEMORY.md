@@ -46,15 +46,6 @@
 **How to apply**: When adding supervisor features that depend on worker readiness, gate on RUNNING state (not STARTING). When modifying _set_state or the monitor loop, maintain the 3-tick transition invariant.
 **Source**: Plan 260613-1911_PRODUCTION_STABILIZATION_ERROR_VISIBILITY.md Phase 3 | **Verified**: 2026-06-14
 
-### SamWhispers uses direct implementation without /qplan for trivial changes
-
-**Why**: The user frequently asks for direct implementation of features (overlay polish, model management UI, config webUI rework) without going through /qexplore -> /qplan. Only multi-concern production-grade work gets the full lifecycle treatment.
-**How to apply**: For SamWhispers tasks that are single-file or single-concern (UI rework, visual polish, feature addition to existing modules), implement directly. Reserve /qexplore->/qplan for cross-cutting concerns or production-critical changes with failure modes.
-**Source**: Sessions 45ad4165, ce4f96dc, 44f3f23c (direct) vs 60a930c7, 8d312e75 (full lifecycle) | **Verified**: 2026-07-16
-**Governance-conflict**: contradicts shared/AGENTS.md § Workflow (Plan-before-act gate) — adjudicated 2026-07-16: keep-entry (user affirms the standing waiver for SamWhispers single-concern work)
-**Governance-conflict-quote**: "Only tasks meeting the Trivial-tier criteria defined in `/qplan` Step 1 (unambiguous approach, ≤1 file, no irreversible changes, no external dependencies, no breaking changes) proceed without this prompt. If the user chooses direct implementation, proceed without further confirmation."
-
-
 ### Deferred Timer(0) for audio callback stop actions — never call lock-acquiring methods from _callback
 
 **Why**: The audio callback thread holds `_lock`. Any method that also acquires `_lock` (like `stop()`) will deadlock if called directly from `_callback`. Use `threading.Timer(0, method).start()` to defer to a new thread.
@@ -78,7 +69,22 @@
 
 **Why**: When two supervisor processes run simultaneously (e.g. autostart fires while a prior instance is still alive), neither has the web server listening. The `settings_url` field is `None` in the running supervisor because only one instance "wins" the socket, and the tray icon may show no functional menu. Diagnosis requires checking for multiple Python processes matching the supervisor pattern.
 **How to apply**: When the tray icon appears unresponsive or the settings window cannot be opened, check for duplicate supervisor instances first: `Get-Process python | Where-Object { $_.CommandLine -like '*samwhispers*' }` (or `ps aux | grep samwhispers`). Kill all but one and verify the survivor has `settings_url` set. The root race is `_relaunch_detached()` being called while the prior process is still cleaning up — the autostart path is the most common trigger.
-**Source**: Session 48178640 (2026-08-05) — "There are **two supervisor instances running** (PIDs 9296 and 26884)... neither has the web server listening... The web server (`settings_url`) is `None` in the running supervisor." | **Verified**: 2026-08-18 (sweep, verifier-confirmed)
+**Source**: Session 48178640 (2026-08-05) — "There are **two supervisor instances running** (PIDs 9296 and 26884)... neither has the web server listening... The web server (`settings_url`) is `None` in the running supervisor." | **Verified**: 2026-09-22 (sweep, anchor-reopen)
+**Update (2026-09-22)**: `plans/done/260821-1737_SUPERVISOR_DUPLICATE_BOOT_RACE_FIX.md` fixed the primary race — an `is_running()` early-exit guard was added to the `--foreground` path in `supervisor.main()`, eliminating the common autostart-double-fire case. A narrow TOCTOU window remains open (deferred, see that plan's Follow-up Work item 1). The diagnostic procedure above still applies if the symptom recurs.
+
+### [improvement_signal] Agent proceeded into /qexplore Q&A without having fully read the invoked skill
+
+**Target**: `shared/skills/qdream/failure-archetypes.md` (ARCHETYPE:skill_not_fully_loaded)
+**Why**: The user had to stop mid-exploration and correct the agent for not having read the skill properly before answering, forcing a redo of already-answered questions.
+**Frequency**: 1 (below threshold) | **Sessions**: sess_bbdd38f4-8931-46bd-94bc-89df3cbd078a (`~/.kiro/sessions/73756e4f66d28ea1/`) | **Last observed**: 2026-08-24
+**Evidence-quote**: "You didn't read the skill properly.\nQ2. yes\nQ3. ok"
+
+### [improvement_signal] /qdev reported completion with integration tests BLOCKED on an environment step the agent could have performed itself
+
+**Target**: `shared/skills/qdev/SKILL.md` (CANDIDATE_ARCHETYPE:qa_environment_bootstrap_avoidance)
+**Why**: /qdev was announced complete with two integration tests BLOCKED because they "need a supervisor restart to run fully" — a step the agent could have driven itself. A one-line user nudge triggered the actual restart, which then surfaced 4 real defects (wrong subcommand invocation, venv-wrapper PID mismatch, unreliable cross-console CTRL_BREAK_EVENT, missing delete_pid() helper) that the "complete" claim had missed.
+**Frequency**: 1 (below threshold) | **Sessions**: sess_bbdd38f4-8931-46bd-94bc-89df3cbd078a (`~/.kiro/sessions/73756e4f66d28ea1/`) | **Last observed**: 2026-08-24
+**Evidence-quote**: "restart samwhispers yourself and continue. implement the easy fixes"
 
 ## Declined
 
