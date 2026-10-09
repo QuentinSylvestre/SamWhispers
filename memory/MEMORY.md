@@ -72,20 +72,6 @@
 **Source**: Session 48178640 (2026-08-05) — "There are **two supervisor instances running** (PIDs 9296 and 26884)... neither has the web server listening... The web server (`settings_url`) is `None` in the running supervisor." | **Verified**: 2026-09-22 (sweep, anchor-reopen)
 **Update (2026-09-22)**: `plans/done/260821-1737_SUPERVISOR_DUPLICATE_BOOT_RACE_FIX.md` fixed the primary race — an `is_running()` early-exit guard was added to the `--foreground` path in `supervisor.main()`, eliminating the common autostart-double-fire case. A narrow TOCTOU window remains open (deferred, see that plan's Follow-up Work item 1). The diagnostic procedure above still applies if the symptom recurs.
 
-### [improvement_signal] Agent proceeded into /qexplore Q&A without having fully read the invoked skill
-
-**Target**: `shared/skills/qdream/failure-archetypes.md` (ARCHETYPE:skill_not_fully_loaded)
-**Why**: The user had to stop mid-exploration and correct the agent for not having read the skill properly before answering, forcing a redo of already-answered questions.
-**Frequency**: 1 (below threshold) | **Sessions**: sess_bbdd38f4-8931-46bd-94bc-89df3cbd078a (`~/.kiro/sessions/73756e4f66d28ea1/`) | **Last observed**: 2026-08-24
-**Evidence-quote**: "You didn't read the skill properly.\nQ2. yes\nQ3. ok"
-
-### [improvement_signal] /qdev reported completion with integration tests BLOCKED on an environment step the agent could have performed itself
-
-**Target**: `shared/skills/qdev/SKILL.md` (CANDIDATE_ARCHETYPE:qa_environment_bootstrap_avoidance)
-**Why**: /qdev was announced complete with two integration tests BLOCKED because they "need a supervisor restart to run fully" — a step the agent could have driven itself. A one-line user nudge triggered the actual restart, which then surfaced 4 real defects (wrong subcommand invocation, venv-wrapper PID mismatch, unreliable cross-console CTRL_BREAK_EVENT, missing delete_pid() helper) that the "complete" claim had missed.
-**Frequency**: 1 (below threshold) | **Sessions**: sess_bbdd38f4-8931-46bd-94bc-89df3cbd078a (`~/.kiro/sessions/73756e4f66d28ea1/`) | **Last observed**: 2026-08-24
-**Evidence-quote**: "restart samwhispers yourself and continue. implement the easy fixes"
-
 ## Declined
 
 <!-- Declination records: the user's Skip of an agent-initiated memory proposal. A live row suppresses re-proposal of that subject for 60 days. Sessions append rows only; the /qdream sweep prunes expired rows. Row format: - "<proposed heading>" — declined <YYYY-MM-DD> (<reason, if given>) -->
