@@ -137,7 +137,9 @@ launchctl load ~/Library/LaunchAgents/com.samwhispers.supervisor.plist
 
 ## Windows (Task Scheduler)
 
-The simplest approach is Task Scheduler with an "At log on" trigger:
+`samwhispers-autostart enable` (above) is the simplest approach. To use Task
+Scheduler instead, where the machine allows it, create a task with an "At log
+on" trigger:
 
 1. Open **Task Scheduler** -> **Create Task**.
 2. **Triggers** -> **New** -> *Begin the task:* **At log on**.

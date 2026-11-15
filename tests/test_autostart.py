@@ -135,4 +135,8 @@ def test_windows_target_anchors_on_script_dir() -> None:
     ):
         target, args = autostart._windows_target_and_args()
     assert target.replace("\\", "/").endswith("/venv/Scripts/pythonw.exe")
-    assert args == "-m samwhispers.supervisor --foreground"
+    # Import-based launch on purpose: `python -m` breaks the tray icon on Windows.
+    assert args.startswith('-c "')
+    assert "from samwhispers.supervisor import main; main()" in args
+    assert "'--foreground'" in args
+    assert "-m samwhispers" not in args
